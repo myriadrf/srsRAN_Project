@@ -30,6 +30,10 @@
 #include "zmq/radio_factory_zmq_impl.h"
 #endif // ENABLE_ZMQ
 
+#ifdef ENABLE_LIMESUITENG
+#include "limesuiteng/radio_limesuiteng_impl.h"
+#endif // ENABLE_ZMQ
+
 #include "plugin_radio_factory.h"
 
 using namespace srsran;
@@ -48,6 +52,9 @@ static const std::vector<radio_factory_entry> radio_factory_available_factories 
 #ifdef ENABLE_ZMQ
     {"zmq", []() { return std::make_unique<radio_factory_zmq_impl>(); }},
 #endif // ENABLE_ZMQ
+#ifdef ENABLE_LIMESUITENG
+    {"limesuiteng", []() { return std::make_unique<radio_factory_limesuiteng_impl>(); }},
+#endif // ENABLE_LIMESUITENG
 };
 
 } // namespace

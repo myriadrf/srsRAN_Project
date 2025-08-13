@@ -39,6 +39,12 @@ if (ZEROMQ_FOUND AND ENABLE_ZEROMQ)
     list(APPEND SRSGNB_RADIO_LIBRARIES srsran_radio_zmq)
 endif (ZEROMQ_FOUND AND ENABLE_ZEROMQ)
 
+if (limesuiteng_FOUND AND ENABLE_LIMESUITENG)
+    add_subdirectory(limesuiteng)
+    list(APPEND SRSGNB_RADIO_DEFINITIONS -DENABLE_LIMESUITENG)
+    list(APPEND SRSGNB_RADIO_LIBRARIES srsran_radio_limesuiteng)
+endif (limesuiteng_FOUND AND ENABLE_LIMESUITENG)
+
 add_definitions(${SRSGNB_RADIO_DEFINITIONS})
 target_link_libraries(srsran_radio ${SRSGNB_RADIO_LIBRARIES} srslog dl)
 
