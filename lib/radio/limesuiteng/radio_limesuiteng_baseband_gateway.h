@@ -25,6 +25,7 @@
 #include "radio_limesuiteng_rx_stream.h"
 #include "radio_limesuiteng_tx_stream.h"
 #include "srsran/gateways/baseband/baseband_gateway.h"
+#include "srsran/support/executors/task_executor.h"
 #include <memory>
 
 class LimePluginContext;
