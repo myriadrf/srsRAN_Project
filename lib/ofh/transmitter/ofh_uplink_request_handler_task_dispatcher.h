@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,18 +23,21 @@
 #pragma once
 
 #include "ofh_uplink_request_handler_impl.h"
+#include "srsran/ofh/ofh_controller.h"
 #include "srsran/support/executors/task_executor.h"
+#include "srsran/support/synchronization/stop_event.h"
 
 namespace srsran {
 namespace ofh {
 
 /// Uplink request handler task dispatcher.
-class uplink_request_handler_task_dispatcher : public uplink_request_handler
+class uplink_request_handler_task_dispatcher : public uplink_request_handler, operation_controller
 {
   const unsigned          sector_id;
   srslog::basic_logger&   logger;
   uplink_request_handler& uplink_handler;
   task_executor&          executor;
+  stop_event_source       stop_manager;
 
 public:
   uplink_request_handler_task_dispatcher(unsigned                sector_id_,
@@ -46,7 +49,13 @@ public:
   }
 
   // See interface for documentation.
-  void handle_prach_occasion(const prach_buffer_context& context, prach_buffer& buffer) override;
+  void start() override;
+
+  // See interface for documentation.
+  void stop() override;
+
+  // See interface for documentation.
+  void handle_prach_occasion(const prach_buffer_context& context, shared_prach_buffer buffer) override;
 
   // See interface for documentation.
   void handle_new_uplink_slot(const resource_grid_context& context, const shared_resource_grid& grid) override;

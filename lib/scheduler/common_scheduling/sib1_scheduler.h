@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -45,6 +45,9 @@ public:
 
   /// \brief Update the SIB1 PDU version.
   void handle_sib1_update_indication(unsigned version, units::bytes sib1_payload_size);
+
+  /// Called when cell is deactivated.
+  void stop();
 
 private:
   /// \brief Searches in PDSCH and PDCCH for space to allocate SIB1 and SIB1's DCI, respectively.

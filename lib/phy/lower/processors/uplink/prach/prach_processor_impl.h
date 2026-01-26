@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -38,16 +38,15 @@ class prach_processor_impl : public prach_processor,
                              private prach_processor_baseband,
                              private prach_processor_request_handler
 {
-private:
   std::atomic<bool>                                    stopped = false;
   std::vector<std::unique_ptr<prach_processor_worker>> workers;
   prach_processor_notifier*                            notifier = nullptr;
 
   // See prach_processor_request_handler for documentation.
-  void handle_request(prach_buffer& buffer, const prach_buffer_context& context) override
+  void handle_request(shared_prach_buffer buffer, const prach_buffer_context& context) override
   {
     // Ignore request if the processor has stopped.
-    if (stopped) {
+    if (stopped.load(std::memory_order_relaxed)) {
       return;
     }
 
@@ -58,7 +57,7 @@ private:
       // Select the first worker available.
       if (worker->is_available()) {
         // Set request.
-        worker->handle_request(buffer, context);
+        worker->handle_request(std::move(buffer), context);
 
         // Stop iterating.
         return;
@@ -81,7 +80,7 @@ private:
 
 public:
   /// Creates a PRACH processor containing workers.
-  explicit prach_processor_impl(std::vector<std::unique_ptr<prach_processor_worker>>&& workers_) :
+  explicit prach_processor_impl(std::vector<std::unique_ptr<prach_processor_worker>> workers_) :
     workers(std::move(workers_))
   {
     srsran_assert(!workers.empty(), "No workers are available.");
@@ -100,7 +99,14 @@ public:
   }
 
   // See prach_processor interface for documentation.
-  void stop() override { stopped = true; }
+  void stop() override
+  {
+    stopped = true;
+
+    for (std::unique_ptr<prach_processor_worker>& worker : workers) {
+      worker->stop();
+    }
+  }
 
   // See prach_processor for documentation.
   prach_processor_request_handler& get_request_handler() override { return *this; }

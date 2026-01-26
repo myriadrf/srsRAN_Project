@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -79,7 +79,7 @@ struct srb_pdcp_context {
     srb_pdcp.ue_ul_timer_factory   = timers;
     srb_pdcp.ue_ctrl_timer_factory = timers;
     // Uplink, Downlink, Control and Crypto run in the same executor
-    srb_pdcp.ue_dl_executor         = &executor;
+    srb_pdcp.ue_dl_executor         = &inline_executor;
     srb_pdcp.ue_ul_executor         = &inline_executor; // synchronous inline execution required to unpack RRC msgs
     srb_pdcp.ue_ctrl_executor       = &executor;
     srb_pdcp.crypto_executor        = &inline_executor; // synchronous inline execution required to unpack RRC msgs

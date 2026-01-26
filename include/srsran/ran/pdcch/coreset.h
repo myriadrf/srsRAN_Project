@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -42,7 +42,7 @@ using freq_resource_bitmap = bounded_bitset<pdcch_constants::MAX_NOF_FREQ_RESOUR
 /// \remark See TS 38.331, "maxNrofControlResourceSets".
 enum coreset_id : uint8_t { MAX_CORESET_ID = 11, MAX_NOF_CORESETS = 12 };
 
-constexpr inline coreset_id to_coreset_id(unsigned cs_id)
+constexpr coreset_id to_coreset_id(unsigned cs_id)
 {
   return static_cast<coreset_id>(cs_id);
 }

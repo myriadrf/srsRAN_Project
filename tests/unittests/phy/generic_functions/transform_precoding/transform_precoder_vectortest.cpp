@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -75,11 +75,16 @@ protected:
   static void SetUpTestSuite()
   {
     if (!precoder) {
+      unsigned max_M_rb = std::max_element(transform_precoder_test_data.begin(),
+                                           transform_precoder_test_data.end(),
+                                           [](const auto& left, const auto& right) { return left.M_rb < right.M_rb; })
+                              ->M_rb;
+
       std::shared_ptr<dft_processor_factory> dft_proc_factory = create_dft_processor_factory_fftw_slow();
       ASSERT_TRUE(dft_proc_factory);
 
       std::shared_ptr<transform_precoder_factory> precoder_factory =
-          create_dft_transform_precoder_factory(std::move(dft_proc_factory), MAX_RB);
+          create_dft_transform_precoder_factory(std::move(dft_proc_factory), max_M_rb);
       ASSERT_TRUE(precoder_factory);
 
       precoder = precoder_factory->create();

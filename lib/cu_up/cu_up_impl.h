@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -91,8 +91,9 @@ private:
   gtpu_network_gateway_adapter            gtpu_gw_adapter;
   e1ap_cu_up_manager_adapter              e1ap_cu_up_mng_adapter;
 
-  std::mutex mutex;
-  bool       running{false};
+  std::mutex        mutex;
+  bool              running{false};
+  std::atomic<bool> stop_command{false};
 
   // Handler for CU-UP tasks.
   fifo_async_task_scheduler main_ctrl_loop;

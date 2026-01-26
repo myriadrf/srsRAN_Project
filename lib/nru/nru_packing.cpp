@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,7 +23,7 @@
 #include "srsran/nru/nru_packing.h"
 #include "srsran/support/bit_encoding.h"
 
-namespace srsran {
+using namespace srsran;
 
 /// Macro used to check a read/unpack operation and log an error message if the validation fails.
 #define VERIFY_READ(cond)                                                                                              \
@@ -441,5 +441,3 @@ bool nru_packing::pack(byte_buffer& out_buf, const nru_dl_data_delivery_status& 
 
   return true;
 }
-
-} // namespace srsran

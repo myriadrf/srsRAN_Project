@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,6 +21,10 @@
  */
 
 #include "uci_test_utils.h"
+#include "srsran/ran/du_types.h"
+#include "srsran/scheduler/config/csi_helper.h"
+#include "srsran/scheduler/config/sched_cell_config_helpers.h"
+#include "srsran/scheduler/config/scheduler_expert_config_factory.h"
 
 using namespace srsran;
 
@@ -80,18 +84,18 @@ bool srsran::pucch_info_match(const pucch_info& expected, const pucch_info& test
 
   switch (expected.format()) {
     case pucch_format::FORMAT_0: {
-      const pucch_format_0& expected_f = std::get<pucch_format_0>(expected.format_params);
-      const pucch_format_0& test_f     = std::get<pucch_format_0>(test.format_params);
-      is_equal                         = is_equal && expected_f.group_hopping == test_f.group_hopping &&
+      const auto& expected_f = std::get<pucch_format_0>(expected.format_params);
+      const auto& test_f     = std::get<pucch_format_0>(test.format_params);
+      is_equal               = is_equal && expected_f.group_hopping == test_f.group_hopping &&
                  expected_f.n_id_hopping == test_f.n_id_hopping &&
                  expected_f.initial_cyclic_shift == test_f.initial_cyclic_shift &&
                  expected.uci_bits.sr_bits == test.uci_bits.sr_bits &&
                  expected.uci_bits.harq_ack_nof_bits == test.uci_bits.harq_ack_nof_bits;
     } break;
     case pucch_format::FORMAT_1: {
-      const pucch_format_1& expected_f = std::get<pucch_format_1>(expected.format_params);
-      const pucch_format_1& test_f     = std::get<pucch_format_1>(test.format_params);
-      is_equal                         = is_equal && expected_f.group_hopping == test_f.group_hopping &&
+      const auto& expected_f = std::get<pucch_format_1>(expected.format_params);
+      const auto& test_f     = std::get<pucch_format_1>(test.format_params);
+      is_equal               = is_equal && expected_f.group_hopping == test_f.group_hopping &&
                  expected_f.n_id_hopping == test_f.n_id_hopping &&
                  expected_f.initial_cyclic_shift == test_f.initial_cyclic_shift &&
                  expected.uci_bits.sr_bits == test.uci_bits.sr_bits &&
@@ -100,9 +104,9 @@ bool srsran::pucch_info_match(const pucch_info& expected, const pucch_info& test
                  expected_f.time_domain_occ == test_f.time_domain_occ;
     } break;
     case pucch_format::FORMAT_2: {
-      const pucch_format_2& expected_f = std::get<pucch_format_2>(expected.format_params);
-      const pucch_format_2& test_f     = std::get<pucch_format_2>(test.format_params);
-      is_equal                         = is_equal && expected_f.max_code_rate == test_f.max_code_rate &&
+      const auto& expected_f = std::get<pucch_format_2>(expected.format_params);
+      const auto& test_f     = std::get<pucch_format_2>(test.format_params);
+      is_equal               = is_equal && expected_f.max_code_rate == test_f.max_code_rate &&
                  expected_f.n_id_scambling == test_f.n_id_scambling &&
                  expected_f.n_id_0_scrambling == test_f.n_id_0_scrambling &&
                  expected.uci_bits.sr_bits == test.uci_bits.sr_bits &&
@@ -110,9 +114,9 @@ bool srsran::pucch_info_match(const pucch_info& expected, const pucch_info& test
                  expected.uci_bits.csi_part1_nof_bits == test.uci_bits.csi_part1_nof_bits;
     } break;
     case pucch_format::FORMAT_3: {
-      const pucch_format_3& expected_f = std::get<pucch_format_3>(expected.format_params);
-      const pucch_format_3& test_f     = std::get<pucch_format_3>(test.format_params);
-      is_equal                         = is_equal && expected_f.group_hopping == test_f.group_hopping &&
+      const auto& expected_f = std::get<pucch_format_3>(expected.format_params);
+      const auto& test_f     = std::get<pucch_format_3>(test.format_params);
+      is_equal               = is_equal && expected_f.group_hopping == test_f.group_hopping &&
                  expected_f.n_id_hopping == test_f.n_id_hopping && expected.uci_bits.sr_bits == test.uci_bits.sr_bits &&
                  expected.uci_bits.harq_ack_nof_bits == test.uci_bits.harq_ack_nof_bits &&
                  expected.uci_bits.csi_part1_nof_bits == test.uci_bits.csi_part1_nof_bits &&
@@ -123,8 +127,8 @@ bool srsran::pucch_info_match(const pucch_info& expected, const pucch_info& test
                  expected_f.n_id_0_scrambling == test_f.n_id_0_scrambling;
     } break;
     case pucch_format::FORMAT_4: {
-      const pucch_format_4& expected_f = std::get<pucch_format_4>(expected.format_params);
-      const pucch_format_4& test_f     = std::get<pucch_format_4>(test.format_params);
+      const auto& expected_f = std::get<pucch_format_4>(expected.format_params);
+      const auto& test_f     = std::get<pucch_format_4>(test.format_params);
       is_equal =
           is_equal && expected_f.group_hopping == test_f.group_hopping &&
           expected_f.n_id_hopping == test_f.n_id_hopping && expected.uci_bits.sr_bits == test.uci_bits.sr_bits &&
@@ -161,12 +165,62 @@ public:
 test_bench::test_bench(const test_bench_params& params,
                        unsigned                 max_pucchs_per_slot_,
                        unsigned                 max_ul_grants_per_slot_) :
-  expert_cfg{config_helpers::make_default_scheduler_expert_config()},
+  expert_cfg{[]() -> scheduler_expert_config {
+    auto default_exp_cfg                            = config_helpers::make_default_scheduler_expert_config();
+    default_exp_cfg.ue.min_pucch_pusch_prb_distance = 0U;
+    return default_exp_cfg;
+  }()},
   cell_cfg{[this, &params]() -> const cell_configuration& {
     auto cell_req = make_custom_sched_cell_configuration_request(
         params.pucch_res_common, params.is_tdd, params.cfg_for_mimo_4x4 ? 4 : 1);
     cfg_pool.add_cell(cell_req);
     cell_cfg_list.emplace(to_du_cell_index(0), std::make_unique<cell_configuration>(expert_cfg, cell_req));
+
+    cell_config_builder_params cfg_params{};
+    cfg_params.csi_rs_enabled  = true;
+    cfg_params.scs_common      = params.is_tdd ? subcarrier_spacing::kHz30 : subcarrier_spacing::kHz15;
+    cfg_params.dl_f_ref_arfcn  = params.is_tdd ? 520000U : 365000U;
+    auto& cell_pucch_resources = cell_cfg_list[to_du_cell_index(0)]->ded_pucch_resources;
+
+    cell_pucch_resources = test_helpers::make_test_cell_dedicated_pucch_resources(cfg_params);
+
+    if (params.formats != pucch_formats::f1_and_f2 or params.pucch_f2_f3_more_prbs) {
+      // Generate the cell resource list through the DU PUCCH builder.
+      pucch_builder_params pucch_params{};
+      if (pucch_f0f1_format(params.formats) == pucch_format::FORMAT_0) {
+        pucch_params.f0_or_f1_params.emplace<pucch_f0_params>();
+        pucch_params.res_set_0_size = 6;
+        pucch_params.res_set_1_size = 6;
+      }
+      switch (pucch_f2f3f4_format(params.formats)) {
+        case pucch_format::FORMAT_2:
+          break;
+        case pucch_format::FORMAT_3:
+          pucch_params.f2_or_f3_or_f4_params.emplace<pucch_f3_params>();
+          break;
+        case pucch_format::FORMAT_4: {
+          auto& f4_params         = pucch_params.f2_or_f3_or_f4_params.emplace<pucch_f4_params>();
+          f4_params.occ_supported = true;
+        } break;
+        default:
+          srsran_assertion_failure("Invalid PUCCH Format for Set Id 1 (valid values are 2, 3 or 4)");
+      }
+
+      cell_pucch_resources = config_helpers::build_pucch_resource_list(
+          pucch_params, cell_cfg_list[to_du_cell_index(0)]->ul_cfg_common.init_ul_bwp.generic_params.crbs.length());
+
+      if (params.pucch_f2_f3_more_prbs) {
+        // TODO: extend for PUCCH Formats 3/4
+        const unsigned pucch_f2_f3_nof_prbs = params.cfg_for_mimo_4x4 ? 2U : 3U;
+        for (auto& pucch_res : cell_pucch_resources) {
+          if (pucch_res.format == pucch_f2f3f4_format(params.formats) and
+              std::holds_alternative<pucch_format_2_3_cfg>(pucch_res.format_params)) {
+            std::get<pucch_format_2_3_cfg>(pucch_res.format_params).nof_prbs = pucch_f2_f3_nof_prbs;
+          }
+        }
+      }
+    }
+
     return *cell_cfg_list[to_du_cell_index(0)];
   }()},
   cell_harqs{MAX_NOF_DU_UES, MAX_NOF_HARQS, std::make_unique<dummy_harq_timeout_notifier>()},
@@ -174,9 +228,9 @@ test_bench::test_bench(const test_bench_params& params,
   k0(cell_cfg.dl_cfg_common.init_dl_bwp.pdsch_common.pdsch_td_alloc_list[0].k0),
   max_pucchs_per_slot{max_pucchs_per_slot_},
   max_ul_grants_per_slot{max_ul_grants_per_slot_},
+  ue_cell_db(ues.add_cell(to_du_cell_index(0))),
   pucch_f2_f3_more_prbs{params.pucch_f2_f3_more_prbs},
-  use_format_0(params.use_format_0),
-  set1_format(params.set1_format),
+  formats(params.formats),
   pucch_alloc{cell_cfg, max_pucchs_per_slot, max_ul_grants_per_slot},
   uci_alloc(pucch_alloc),
   uci_sched{cell_cfg, uci_alloc, ues},
@@ -216,22 +270,23 @@ test_bench::test_bench(const test_bench_params& params,
     csi_report.report_slot_offset = params.csi_offset;
   }
 
-  if (set1_format != pucch_format::FORMAT_2 || use_format_0) {
+  if (formats != pucch_formats::f1_and_f2) {
     pucch_builder_params pucch_params{};
-    if (use_format_0) {
+    if (pucch_f0f1_format(formats) == pucch_format::FORMAT_0) {
       pucch_params.f0_or_f1_params.emplace<pucch_f0_params>();
-      pucch_params.nof_ue_pucch_f0_or_f1_res_harq       = 6;
-      pucch_params.nof_ue_pucch_f2_or_f3_or_f4_res_harq = 6;
+      pucch_params.res_set_0_size = 6;
+      pucch_params.res_set_1_size = 6;
     }
-    switch (set1_format) {
+    switch (pucch_f2f3f4_format(formats)) {
       case pucch_format::FORMAT_2:
         break;
       case pucch_format::FORMAT_3:
         pucch_params.f2_or_f3_or_f4_params.emplace<pucch_f3_params>();
         break;
-      case pucch_format::FORMAT_4:
-        pucch_params.f2_or_f3_or_f4_params.emplace<pucch_f4_params>();
-        break;
+      case pucch_format::FORMAT_4: {
+        auto& f4_params         = pucch_params.f2_or_f3_or_f4_params.emplace<pucch_f4_params>();
+        f4_params.occ_supported = true;
+      } break;
       default:
         srsran_assertion_failure("Invalid PUCCH Format for Set Id 1 (valid values are 2, 3 or 4)");
     }
@@ -248,7 +303,8 @@ test_bench::test_bench(const test_bench_params& params,
   if (pucch_f2_f3_more_prbs) {
     static constexpr unsigned pucch_f2_f3_nof_prbs = 3U;
     for (auto& pucch_res : ul_cfg.init_ul_bwp.pucch_cfg.value().pucch_res_list) {
-      if (pucch_res.format == set1_format and std::holds_alternative<pucch_format_2_3_cfg>(pucch_res.format_params)) {
+      if (pucch_res.format == pucch_f2f3f4_format(formats) and
+          std::holds_alternative<pucch_format_2_3_cfg>(pucch_res.format_params)) {
         std::get<pucch_format_2_3_cfg>(pucch_res.format_params).nof_prbs = pucch_f2_f3_nof_prbs;
       }
     }
@@ -259,9 +315,10 @@ test_bench::test_bench(const test_bench_params& params,
     auto& pucch_cfg = ue_req.cfg.cells->back().serv_cell_cfg.ul_config->init_ul_bwp.pucch_cfg.value();
     pucch_cfg.format_2_common_param.value().max_c_rate = max_pucch_code_rate::dot_35;
     if (params.pucch_f2_f3_more_prbs) {
-      for (auto res_it = pucch_cfg.pucch_res_list.begin(); res_it != pucch_cfg.pucch_res_list.end(); ++res_it) {
-        if (res_it->format == set1_format and std::holds_alternative<pucch_format_2_3_cfg>(res_it->format_params)) {
-          std::get<pucch_format_2_3_cfg>(res_it->format_params).nof_prbs = 2U;
+      for (auto& res_it : pucch_cfg.pucch_res_list) {
+        if (res_it.format == pucch_f2f3f4_format(formats) and
+            std::holds_alternative<pucch_format_2_3_cfg>(res_it.format_params)) {
+          std::get<pucch_format_2_3_cfg>(res_it.format_params).nof_prbs = 2U;
         }
       }
     }
@@ -272,7 +329,7 @@ test_bench::test_bench(const test_bench_params& params,
     const auto& res_f2_cfg = std::get<pucch_format_2_3_cfg>(res_f2->format_params);
     pucch_cfg.format_max_payload[pucch_format_to_uint(pucch_format::FORMAT_2)] =
         get_pucch_format2_max_payload(res_f2_cfg.nof_prbs,
-                                      res_f2_cfg.nof_symbols,
+                                      res_f2->nof_symbols,
                                       to_max_code_rate_float(pucch_cfg.format_2_common_param.value().max_c_rate));
     pucch_cfg.set_1_format = pucch_format::FORMAT_2;
     ue_req.cfg.cells->back().serv_cell_cfg.csi_meas_cfg =
@@ -295,14 +352,15 @@ test_bench::test_bench(const test_bench_params& params,
     const auto& res_f2_cfg = std::get<pucch_format_2_3_cfg>(res_f2->format_params);
     pucch_cfg.format_max_payload[pucch_format_to_uint(pucch_format::FORMAT_2)] =
         get_pucch_format2_max_payload(res_f2_cfg.nof_prbs,
-                                      res_f2_cfg.nof_symbols,
+                                      res_f2->nof_symbols,
                                       to_max_code_rate_float(pucch_cfg.format_2_common_param.value().max_c_rate));
   }
 
   ue_req_main = ue_req;
   ue_ded_cfgs.push_back(
       std::make_unique<ue_configuration>(ue_req.ue_index, ue_req.crnti, cell_cfg_list, cfg_pool.add_ue(ue_req)));
-  ues.add_ue(std::make_unique<ue>(ue_creation_command{*ue_ded_cfgs.back(), ue_req.starts_in_fallback, cell_harqs, {}}));
+  ues.add_ue(std::make_unique<ue>(ue_creation_command{*ue_ded_cfgs.back(), ue_req.starts_in_fallback, cell_harqs, {}}),
+             ue_ded_cfgs.back()->logical_channels());
   uci_sched.add_ue(ues[ue_req.ue_index].get_pcell().cfg());
   last_allocated_rnti   = ue_req.crnti;
   last_allocated_ue_idx = main_ue_idx;
@@ -323,19 +381,19 @@ const ue& test_bench::get_ue(du_ue_index_t ue_idx) const
 void test_bench::add_ue()
 {
   sched_ue_creation_request_message ue_req = ue_req_main;
-  last_allocated_ue_idx =
-      to_du_ue_index(static_cast<std::underlying_type<du_ue_index_t>::type>(last_allocated_ue_idx) + 1);
-  ue_req.ue_index = last_allocated_ue_idx;
+  last_allocated_ue_idx = to_du_ue_index(static_cast<std::underlying_type_t<du_ue_index_t>>(last_allocated_ue_idx) + 1);
+  ue_req.ue_index       = last_allocated_ue_idx;
 
-  ue_req.crnti = to_rnti(static_cast<std::underlying_type<rnti_t>::type>(last_allocated_rnti) + 1);
+  ue_req.crnti = to_rnti(static_cast<std::underlying_type_t<rnti_t>>(last_allocated_rnti) + 1);
 
-  srsran_assert(not use_format_0 or
+  srsran_assert(formats == pucch_formats::f1_and_f2 or
                     pucch_builder.add_build_new_ue_pucch_cfg(ue_req.cfg.cells.value().back().serv_cell_cfg),
                 "UE PUCCH configuration couldn't be built");
 
   ue_ded_cfgs.push_back(
       std::make_unique<ue_configuration>(ue_req.ue_index, ue_req.crnti, cell_cfg_list, cfg_pool.add_ue(ue_req)));
-  ues.add_ue(std::make_unique<ue>(ue_creation_command{*ue_ded_cfgs.back(), ue_req.starts_in_fallback, cell_harqs}));
+  ues.add_ue(std::make_unique<ue>(ue_creation_command{*ue_ded_cfgs.back(), ue_req.starts_in_fallback, cell_harqs}),
+             ue_ded_cfgs.back()->logical_channels());
   last_allocated_rnti = ue_req.crnti;
 }
 

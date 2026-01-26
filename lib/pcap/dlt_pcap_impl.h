@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,6 +34,7 @@ public:
   dlt_pcap_impl(unsigned           dlt_,
                 const std::string& layer_name_,
                 const std::string& filename,
+                const std::string& dissector,
                 task_executor&     backend_exec_);
 
   ~dlt_pcap_impl() override;

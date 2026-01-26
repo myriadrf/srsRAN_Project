@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -40,8 +40,6 @@ struct logger_appconfig {
 
   /// Maximum number of bytes to write when dumping hex arrays.
   int hex_max_size = 0;
-  /// Set to a valid file path to enable tracing and write the trace to the file.
-  std::string tracing_filename;
 };
 
 } // namespace srsran

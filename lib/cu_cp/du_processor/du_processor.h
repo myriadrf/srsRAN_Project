@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 #include "du_configuration_handler.h"
 #include "du_metrics_handler.h"
 #include "srsran/adt/static_vector.h"
+#include "srsran/cu_cp/cell_meas_manager_config.h"
 #include "srsran/f1ap/cu_cp/f1ap_cu.h"
 #include "srsran/ran/nr_cgi.h"
 #include "srsran/rrc/rrc_du.h"
@@ -105,6 +106,11 @@ class du_processor_cu_cp_notifier
 public:
   virtual ~du_processor_cu_cp_notifier() = default;
 
+  /// \brief Request to update the measurement related parameters for the given cell id.
+  /// \param[in] nci The cell id of the serving cell to update.
+  /// \param[in] serv_cell_cfg_ The serving cell meas config to update.
+  virtual bool on_cell_config_update_request(nr_cell_identity nci, const serving_cell_meas_config& serv_cell_cfg_) = 0;
+
   /// \brief Notifies about a successful RRC UE creation.
   /// \param[in] ue_index The index of the UE.
   /// \param[in] rrc_ue_msg_handler The created RRC UE.
@@ -125,7 +131,7 @@ public:
   virtual async_task<void> on_ue_release_required(const cu_cp_ue_context_release_request& request) = 0;
 
   /// \brief Notify that the F1 transaction information was lost for some UEs.
-  virtual async_task<void> on_transaction_info_loss(const f1_ue_transaction_info_loss_event& ev) = 0;
+  virtual async_task<void> on_transaction_info_loss(const ue_transaction_info_loss_event& ev) = 0;
 };
 
 class du_processor_configuration_update_interface

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,7 +28,7 @@ namespace srsran {
 
 /// Launches an async task that finishes immediately with the result set by the caller to this function.
 template <typename Resp>
-async_task<std::decay_t<Resp>> launch_no_op_task(Resp&& r)
+[[nodiscard]] async_task<std::decay_t<Resp>> launch_no_op_task(Resp&& r)
 {
   return launch_async([r = std::forward<Resp>(r)](coro_context<async_task<std::decay_t<Resp>>>& ctx) {
     CORO_BEGIN(ctx);
@@ -37,7 +37,7 @@ async_task<std::decay_t<Resp>> launch_no_op_task(Resp&& r)
 }
 
 /// Launches an async task that finishes immediately with the result set by the caller to this function.
-inline async_task<void> launch_no_op_task()
+[[nodiscard]] inline async_task<void> launch_no_op_task()
 {
   return launch_async([](coro_context<async_task<void>>& ctx) {
     CORO_BEGIN(ctx);

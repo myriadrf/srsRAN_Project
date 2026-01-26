@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,7 +22,7 @@
 
 #include "../../../support/resource_grid_test_doubles.h"
 #include "../../rx_buffer_test_doubles.h"
-#include "../../signal_processors/dmrs_pusch_estimator_test_doubles.h"
+#include "../../signal_processors/pusch/dmrs_pusch_estimator_test_doubles.h"
 #include "../uci/uci_decoder_test_doubles.h"
 #include "pusch_decoder_test_doubles.h"
 #include "pusch_demodulator_test_doubles.h"

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,8 +23,8 @@
 #pragma once
 
 #include "srsran/du/du_high/du_manager/du_manager_params.h"
+#include "srsran/mac/cell_configuration.h"
 #include "srsran/ran/du_types.h"
-#include "srsran/scheduler/scheduler_sys_info_handler.h"
 
 namespace srsran {
 namespace srs_du {
@@ -33,12 +33,14 @@ struct du_cell_param_config_request;
 
 /// Current DU cell context.
 struct du_cell_context {
+  enum class state_t { active, inactive, deactivating };
+
   /// Current configuration.
   du_cell_config cfg;
   /// Encoded System Information being currently sent by the DU cell.
   mac_cell_sys_info_config si_cfg;
-  /// Whether the cell is active.
-  bool active = false;
+  /// Current cell state.
+  state_t state;
 };
 
 /// Result of the reconfiguration of a DU cell.
@@ -49,6 +51,8 @@ struct du_cell_reconfig_result {
   bool cu_notif_required;
   /// Whether the Scheduler needs to be notified about an update in the SI scheduling.
   bool sched_notif_required;
+  /// Request for the MAC to change the slice configuration of the cell.
+  std::optional<du_cell_slice_reconfig_request> slice_reconf_req;
 };
 
 class du_cell_manager
@@ -64,7 +68,7 @@ public:
   bool is_cell_active(du_cell_index_t cell_index) const
   {
     assert_cell_exists(cell_index);
-    return cells[cell_index]->active;
+    return cells[cell_index]->state == du_cell_context::state_t::active;
   }
 
   du_cell_index_t get_cell_index(nr_cell_global_id_t nr_cgi) const;
@@ -84,9 +88,15 @@ public:
     return cells[cell_index]->cfg;
   }
 
+  /// Stop accepting new UE creations in the given cell.
+  void stop_accepting_ues(du_cell_index_t cell_index) const
+  {
+    cells[cell_index]->state = du_cell_context::state_t::deactivating;
+  }
+
   /// Handle request to update a cell configuration.
   /// \return true if a change was detected and applied.
-  expected<du_cell_reconfig_result> handle_cell_reconf_request(const du_cell_param_config_request& req);
+  expected<du_cell_reconfig_result> handle_cell_reconf_request(const du_cell_param_config_request& req) const;
 
   /// Retrieve current cell system information configuration.
   const mac_cell_sys_info_config& get_sys_info(du_cell_index_t cell_index) const
@@ -95,11 +105,17 @@ public:
     return cells[cell_index]->si_cfg;
   }
 
-  async_task<bool> start(du_cell_index_t cell_index);
+  /// Start a specific cell in the DU.
+  async_task<bool> start(du_cell_index_t cell_index) const;
 
-  async_task<void> stop(du_cell_index_t cell_index);
+  /// Stop a specific cell in the DU.
+  async_task<void> stop(du_cell_index_t cell_index) const;
 
-  async_task<void> stop();
+  /// Stop all cells in the DU.
+  async_task<void> stop_all() const;
+
+  /// Remove all cell configurations.
+  void remove_all_cells();
 
 private:
   void assert_cell_exists(du_cell_index_t cell_index) const

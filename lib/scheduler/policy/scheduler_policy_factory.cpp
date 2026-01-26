@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,10 +29,10 @@ using namespace srsran;
 std::unique_ptr<scheduler_policy> srsran::create_scheduler_strategy(const scheduler_ue_expert_config& expert_cfg_,
                                                                     du_cell_index_t                   cell_index)
 {
-  if (std::holds_alternative<time_rr_scheduler_expert_config>(expert_cfg_.strategy_cfg)) {
+  if (std::holds_alternative<time_rr_scheduler_config>(expert_cfg_.policy_cfg)) {
     return std::make_unique<scheduler_time_rr>(expert_cfg_);
   }
-  if (std::holds_alternative<time_qos_scheduler_expert_config>(expert_cfg_.strategy_cfg)) {
+  if (std::holds_alternative<time_qos_scheduler_config>(expert_cfg_.policy_cfg)) {
     return std::make_unique<scheduler_time_qos>(expert_cfg_, cell_index);
   }
   return nullptr;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -20,6 +20,9 @@
  *
  */
 
+/// \file
+/// \brief Conversion functions.
+
 #pragma once
 
 #include "srsran/adt/complex.h"
@@ -31,32 +34,32 @@ namespace srsvec {
 /// \brief Converts a sequence of numbers from complex float to int16 applying the given scaling and rounding the result
 /// to the nearest integer.
 ///
-/// \param [in] x is the input data
-/// \param [in] scale input data scaling prior conversion
-/// \param [out] z resultant data
-void convert(span<const cf_t> x, float scale, span<int16_t> z);
+/// \param [out] z       Converted sequence.
+/// \param [in]  x       Input sequence.
+/// \param [in]  scale   Scaling factor.
+void convert(span<int16_t> z, span<const cf_t> x, float scale);
 
 /// \brief Converts from int16 to complex float applying the given scaling.
 ///
-/// \param [in] x is the input data
-/// \param [in] scale input data scaling after conversion
-/// \param [out] z resultant data
-void convert(span<const int16_t> x, float scale, span<cf_t> z);
+/// \param [out] z       Converted sequence.
+/// \param [in]  x       Input sequence.
+/// \param [in]  scale   Scaling factor.
+void convert(span<cf_t> z, span<const int16_t> x, float scale);
 
 /// \brief Converts a sequence of numbers from float to int16 applying the given scaling and rounding the result to the
 /// nearest integer.
 ///
-/// \param [in] x is the input data
-/// \param [in] scale input data scaling prior conversion
-/// \param [out] z resultant data
-void convert(span<const float> x, float scale, span<int16_t> z);
+/// \param [out] z       Converted sequence.
+/// \param [in]  x       Input sequence.
+/// \param [in]  scale   Scaling factor.
+void convert(span<int16_t> z, span<const float> x, float scale);
 
 /// Converts from int16 to float applying the given scaling
 ///
-/// \param [in] x is the input data
-/// \param [in] scale input data scaling after conversion
-/// \param [out] z resultant data
-void convert(span<const int16_t> x, float scale, span<float> z);
+/// \param [out] z       Converted sequence.
+/// \param [in]  x       Input sequence.
+/// \param [in]  scale   Scaling factor.
+void convert(span<float> z, span<const int16_t> x, float scale);
 
 /// \brief Converts a sequence of numbers from complex float to complex brain float.
 ///
@@ -90,6 +93,14 @@ void convert(span<float> out, span<const bf16_t> in);
 /// \param [in]  scale Input data scaling prior conversion.
 void convert(span<int16_t> z, span<const cbf16_t> x, float scale);
 
+/// \brief Converts a sequence of numbers from complex brain float to 16-bit complex integer applying the given scaling
+/// and rounding the result to the nearest integer.
+///
+/// \param [out] z     Resultant data.
+/// \param [in]  x     Data to convert.
+/// \param [in]  scale Input data scaling prior conversion.
+void convert(span<ci16_t> z, span<const cbf16_t> x, float scale);
+
 /// \brief Converts from int16 to complex brain float applying the given scaling.
 ///
 /// \param [out] z     Resultant data.
@@ -118,6 +129,21 @@ void convert(span<int16_t> z, span<const bf16_t> x, float scale);
 /// \param [in]  x     Data to convert.
 /// \param [in]  scale Input data scaling after conversion.
 void convert(span<bf16_t> z, span<const int16_t> x, float scale);
+
+/// \brief Converts a sequence of numbers from complex float to complex int16 applying the given scaling and rounding
+/// the result to the nearest integer.
+///
+/// \param [out] z       Converted sequence.
+/// \param [in]  x       Input sequence.
+/// \param [in]  scale   Scaling factor.
+void convert(span<ci16_t> z, span<const cf_t> x, float scale);
+
+/// \brief Converts from complex int16 to complex float applying the given scaling.
+///
+/// \param [out] z       Converted sequence.
+/// \param [in]  x       Input sequence.
+/// \param [in]  scale   Scaling factor.
+void convert(span<cf_t> z, span<const ci16_t> x, float scale);
 
 } // namespace srsvec
 } // namespace srsran

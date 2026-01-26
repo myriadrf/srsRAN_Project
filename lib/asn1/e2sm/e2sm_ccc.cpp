@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -6179,7 +6179,7 @@ void asn1::e2sm_ccc::from_json(const nlohmann::ordered_json& in_j, nr_cgi_s& obj
   std::stringstream ss(hex_str);
   ss >> std::hex >> value;
   if (ss.fail()) {
-    printf("Failed to parse nRCellIdentity hex string.");
+    fmt::println("Failed to parse nRCellIdentity hex string.");
   } else {
     obj.nr_cell_id.from_number(value);
   }

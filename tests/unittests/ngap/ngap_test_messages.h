@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,6 +29,7 @@
 #include "srsran/ngap/ngap.h"
 #include "srsran/ngap/ngap_handover.h"
 #include "srsran/ngap/ngap_types.h"
+#include "srsran/ran/cause/ngap_cause.h"
 
 namespace srsran {
 namespace srs_cu_cp {
@@ -64,7 +65,7 @@ bool is_pdu_type(const ngap_message& pdu, const asn1::ngap::ngap_elem_procs_o::s
 //                                 id: id-RANNodeName (82)
 //                                 criticality: ignore (1)
 //                                 value
-//                                     RANNodeName: srsgnb01
+//                                     RANNodeName: tstgnb01
 //                         Item 2: id-SupportedTAList
 //                             ProtocolIE-Field
 //                                 id: id-SupportedTAList (102)
@@ -93,7 +94,7 @@ bool is_pdu_type(const ngap_message& pdu, const asn1::ngap::ngap_elem_procs_o::s
 //                                     PagingDRX: v256 (3)
 static const uint8_t ng_setup_request_packed[] = {
     0x00, 0x15, 0x00, 0x33, 0x00, 0x00, 0x04, 0x00, 0x1b, 0x00, 0x08, 0x00, 0x00, 0xf1, 0x10, 0x00, 0x00, 0x06, 0x6c,
-    0x00, 0x52, 0x40, 0x0a, 0x03, 0x80, 0x73, 0x72, 0x73, 0x67, 0x6e, 0x62, 0x30, 0x31, 0x00, 0x66, 0x00, 0x0d, 0x00,
+    0x00, 0x52, 0x40, 0x0a, 0x03, 0x80, 0x74, 0x73, 0x74, 0x67, 0x6e, 0x62, 0x30, 0x31, 0x00, 0x66, 0x00, 0x0d, 0x00,
     0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0xf1, 0x10, 0x00, 0x00, 0x00, 0x08, 0x00, 0x15, 0x40, 0x01, 0x60};
 
 /// \brief Generate a dummy NG Setup Response.
@@ -229,7 +230,9 @@ ngap_message generate_valid_paging_message();
 ngap_message generate_invalid_paging_message();
 
 /// \brief Generate an Error Indication message.
-ngap_message generate_error_indication_message(amf_ue_id_t amf_ue_id, ran_ue_id_t ran_ue_id);
+ngap_message generate_error_indication_message(amf_ue_id_t  amf_ue_id,
+                                               ran_ue_id_t  ran_ue_id,
+                                               ngap_cause_t cause = ngap_cause_radio_network_t::unknown_pdu_session_id);
 
 /// \brief Generate a valid dummy Handover Request message.
 ngap_message generate_valid_handover_request(amf_ue_id_t amf_ue_id);
@@ -240,6 +243,9 @@ ngap_message generate_handover_preparation_failure(amf_ue_id_t amf_ue_id, ran_ue
 /// \brief Generate a valid dummy Handover Command message.
 ngap_message generate_valid_handover_command(amf_ue_id_t amf_ue_id, ran_ue_id_t ran_ue_id);
 
+/// \brief Generate a valid dummy DL RAN Status Transfer.
+ngap_message generate_valid_dl_ran_status_transfer(amf_ue_id_t amf_ue_id, ran_ue_id_t ran_ue_id);
+
 /// \brief Generate a handover preparation request.
 ngap_handover_preparation_request
 generate_handover_preparation_request(ue_index_t                                                ue_index,
@@ -249,6 +255,8 @@ generate_handover_preparation_request(ue_index_t                                
 
 /// \brief Generate a valid dummy Handover Cancel Acknowledgement message.
 ngap_message generate_handover_cancel_ack(amf_ue_id_t amf_ue_id, ran_ue_id_t ran_ue_id);
+
+ngap_message generate_ng_reset_ack(const asn1::ngap::ue_associated_lc_ng_conn_list_l& ng_reset_ues = {});
 
 } // namespace srs_cu_cp
 } // namespace srsran

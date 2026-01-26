@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -243,6 +243,62 @@ static check_outcome check_dl_config_common(const du_cell_config& cell_cfg)
   return {};
 }
 
+static check_outcome check_rlm_config(const du_cell_config& cell_cfg)
+{
+  const auto& rlm_cfg = cell_cfg.ue_ded_serv_cell_cfg.init_dl_bwp.rlm_cfg.value();
+
+  for (auto& rlm_res : rlm_cfg.rlm_resources) {
+    CHECK_TRUE(rlm_res.resource_purpose == radio_link_monitoring_config::radio_link_monitoring_rs::purpose::rlf,
+               "Radio Link Failure is the only supported Radio Link Monitoring purpose");
+    if (not cell_cfg.ue_ded_serv_cell_cfg.csi_meas_cfg.has_value()) {
+      CHECK_TRUE(not std::holds_alternative<nzp_csi_rs_res_id_t>(rlm_res.detection_resource),
+                 "RLM resources cannot use CSI-RS resources if CSI is not enabled");
+    } else {
+      if (std::holds_alternative<nzp_csi_rs_res_id_t>(rlm_res.detection_resource)) {
+        const auto&               csi_cfg   = cell_cfg.ue_ded_serv_cell_cfg.csi_meas_cfg.value();
+        const nzp_csi_rs_res_id_t csi_rs_id = std::get<nzp_csi_rs_res_id_t>(rlm_res.detection_resource);
+        const auto                csi_res_it =
+            std::find_if(csi_cfg.nzp_csi_rs_res_list.begin(),
+                         csi_cfg.nzp_csi_rs_res_list.end(),
+                         [csi_rs_id](const nzp_csi_rs_resource& csi_r) { return csi_r.res_id == csi_rs_id; });
+        CHECK_TRUE(csi_res_it != csi_cfg.nzp_csi_rs_res_list.end(),
+                   "RLM resource id={} points at CSI-RS resource id={}, which wasn't found in the CSI configuration",
+                   fmt::underlying(rlm_res.res_id),
+                   fmt::underlying(csi_rs_id));
+        CHECK_TRUE(csi_res_it->res_mapping.cdm == csi_rs_cdm_type::no_CDM,
+                   "Only CSI-RS resource with no_CDM can be used for RLM");
+        CHECK_TRUE(csi_res_it->res_mapping.nof_ports == 1U,
+                   "Only CSI-RS resource configured with 1 port can be used for RLM");
+        CHECK_TRUE(csi_res_it->res_mapping.freq_density == csi_rs_freq_density_type::one or
+                       csi_res_it->res_mapping.freq_density == csi_rs_freq_density_type::three,
+                   "Only CSI-RS resource with frequency density one or three can be used for RLM");
+      }
+    }
+
+    if (std::holds_alternative<ssb_id_t>(rlm_res.detection_resource)) {
+      const ssb_id_t ssb_rs_id = std::get<ssb_id_t>(rlm_res.detection_resource);
+      CHECK_TRUE(std::any_of(cell_cfg.ssb_cfg.beam_ids.begin(),
+                             cell_cfg.ssb_cfg.beam_ids.end(),
+                             [ssb_rs_id](const uint8_t ssb_idx) { return ssb_idx == static_cast<uint8_t>(ssb_rs_id); }),
+                 "RLM resource id={} points at SSB index={}, which wasn't found in SSB configuration",
+                 fmt::underlying(rlm_res.res_id),
+                 fmt::underlying(ssb_rs_id));
+    }
+  }
+
+  const uint8_t l_max = ssb_get_L_max(cell_cfg.ssb_cfg.scs, cell_cfg.dl_carrier.arfcn_f_ref, cell_cfg.dl_carrier.band);
+  // Check the constrains on N_RLM values in Table 5-1, TS 38.213, are met.
+  if (l_max == 4U) {
+    CHECK_TRUE(rlm_cfg.rlm_resources.size() <= 2, "With SSB L_max = 4, max 2 RLM resources can be configured");
+  } else if (l_max == 8U) {
+    CHECK_TRUE(rlm_cfg.rlm_resources.size() <= 4, "With SSB L_max = 8, max 4 RLM resources can be configured");
+  } else if (l_max == 64U) {
+    CHECK_TRUE(rlm_cfg.rlm_resources.size() <= 8, "With SSB L_max = 64, max 8 RLM resources can be configured");
+  }
+
+  return {};
+}
+
 static check_outcome check_dl_config_dedicated(const du_cell_config& cell_cfg)
 {
   const bwp_downlink_dedicated& bwp = cell_cfg.ue_ded_serv_cell_cfg.init_dl_bwp;
@@ -289,6 +345,11 @@ static check_outcome check_dl_config_dedicated(const du_cell_config& cell_cfg)
                       "Nof. PDCCH candidates monitored per slot for a DL BWP={} exceeds maximum value={}\n",
                       total_nof_monitored_pdcch_candidates,
                       max_nof_monitored_pdcch_candidates(cell_cfg.scs_common));
+  }
+
+  if (bwp.rlm_cfg.has_value()) {
+    check_outcome rlm_validation = check_rlm_config(cell_cfg);
+    CHECK_TRUE(rlm_validation.has_value(), "Invalid Radio Link Monitoring config: {}", rlm_validation.error());
   }
 
   return {};
@@ -401,6 +462,35 @@ static check_outcome check_ul_config_common(const du_cell_config& cell_cfg)
                "The value set {} for msg3_delta_power must be a multiple of 2",
                pusch.msg3_delta_power.to_int());
   }
+
+  // \ref prach_scheduler for the derivation of this validation.
+  const prach_configuration prach_cfg =
+      prach_configuration_get(band_helper::get_freq_range(cell_cfg.dl_carrier.band),
+                              band_helper::get_duplex_mode(cell_cfg.dl_carrier.band),
+                              cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.prach_config_index);
+
+  // The information we need are not related to whether it is the last PRACH occasion.
+  constexpr bool                   is_last_prach_occasion = false;
+  const prach_preamble_information info =
+      is_long_preamble(prach_cfg.format)
+          ? get_prach_preamble_long_info(prach_cfg.format)
+          : get_prach_preamble_short_info(
+                prach_cfg.format,
+                to_ra_subcarrier_spacing(cell_cfg.ul_cfg_common.init_ul_bwp.generic_params.scs),
+                is_last_prach_occasion);
+  const unsigned prach_nof_prbs =
+      prach_frequency_mapping_get(info.scs, cell_cfg.ul_cfg_common.init_ul_bwp.generic_params.scs).nof_rb_ra;
+  const unsigned prach_prb_end =
+      cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.msg1_frequency_start +
+      cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.msg1_fdm * prach_nof_prbs;
+  CHECK_TRUE(
+      prach_prb_end <= cell_cfg.ul_cfg_common.init_ul_bwp.generic_params.crbs.length(),
+      "With the current PRACH configuration index {}, MSG1 frequency start {} and MSG1 FDM {}, the resulting PRACH "
+      "RBs fall outside the BWP.",
+      cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.prach_config_index,
+      cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.msg1_frequency_start,
+      cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.msg1_fdm);
+
   return {};
 }
 
@@ -641,7 +731,7 @@ static check_outcome check_prach_config(const du_cell_config& cell_cfg)
 
   // Derive PRACH duration information.
   // The parameter \c is_last_prach_occasion is arbitrarily set to false, as it doesn't affect the PRACH number of PRBs.
-  const bool                       is_last_prach_occasion = false;
+  constexpr bool                   is_last_prach_occasion = false;
   const prach_preamble_information info =
       is_long_preamble(prach_cfg.format)
           ? get_prach_preamble_long_info(prach_cfg.format)
@@ -684,10 +774,8 @@ check_outcome srs_du::is_du_cell_config_valid(const du_cell_config& cell_cfg)
   HANDLE_ERROR(check_tdd_ul_dl_config(cell_cfg));
   const pucch_builder_params& pucch_cfg = cell_cfg.pucch_cfg;
   HANDLE_ERROR(config_helpers::pucch_parameters_validator(
-      pucch_cfg.nof_ue_pucch_f0_or_f1_res_harq.to_uint() * pucch_cfg.nof_cell_harq_pucch_res_sets +
-          pucch_cfg.nof_sr_resources,
-      pucch_cfg.nof_ue_pucch_f2_or_f3_or_f4_res_harq.to_uint() * pucch_cfg.nof_cell_harq_pucch_res_sets +
-          pucch_cfg.nof_csi_resources,
+      pucch_cfg.res_set_0_size.to_uint() * pucch_cfg.nof_cell_res_set_configs + pucch_cfg.nof_cell_sr_resources,
+      pucch_cfg.res_set_1_size.to_uint() * pucch_cfg.nof_cell_res_set_configs + pucch_cfg.nof_cell_csi_resources,
       pucch_cfg.f0_or_f1_params,
       pucch_cfg.f2_or_f3_or_f4_params,
       cell_cfg.dl_cfg_common.init_dl_bwp.generic_params.crbs.length(),

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -30,7 +30,7 @@ using namespace srsran;
 using namespace srsran::srs_cu_cp;
 using namespace asn1::ngap;
 
-constexpr std::chrono::milliseconds ng_setup_response_timeout{5000};
+static constexpr std::chrono::milliseconds ng_setup_response_timeout{5000};
 
 ng_setup_procedure::ng_setup_procedure(ngap_context_t&           context_,
                                        const ngap_message&       request_,
@@ -112,16 +112,16 @@ bool ng_setup_procedure::retry_required()
   // No point in retrying when the failure is due to misconfiguration.
   if (is_failure_misconfiguration(ng_fail->cause)) {
     logger.warning("\"{}\": Stopping procedure. Cause: misconfiguration between gNB and AMF", name());
-    logger.warning("\"{}\" failed. AMF NGAP cause: \"{}\"", name(), get_cause_str(ng_fail->cause));
-    fmt::print("\"{}\" failed. AMF NGAP cause: \"{}\"\n", name(), get_cause_str(ng_fail->cause));
+    logger.warning("\"{}\" failed. AMF NGAP cause: \"{}\"", name(), asn1_utils::get_cause_str(ng_fail->cause));
+    fmt::print("\"{}\" failed. AMF NGAP cause: \"{}\"\n", name(), asn1_utils::get_cause_str(ng_fail->cause));
     return false;
   }
 
   if (not ng_fail->time_to_wait_present) {
     // AMF didn't command a waiting time.
     logger.warning("\"{}\": Stopping procedure. Cause: AMF did not set any retry waiting time", name());
-    logger.warning("\"{}\" failed. AMF NGAP cause: \"{}\"", name(), get_cause_str(ng_fail->cause));
-    fmt::print("\"{}\" failed. AMF NGAP cause: \"{}\"\n", name(), get_cause_str(ng_fail->cause));
+    logger.warning("\"{}\" failed. AMF NGAP cause: \"{}\"", name(), asn1_utils::get_cause_str(ng_fail->cause));
+    fmt::print("\"{}\" failed. AMF NGAP cause: \"{}\"\n", name(), asn1_utils::get_cause_str(ng_fail->cause));
     return false;
   }
   if (ng_setup_retry_no++ >= max_setup_retries) {
@@ -129,8 +129,8 @@ bool ng_setup_procedure::retry_required()
     logger.warning("\"{}\": Stopping procedure. Cause: Reached maximum number of NG Setup connection retries ({})",
                    name(),
                    max_setup_retries);
-    logger.warning("\"{}\" failed. AMF NGAP cause: \"{}\"", name(), get_cause_str(ng_fail->cause));
-    fmt::print("\"{}\" failed. AMF NGAP cause: \"{}\"\n", name(), get_cause_str(ng_fail->cause));
+    logger.warning("\"{}\" failed. AMF NGAP cause: \"{}\"", name(), asn1_utils::get_cause_str(ng_fail->cause));
+    fmt::print("\"{}\" failed. AMF NGAP cause: \"{}\"\n", name(), asn1_utils::get_cause_str(ng_fail->cause));
     return false;
   }
 

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -80,6 +80,18 @@ inline void process_successful_pdu_resource_modification_outcome(
       e1ap_up_params_item up_param_item;
       up_param_item.up_tnl_info = drb_modified_item.gtp_tunnel;
       e1ap_mod_item.ul_up_transport_params.push_back(up_param_item);
+
+      if (drb_modified_item.pdcp_sn_status.has_value()) {
+        auto&                    status_in = drb_modified_item.pdcp_sn_status.value();
+        e1ap_pdcp_sn_status_info status_out;
+        status_out.pdcp_status_transfer_dl.pdcp_sn             = status_in.dl_count.sn;
+        status_out.pdcp_status_transfer_dl.hfn                 = status_in.dl_count.hfn;
+        status_out.pdcp_status_transfer_ul.count_value.pdcp_sn = status_in.ul_count.sn;
+        status_out.pdcp_status_transfer_ul.count_value.hfn     = status_in.ul_count.hfn;
+        // TODO: fill optional receive_status_of_pdcp_sdu with bit string according to RX status of SDUs
+        e1ap_mod_item.pdcp_sn_status_info = status_out;
+      }
+
       modified_item.drb_modified_list_ng_ran.emplace(e1ap_mod_item.drb_id, e1ap_mod_item);
     }
 
@@ -155,20 +167,28 @@ inline void fill_sec_as_config(security::sec_as_config& sec_as_config, const e1a
 ///
 /// Test mode helpers
 ///
+inline e1ap_security_info fill_test_mode_security_info(cu_up_test_mode_config test_mode_cfg)
+{
+  e1ap_security_info sec_info;
+  sec_info.security_algorithm.ciphering_algo =
+      static_cast<srsran::security::ciphering_algorithm>(test_mode_cfg.nea_algo);
+  sec_info.security_algorithm.integrity_protection_algorithm =
+      static_cast<srsran::security::integrity_algorithm>(test_mode_cfg.nia_algo);
+  sec_info.up_security_key.encryption_key =
+      make_byte_buffer("0001020304050607080910111213141516171819202122232425262728293031").value();
+  sec_info.up_security_key.integrity_protection_key =
+      make_byte_buffer("0001020304050607080910111213141516171819202122232425262728293031").value();
+  return sec_info;
+}
+
 inline e1ap_bearer_context_setup_request
 fill_test_mode_bearer_context_setup_request(cu_up_test_mode_config test_mode_cfg)
 {
   // Convert to common type
   e1ap_bearer_context_setup_request bearer_context_setup = {};
 
-  bearer_context_setup.security_info.security_algorithm.ciphering_algo =
-      static_cast<srsran::security::ciphering_algorithm>(test_mode_cfg.nea_algo);
-  bearer_context_setup.security_info.security_algorithm.integrity_protection_algorithm =
-      static_cast<srsran::security::integrity_algorithm>(test_mode_cfg.nia_algo);
-  bearer_context_setup.security_info.up_security_key.encryption_key =
-      make_byte_buffer("0001020304050607080910111213141516171819202122232425262728293031").value();
-  bearer_context_setup.security_info.up_security_key.integrity_protection_key =
-      make_byte_buffer("0001020304050607080910111213141516171819202122232425262728293031").value();
+  bearer_context_setup.security_info = fill_test_mode_security_info(test_mode_cfg);
+
   bearer_context_setup.ue_inactivity_timer = std::chrono::seconds(3600);
 
   bearer_context_setup.ue_dl_aggregate_maximum_bit_rate = test_mode_cfg.ue_ambr;
@@ -210,21 +230,29 @@ fill_test_mode_bearer_context_setup_request(cu_up_test_mode_config test_mode_cfg
   return bearer_context_setup;
 }
 
-inline e1ap_bearer_context_modification_request
-fill_test_mode_bearer_context_modification_request(e1ap_bearer_context_setup_response setup_resp)
+inline e1ap_bearer_context_modification_request fill_test_mode_bearer_context_modification_request(const up_state_t& st)
 {
+  report_error_if_not(st.size() == 1, "CU-UP test mode only supports one UE. ues={}", st.size());
+
+  const std::map<pdu_session_id_t, std::map<drb_id_t, std::set<qos_flow_id_t>>>& ps_state = st.begin()->second;
+  report_error_if_not(
+      ps_state.size() == 1, "CU-UP test mode only supports one PDU session per UE. pdu_sessions={}", ps_state.size());
+
+  const std::map<drb_id_t, std::set<qos_flow_id_t>>& drb_state = ps_state.begin()->second;
+  report_error_if_not(drb_state.size() == 1, "CU-UP test mode only supports DRB per UE");
+
   // Modifiy bearer
   e1ap_bearer_context_modification_request bearer_modify = {};
-  bearer_modify.ue_index                                 = setup_resp.ue_index;
+  bearer_modify.ue_index                                 = st.begin()->first;
 
   e1ap_ng_ran_bearer_context_mod_request bearer_mod_item = {};
 
   e1ap_pdu_session_res_to_modify_item pdu_session_to_mod = {};
-  pdu_session_to_mod.pdu_session_id = setup_resp.pdu_session_resource_setup_list.begin()->pdu_session_id;
+  pdu_session_to_mod.pdu_session_id                      = ps_state.begin()->first;
 
   e1ap_drb_to_modify_item_ng_ran drb_to_mod = {};
   drb_to_mod.dl_up_params.resize(1);
-  drb_to_mod.drb_id = setup_resp.pdu_session_resource_setup_list.begin()->drb_setup_list_ng_ran.begin()->drb_id;
+  drb_to_mod.drb_id                                 = drb_state.begin()->first;
   drb_to_mod.dl_up_params[0].up_tnl_info.tp_address = transport_layer_address::create_from_string("127.0.10.2");
   drb_to_mod.dl_up_params[0].up_tnl_info.gtp_teid   = int_to_gtpu_teid(0x02);
 

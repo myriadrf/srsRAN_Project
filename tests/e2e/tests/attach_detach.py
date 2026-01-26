@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -25,6 +25,7 @@ import logging
 from time import sleep
 from typing import Optional, Sequence, Tuple, Union
 
+from google.protobuf.wrappers_pb2 import UInt32Value
 from pytest import mark
 from retina.client.manager import RetinaTestManager
 from retina.launcher.artifacts import RetinaTestData
@@ -35,7 +36,15 @@ from retina.protocol.ue_pb2 import IPerfDir, IPerfProto
 from retina.protocol.ue_pb2_grpc import UEStub
 
 from .steps.configuration import configure_test_parameters
-from .steps.stub import iperf_start, iperf_wait_until_finish, start_network, stop, ue_start_and_attach, ue_stop
+from .steps.stub import (
+    iperf_start,
+    iperf_wait_until_finish,
+    start_network,
+    stop,
+    ue_start_and_attach,
+    UE_STARTUP_TIMEOUT,
+    ue_stop,
+)
 
 HIGH_BITRATE = int(15e6)
 BITRATE_THRESHOLD: float = 0.1
@@ -43,6 +52,7 @@ BITRATE_THRESHOLD: float = 0.1
 
 @mark.zmq
 @mark.smoke
+@mark.flaky(reruns=2, only_rerun=["License unavailable", "Timeout reached while reserving"])
 def test_smoke(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
@@ -68,6 +78,7 @@ def test_smoke(
         direction=IPerfDir.BIDIRECTIONAL,
         global_timing_advance=0,
         time_alignment_calibration=0,
+        ue_startup_timeout=30,
         ue_stop_timeout=15,
         always_download_artifacts=False,
     )
@@ -96,7 +107,10 @@ def test_smoke(
     ),
 )
 @mark.zmq
-@mark.flaky(reruns=3, only_rerun=["failed to start", "IPerf Data Invalid"])
+@mark.flaky(
+    reruns=3,
+    only_rerun=["failed to start", "IPerf Data Invalid", "License unavailable", "Timeout reached while reserving"],
+)
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def test_zmq(
     retina_manager: RetinaTestManager,
@@ -135,61 +149,9 @@ def test_zmq(
     )
 
 
-@mark.parametrize(
-    "direction",
-    (
-        param(IPerfDir.DOWNLINK, id="downlink", marks=mark.downlink),
-        param(IPerfDir.UPLINK, id="uplink", marks=mark.uplink),
-        param(IPerfDir.BIDIRECTIONAL, id="bidirectional", marks=mark.bidirectional),
-    ),
-)
-@mark.parametrize(
-    "band, common_scs, bandwidth, always_download_artifacts",
-    (
-        param(3, 15, 10, True, id="band:%s-scs:%s-bandwidth:%s-artifacts:%s"),
-        param(41, 30, 10, False, id="band:%s-scs:%s-bandwidth:%s-artifacts:%s"),
-    ),
-)
-@mark.rf
-# pylint: disable=too-many-arguments,too-many-positional-arguments
-def test_rf_udp(
-    retina_manager: RetinaTestManager,
-    retina_data: RetinaTestData,
-    ue_4: Tuple[UEStub, ...],
-    fivegc: FiveGCStub,
-    gnb: GNBStub,
-    band: int,
-    common_scs: int,
-    bandwidth: int,
-    always_download_artifacts: bool,
-    direction: IPerfDir,
-):
-    """
-    RF Attach / Detach
-    """
-
-    _attach_and_detach_multi_ues(
-        retina_manager=retina_manager,
-        retina_data=retina_data,
-        ue_array=ue_4,
-        gnb=gnb,
-        fivegc=fivegc,
-        band=band,
-        common_scs=common_scs,
-        bandwidth=bandwidth,
-        sample_rate=None,  # default from testbed
-        protocol=IPerfProto.UDP,
-        bitrate=HIGH_BITRATE,
-        direction=direction,
-        global_timing_advance=-1,
-        time_alignment_calibration="264",
-        always_download_artifacts=always_download_artifacts,
-        warning_as_errors=False,
-    )
-
-
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
 def _attach_and_detach_multi_ues(
+    *,  # This enforces keyword-only arguments
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_array: Sequence[UEStub],
@@ -207,6 +169,7 @@ def _attach_and_detach_multi_ues(
     always_download_artifacts: bool,
     warning_as_errors: bool = True,
     reattach_count: int = 1,
+    ue_startup_timeout: int = UE_STARTUP_TIMEOUT,
     ue_stop_timeout: int = 30,
     ue_settle_time: int = 0,
 ):
@@ -227,8 +190,13 @@ def _attach_and_detach_multi_ues(
         always_download_artifacts=always_download_artifacts,
     )
 
-    start_network(ue_array, gnb, fivegc)
-    ue_attach_info_dict = ue_start_and_attach(ue_array, gnb, fivegc)
+    start_network(ue_array=ue_array, gnb_array=[gnb], fivegc=fivegc)
+    ue_attach_info_dict = ue_start_and_attach(
+        ue_array=ue_array,
+        du_definition=[gnb.GetDefinition(UInt32Value(value=0))],
+        fivegc=fivegc,
+        ue_startup_timeout=ue_startup_timeout,
+    )
 
     ue_array_to_iperf = ue_array[::2]
     ue_array_to_attach = ue_array[1::2]
@@ -242,12 +210,12 @@ def _attach_and_detach_multi_ues(
             (
                 ue_attach_info_dict[ue_stub],
                 *iperf_start(
-                    ue_stub,
-                    ue_attach_info_dict[ue_stub],
-                    fivegc,
-                    duration=iperf_duration,
-                    direction=direction,
+                    ue_stub=ue_stub,
+                    ue_attached_info=ue_attach_info_dict[ue_stub],
+                    fivegc=fivegc,
                     protocol=protocol,
+                    direction=direction,
+                    duration=iperf_duration,
                     bitrate=bitrate,
                 ),
             )
@@ -255,13 +223,28 @@ def _attach_and_detach_multi_ues(
 
     # Stop and attach half of the UEs while the others are connecting and doing iperf
     for _ in range(reattach_count):
-        ue_stop(ue_array_to_attach, retina_data, ue_stop_timeout=ue_stop_timeout)
+        ue_stop(ue_array=ue_array_to_attach, retina_data=retina_data, ue_stop_timeout=ue_stop_timeout)
         sleep(ue_settle_time)
-        ue_attach_info_dict = ue_start_and_attach(ue_array_to_attach, gnb, fivegc)
+        ue_attach_info_dict = ue_start_and_attach(
+            ue_array=ue_array_to_attach, du_definition=[gnb.GetDefinition(UInt32Value(value=0))], fivegc=fivegc
+        )
     # final stop will be triggered by teardown
 
     # Stop and validate iperfs
     for ue_attached_info, task, iperf_request in iperf_array:
-        iperf_wait_until_finish(ue_attached_info, fivegc, task, iperf_request, BITRATE_THRESHOLD)
+        iperf_wait_until_finish(
+            ue_attached_info=ue_attached_info,
+            fivegc=fivegc,
+            task=task,
+            iperf_request=iperf_request,
+            bitrate_threshold_ratio=BITRATE_THRESHOLD,
+        )
 
-    stop(ue_array, gnb, fivegc, retina_data, ue_stop_timeout=ue_stop_timeout, warning_as_errors=warning_as_errors)
+    stop(
+        ue_array=ue_array,
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        retina_data=retina_data,
+        ue_stop_timeout=ue_stop_timeout,
+        warning_as_errors=warning_as_errors,
+    )

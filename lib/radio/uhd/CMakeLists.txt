@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -26,6 +26,6 @@ set(SOURCES_UHD
 
 add_library(srsran_radio_uhd STATIC ${SOURCES_UHD})
 
-target_link_libraries(srsran_radio_uhd ${UHD_LIBRARIES} fmt srslog)
+target_link_libraries(srsran_radio_uhd ${UHD_LIBRARIES} fmt srslog srsran_support)
 
 add_to_exported_libs(srsran_radio_uhd)

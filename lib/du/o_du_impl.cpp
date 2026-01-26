@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,8 @@
 #include "srsran/du/du_low/o_du_low_metrics_collector.h"
 #include "srsran/du/o_du_metrics.h"
 #include "srsran/du/o_du_metrics_notifier.h"
+#include "srsran/fapi_adaptor/mac/mac_fapi_fastpath_adaptor.h"
+#include "srsran/srslog/srslog.h"
 
 using namespace srsran;
 using namespace srs_du;
@@ -62,7 +64,8 @@ void o_du_impl::on_new_metrics(const o_du_high_metrics& metrics)
 
   // Get O-DU low metrics.
   if (auto* odu_low_collector = odu_lo->get_metrics_collector()) {
-    odu_low_collector->collect_metrics(du_metrics.low);
+    auto& odu_low_metrics = du_metrics.low.emplace();
+    odu_low_collector->collect_metrics(odu_low_metrics);
   }
 
   // Notify the metrics.
@@ -77,6 +80,9 @@ void o_du_impl::start()
 
 void o_du_impl::stop()
 {
+  // Stop the MAC-FAPI adaptor first.
+  odu_hi->get_mac_fapi_fastpath_adaptor().stop();
+
   odu_lo->get_operation_controller().stop();
   odu_hi->get_operation_controller().stop();
 }

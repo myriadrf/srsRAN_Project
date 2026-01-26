@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -39,6 +39,7 @@ struct e2ap_configuration {
   unsigned                      max_setup_retries = 5;
   bool                          e2sm_kpm_enabled  = false;
   bool                          e2sm_rc_enabled   = false;
+  bool                          e2sm_ccc_enabled  = false;
 };
 
 /// E2 Agent configuration.
@@ -65,5 +66,7 @@ struct e2_config {
   bool e2sm_kpm_enabled = false;
   /// Whether to enable RC service module.
   bool e2sm_rc_enabled = false;
+  /// Whether to enable CCC service module.
+  bool e2sm_ccc_enabled = false;
 };
 } // namespace srsran

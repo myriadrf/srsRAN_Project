@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,9 +23,8 @@
 #pragma once
 
 #include "srsran/adt/span.h"
-#include "srsran/fapi_adaptor/fapi_adaptor.h"
+#include "srsran/fapi_adaptor/phy/phy_fapi_adaptor.h"
 #include <memory>
-#include <vector>
 
 namespace CLI {
 class App;
@@ -37,7 +36,7 @@ struct o_du_unit_dependencies;
 struct worker_manager_config;
 
 namespace srs_du {
-struct du_cell_config;
+struct du_high_configuration;
 }
 
 /// \brief Split 6 plugin interface.
@@ -58,8 +57,8 @@ public:
   virtual void on_loggers_registration() = 0;
 
   /// Creates and returns a vector of fapi adaptors, each of them representing a cell.
-  virtual std::vector<std::unique_ptr<fapi::fapi_adaptor>>
-  create_fapi_adaptor(span<const srs_du::du_cell_config> du_cell_cfg, const o_du_unit_dependencies& dependencies) = 0;
+  virtual std::unique_ptr<fapi_adaptor::phy_fapi_adaptor>
+  create_fapi_adaptor(const srs_du::du_high_configuration& du_high_cfg, const o_du_unit_dependencies& dependencies) = 0;
 
   /// Fills the given worker manager split 6 configuration.
   virtual void fill_worker_manager_config(worker_manager_config& config) = 0;

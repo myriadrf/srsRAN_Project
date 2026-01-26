@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -43,6 +43,8 @@ public:
   void handle_cell_activation_request(du_cell_index_t cell_index) override;
   void handle_cell_deactivation_request(du_cell_index_t cell_index) override;
 
+  void handle_slice_reconfiguration_request(const du_cell_slice_reconfig_request& req) override;
+
   // Sys Info handling.
   void handle_si_update_request(const si_scheduling_update_request& req) override;
 
@@ -75,7 +77,7 @@ public:
 
   // Positioning events.
   void handle_positioning_measurement_request(const positioning_measurement_request& req) override;
-  void handle_positioning_measurement_stop(du_cell_index_t cell_index, rnti_t pos_rnti) override;
+  void handle_positioning_measurement_stop(const positioning_measurement_stop_request& req) override;
 
 private:
   const scheduler_expert_config expert_params;

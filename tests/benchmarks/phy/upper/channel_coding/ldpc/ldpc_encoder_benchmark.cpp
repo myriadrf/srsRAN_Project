@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -59,7 +59,7 @@ static void parse_args(int argc, char** argv)
       case 'h':
       default:
         usage(argv[0]);
-        exit(0);
+        std::exit(0);
     }
   }
 }
@@ -102,7 +102,11 @@ int main(int argc, char** argv)
           data.insert(rgen() & 1, i_bit, 1);
         }
 
-        srsran::codeblock_metadata::tb_common_metadata cfg_enc = {bg, ls};
+        ldpc_encoder::configuration encoder_config = {
+            .base_graph   = bg,
+            .lifting_size = ls,
+            .Nref         = 0,
+        };
 
         fmt::memory_buffer descr_buffer;
         fmt::format_to(std::back_inserter(descr_buffer),
@@ -112,7 +116,7 @@ int main(int argc, char** argv)
                        cb_length);
 
         perf_meas_generic.new_measure(to_string(descr_buffer), data.size(), [&]() {
-          const ldpc_encoder_buffer& rm_buffer = encoder->encode(data, cfg_enc);
+          const ldpc_encoder_buffer& rm_buffer = encoder->encode(data, encoder_config);
           do_not_optimize(&rm_buffer);
         });
       }

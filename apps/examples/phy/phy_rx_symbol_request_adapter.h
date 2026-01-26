@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "srsran/phy/lower/lower_phy_request_handler.h"
+#include "srsran/phy/lower/lower_phy_uplink_request_handler.h"
 #include "srsran/phy/upper/upper_phy_rx_symbol_request_notifier.h"
 #include "srsran/support/error_handling.h"
 
@@ -31,17 +31,17 @@ namespace srsran {
 /// Implements a generic physical layer adapter for symbol capture event requests.
 class phy_rx_symbol_request_adapter : public upper_phy_rx_symbol_request_notifier
 {
-  lower_phy_request_handler* rx_symbol_request_handler = nullptr;
+  lower_phy_uplink_request_handler* rx_symbol_request_handler = nullptr;
 
 public:
   /// Connects the adaptor to the lower physical layer handler.
-  void connect(lower_phy_request_handler* lower_handler) { rx_symbol_request_handler = lower_handler; }
+  void connect(lower_phy_uplink_request_handler* lower_handler) { rx_symbol_request_handler = lower_handler; }
 
   // See interface for documentation.
-  void on_prach_capture_request(const prach_buffer_context& context, prach_buffer& buffer) override
+  void on_prach_capture_request(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
     report_fatal_error_if_not(rx_symbol_request_handler, "Adapter is not connected.");
-    rx_symbol_request_handler->request_prach_window(context, buffer);
+    rx_symbol_request_handler->request_prach_window(context, std::move(buffer));
   }
 
   // See interface for documentation.

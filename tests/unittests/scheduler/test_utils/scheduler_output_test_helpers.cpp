@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,9 +21,13 @@
  */
 
 #include "scheduler_output_test_helpers.h"
+#include "lib/scheduler/cell/resource_grid.h"
 #include "lib/scheduler/support/pdcch/pdcch_mapping.h"
+#include "lib/scheduler/support/sched_result_helpers.h"
 #include "srsran/ran/pdcch/cce_to_prb_mapping.h"
 #include "srsran/ran/prach/prach_configuration.h"
+#include "srsran/ran/prach/prach_frequency_mapping.h"
+#include "srsran/ran/prach/prach_preamble_information.h"
 #include "srsran/ran/resource_allocation/vrb_to_prb.h"
 
 using namespace srsran;
@@ -43,14 +47,14 @@ std::vector<grant_info> srsran::get_pdcch_grant_info(pci_t pci, const pdcch_dl_i
   return grants;
 }
 
-std::vector<grant_info> srsran::get_pdcch_grant_info(const pdcch_ul_information& pdcch)
+std::vector<grant_info> srsran::get_pdcch_grant_info(pci_t pci, const pdcch_ul_information& pdcch)
 {
   std::vector<grant_info> grants;
 
   const bwp_configuration&     bwp_cfg = *pdcch.ctx.bwp_cfg;
   const coreset_configuration& cs_cfg  = *pdcch.ctx.coreset_cfg;
   prb_index_list               pdcch_prbs =
-      pdcch_helper::cce_to_prb_mapping(bwp_cfg, cs_cfg, MAX_PCI + 1, pdcch.ctx.cces.aggr_lvl, pdcch.ctx.cces.ncce);
+      pdcch_helper::cce_to_prb_mapping(bwp_cfg, cs_cfg, pci, pdcch.ctx.cces.aggr_lvl, pdcch.ctx.cces.ncce);
   for (unsigned prb : pdcch_prbs) {
     unsigned crb = prb_to_crb(bwp_cfg, prb);
     grants.push_back(grant_info{bwp_cfg.scs, ofdm_symbol_range{0U, (uint8_t)cs_cfg.duration}, {crb, crb + 1}});
@@ -140,7 +144,7 @@ std::vector<test_grant_info> srsran::get_dl_grants(const cell_configuration& cel
 
   // Fill UL PDCCHs.
   for (const pdcch_ul_information& pdcch : dl_res.ul_pdcchs) {
-    std::vector<grant_info> grant_res_list = get_pdcch_grant_info(pdcch);
+    std::vector<grant_info> grant_res_list = get_pdcch_grant_info(cell_cfg.pci, pdcch);
     for (const grant_info& grant : grant_res_list) {
       grants.emplace_back();
       grants.back().type  = test_grant_info::UL_PDCCH;
@@ -195,62 +199,47 @@ std::vector<test_grant_info> srsran::get_ul_grants(const cell_configuration& cel
 {
   std::vector<test_grant_info> grants;
 
+  // Fill PUSCHs.
+  for (const ul_sched_info& pusch : ul_res.puschs) {
+    grants.emplace_back();
+    grants.back().type  = test_grant_info::UE_UL;
+    grants.back().rnti  = pusch.pusch_cfg.rnti;
+    grants.back().grant = get_pusch_grant_info(pusch);
+  }
+
   // Fill PRACHs.
   if (not ul_res.prachs.empty()) {
-    prach_configuration prach_cfg = prach_configuration_get(
-        frequency_range::FR1,
-        cell_cfg.paired_spectrum ? duplex_mode::FDD : duplex_mode::TDD,
-        cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.prach_config_index);
-
-    for (const prach_occasion_info& prach : ul_res.prachs) {
-      ofdm_symbol_range symbols{prach.start_symbol, (uint8_t)(prach.start_symbol + prach_cfg.duration)};
-      unsigned prb_start = cell_cfg.ul_cfg_common.init_ul_bwp.rach_cfg_common->rach_cfg_generic.msg1_frequency_start;
-      prb_interval prbs{prb_start, prb_start + 6}; // TODO: Derive nof RBs.
-      crb_interval crbs = prb_to_crb(cell_cfg.ul_cfg_common.init_ul_bwp.generic_params, prbs);
+    for (const grant_info& grant : get_prach_grant_info(cell_cfg, ul_res.prachs)) {
       grants.emplace_back();
       grants.back().type  = test_grant_info::PRACH;
       grants.back().rnti  = rnti_t::INVALID_RNTI;
-      grants.back().grant = grant_info{cell_cfg.ul_cfg_common.init_ul_bwp.generic_params.scs, symbols, crbs};
+      grants.back().grant = grant;
     }
-  }
-
-  // Fill PUSCHs.
-  for (const ul_sched_info& pusch : ul_res.puschs) {
-    const bwp_configuration& bwp_cfg = *pusch.pusch_cfg.bwp_cfg;
-    prb_interval             prbs    = {pusch.pusch_cfg.rbs.type1().start(), pusch.pusch_cfg.rbs.type1().stop()};
-    crb_interval             crbs    = prb_to_crb(bwp_cfg, prbs);
-    grants.emplace_back();
-    grants.back().type  = test_grant_info::UE_UL;
-    grants.back().rnti  = rnti_t::INVALID_RNTI;
-    grants.back().grant = grant_info{pusch.pusch_cfg.bwp_cfg->scs, pusch.pusch_cfg.symbols, crbs};
   }
 
   // Fill PUCCHs.
   for (const pucch_info& pucch : ul_res.pucchs) {
-    const bwp_configuration& bwp_cfg = *pucch.bwp_cfg;
+    const auto pucch_grants = get_pucch_grant_info(pucch);
     grants.emplace_back();
-    grants.back().type = test_grant_info::PUCCH;
-    grants.back().rnti = rnti_t::INVALID_RNTI;
-    if (not pucch.resources.second_hop_prbs.empty()) {
-      ofdm_symbol_range first_hop_symbols{pucch.resources.symbols.start(),
-                                          pucch.resources.symbols.start() + pucch.resources.symbols.length() / 2};
-      ofdm_symbol_range second_hop_symbols{pucch.resources.symbols.start() + pucch.resources.symbols.length() / 2,
-                                           pucch.resources.symbols.stop()};
-
-      unsigned crb_first_hop = prb_to_crb(bwp_cfg, pucch.resources.prbs.start());
-      grants.back().grant = grant_info{bwp_cfg.scs, first_hop_symbols, crb_interval{crb_first_hop, crb_first_hop + 1}};
-      unsigned crb_second_hop = prb_to_crb(bwp_cfg, pucch.resources.second_hop_prbs.start());
+    grants.back().type  = test_grant_info::PUCCH;
+    grants.back().rnti  = pucch.crnti;
+    grants.back().grant = pucch_grants.first;
+    if (pucch_grants.second.has_value()) {
       // Add a second resource for Frequency Hopping.
       grants.emplace_back();
-      grants.back().type = test_grant_info::PUCCH;
-      grants.back().rnti = rnti_t::INVALID_RNTI;
-      grants.back().grant =
-          grant_info{bwp_cfg.scs, second_hop_symbols, crb_interval{crb_second_hop, crb_second_hop + 1}};
-    } else {
-      unsigned crb_first_hop = prb_to_crb(bwp_cfg, pucch.resources.prbs.start());
-      grants.back().grant =
-          grant_info{bwp_cfg.scs, pucch.resources.symbols, crb_interval{crb_first_hop, crb_first_hop + 1}};
+      grants.back().type  = test_grant_info::PUCCH;
+      grants.back().rnti  = pucch.crnti;
+      grants.back().grant = *pucch_grants.second;
     }
+  }
+
+  // Fill SRSs.
+  for (const srs_info& srs : ul_res.srss) {
+    grants.emplace_back();
+    grants.back().type = test_grant_info::SRS;
+    // [Implementation defined] We always configure SRS to occupy as many as CRBs as possible, which might result in
+    // occupying the whole band.
+    grants.back().grant = grant_info(srs.bwp_cfg->scs, srs.symbols, srs.bwp_cfg->crbs);
   }
 
   return grants;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -48,6 +48,6 @@ struct sctp_network_gateway_creation_message {
 };
 
 /// Creates an instance of an network gateway
-std::unique_ptr<sctp_network_gateway> create_sctp_network_gateway(sctp_network_gateway_creation_message msg);
+std::unique_ptr<sctp_network_gateway> create_sctp_network_gateway(const sctp_network_gateway_creation_message& msg);
 
 } // namespace srsran

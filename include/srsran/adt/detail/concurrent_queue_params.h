@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,7 +23,6 @@
 #pragma once
 
 #include <limits>
-#include <optional>
 
 namespace srsran {
 
@@ -38,12 +37,15 @@ namespace srsran {
 /// mutex contention.
 /// - moodycamel_lockfree_mpmc: Lock-free MPMC queue with unbounded capacity and that does not ensure elements
 /// enqueued by independent producers come out in the same order (not linearizable).
+/// - moodycamel_lockfree_bounded_mpmc: Lock-free MPMC queue with bounded capacity and that does not ensure elements
+/// enqueued by independent producers come out in the same order (not linearizable).
 enum class concurrent_queue_policy {
   lockfree_spsc,
   lockfree_mpmc,
   locking_mpmc,
   locking_mpsc,
-  moodycamel_lockfree_mpmc
+  moodycamel_lockfree_mpmc,
+  moodycamel_lockfree_bounded_mpmc
 };
 
 /// \brief Types of barriers used for blocking pushes/pops of elements. Three types:
@@ -82,7 +84,9 @@ constexpr enqueue_priority operator-(enqueue_priority lhs, std::size_t dec)
 /// all elements in a batch to minimize the contention on the mutex from the consumer side.
 /// - moodycamel_lockfree_mpmc: Lock-free MPMC queue with unbounded capacity and that does not ensure elements
 /// enqueued by independent producers come out in the same order (not linearizable).
-template <typename T, concurrent_queue_policy Policy, concurrent_queue_wait_policy BlockingPolicy>
+template <typename T,
+          concurrent_queue_policy      Policy,
+          concurrent_queue_wait_policy BlockingPolicy = concurrent_queue_wait_policy::non_blocking>
 class concurrent_queue;
 
 } // namespace srsran

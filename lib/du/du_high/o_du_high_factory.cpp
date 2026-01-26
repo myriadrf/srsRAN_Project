@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,11 +22,12 @@
 
 #include "srsran/du/du_high/o_du_high_factory.h"
 #include "o_du_high_impl.h"
+#include "srsran/du/du_high/du_high_clock_controller.h"
 #include "srsran/du/du_high/du_high_factory.h"
 #include "srsran/du/du_high/o_du_high_config.h"
 #include "srsran/e2/e2_du_factory.h"
 #include "srsran/fapi/decorator_factory.h"
-#include "srsran/fapi_adaptor/mac/mac_fapi_adaptor_factory.h"
+#include "srsran/fapi_adaptor/mac/mac_fapi_fastpath_adaptor_factory.h"
 #include "srsran/fapi_adaptor/precoding_matrix_table_generator.h"
 #include "srsran/fapi_adaptor/uci_part2_correspondence_generator.h"
 #include "srsran/ran/band_helper.h"
@@ -34,9 +35,10 @@
 using namespace srsran;
 using namespace srs_du;
 
-static fapi_adaptor::mac_fapi_adaptor_config generate_fapi_adaptor_config(const o_du_high_config& config)
+static fapi_adaptor::mac_fapi_fastpath_adaptor_config
+generate_fapi_fastpath_adaptor_config(const o_du_high_config& config)
 {
-  fapi_adaptor::mac_fapi_adaptor_config out_config;
+  fapi_adaptor::mac_fapi_fastpath_adaptor_config out_config;
 
   for (unsigned i = 0, e = config.du_hi.ran.cells.size(); i != e; ++i) {
     const auto& du_cell = config.du_hi.ran.cells[i];
@@ -49,21 +51,21 @@ static fapi_adaptor::mac_fapi_adaptor_config generate_fapi_adaptor_config(const 
   return out_config;
 }
 
-static fapi_adaptor::mac_fapi_adaptor_dependencies
-generate_fapi_adaptor_dependencies(const o_du_high_config& config, o_du_high_dependencies& odu_dependencies)
+static fapi_adaptor::mac_fapi_fastpath_adaptor_dependencies
+generate_fapi_fastpath_adaptor_dependencies(const o_du_high_config& config, o_du_high_dependencies& odu_dependencies)
 {
-  fapi_adaptor::mac_fapi_adaptor_dependencies out_dependencies;
+  fapi_adaptor::mac_fapi_fastpath_adaptor_dependencies out_dependencies;
 
   for (unsigned i = 0, e = config.du_hi.ran.cells.size(); i != e; ++i) {
     auto& sector_dependencies = odu_dependencies.sectors[i];
     out_dependencies.sectors.push_back(
-        {sector_dependencies.gateway,
-         sector_dependencies.last_msg_notifier,
-         std::move(std::get<std::unique_ptr<fapi_adaptor::precoding_matrix_mapper>>(
-             fapi_adaptor::generate_precoding_matrix_tables(config.du_hi.ran.cells[i].dl_carrier.nof_ant, i))),
-         std::move(std::get<std::unique_ptr<fapi_adaptor::uci_part2_correspondence_mapper>>(
-             fapi_adaptor::generate_uci_part2_correspondence(1))),
-         sector_dependencies.fapi_executor});
+        {{*sector_dependencies.gateway,
+          *sector_dependencies.last_msg_notifier,
+          std::move(std::get<std::unique_ptr<fapi_adaptor::precoding_matrix_mapper>>(
+              fapi_adaptor::generate_precoding_matrix_tables(config.du_hi.ran.cells[i].dl_carrier.nof_ant, i))),
+          std::move(std::get<std::unique_ptr<fapi_adaptor::uci_part2_correspondence_mapper>>(
+              fapi_adaptor::generate_uci_part2_correspondence(1))),
+          sector_dependencies.fapi_executor}});
   }
 
   return out_dependencies;
@@ -73,12 +75,14 @@ std::unique_ptr<o_du_high> srsran::srs_du::make_o_du_high(const o_du_high_config
                                                           o_du_high_dependencies&& odu_dependencies)
 {
   o_du_high_impl_dependencies dependencies;
-  dependencies.logger          = &srslog::fetch_basic_logger("DU");
-  dependencies.du_high_adaptor = fapi_adaptor::create_mac_fapi_adaptor_factory()->create(
-      generate_fapi_adaptor_config(config), generate_fapi_adaptor_dependencies(config, odu_dependencies));
+  srslog::basic_logger*       logger = &srslog::fetch_basic_logger("DU");
+  dependencies.logger                = logger;
+  dependencies.fapi_fastpath_adaptor = fapi_adaptor::create_mac_fapi_fastpath_adaptor_factory()->create(
+      generate_fapi_fastpath_adaptor_config(config),
+      generate_fapi_fastpath_adaptor_dependencies(config, odu_dependencies));
   dependencies.metrics_notifier = odu_dependencies.du_hi.du_notifier;
 
-  dependencies.logger->debug("FAPI adaptors created successfully");
+  logger->debug("FAPI adaptors created successfully");
 
   srs_du::du_high_configuration du_hi_cfg = config.du_hi;
 
@@ -90,25 +94,25 @@ std::unique_ptr<o_du_high> srsran::srs_du::make_o_du_high(const o_du_high_config
 
   if (!odu_dependencies.e2_client) {
     odu->set_du_high(make_du_high(du_hi_cfg, odu_dependencies.du_hi));
-    dependencies.logger->info("DU created successfully");
+    logger->info("DU created successfully");
 
     return odu;
   }
 
   auto du_hi = make_du_high(du_hi_cfg, odu_dependencies.du_hi);
 
-  auto e2agent = create_e2_du_agent(
-      config.e2ap_config,
-      *odu_dependencies.e2_client,
-      odu_dependencies.e2_du_metric_iface,
-      &du_hi->get_f1ap_du(),
-      &du_hi->get_du_configurator(),
-      timer_factory{*odu_dependencies.du_hi.timers, odu_dependencies.du_hi.exec_mapper->du_e2_executor()},
-      odu_dependencies.du_hi.exec_mapper->du_e2_executor());
+  auto e2agent = create_e2_du_agent(config.e2ap_config,
+                                    *odu_dependencies.e2_client,
+                                    odu_dependencies.e2_du_metric_iface,
+                                    &du_hi->get_f1ap_du(),
+                                    &du_hi->get_du_configurator(),
+                                    timer_factory{odu_dependencies.du_hi.timer_ctrl->get_timer_manager(),
+                                                  odu_dependencies.du_hi.exec_mapper->du_e2_executor()},
+                                    odu_dependencies.du_hi.exec_mapper->du_e2_executor());
 
   odu->set_e2_agent(std::move(e2agent));
   odu->set_du_high(std::move(du_hi));
-  dependencies.logger->info("DU created successfully");
+  logger->info("DU created successfully");
 
   return odu;
 }

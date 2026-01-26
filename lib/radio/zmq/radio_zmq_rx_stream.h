@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,9 +32,11 @@ namespace srsran {
 /// Implements a gateway receiver based on ZMQ receive socket.
 class radio_zmq_rx_stream : public baseband_gateway_receiver
 {
-private:
+  /// Scaling factor for converting from complex float to 16-bit complex integer.
+  static constexpr float scaling_factor_cf_to_ci16 = std::numeric_limits<int16_t>::max();
   /// Alignment timeout. Waits this time before padding zeros.
-  const std::chrono::milliseconds RECEIVE_TS_ALIGN_TIMEOUT = std::chrono::milliseconds(100);
+  static constexpr std::chrono::milliseconds RECEIVE_TS_ALIGN_TIMEOUT = std::chrono::milliseconds(100);
+
   /// Transmitter alignment interface.
   radio_zmq_tx_align_interface& tx_align;
   /// Indicates whether the class was initialized successfully.
@@ -43,6 +45,8 @@ private:
   std::vector<std::unique_ptr<radio_zmq_rx_channel>> channels;
   /// Counts the number of received samples.
   uint64_t sample_count = 0;
+  /// Buffer to hold complex floating-point based samples.
+  std::vector<cf_t> cf_buffer;
 
 public:
   /// Describes the necessary parameters to create a ZMQ Tx stream.
@@ -69,20 +73,18 @@ public:
                       const stream_description&     config,
                       task_executor&                async_executor_,
                       radio_zmq_tx_align_interface& tx_align_,
-                      radio_notification_handler&   notification_handler);
+                      radio_event_notifier&         notification_handler);
+
+  // See interface for documentation.
+  metadata receive(baseband_gateway_buffer_writer& data) override;
 
   bool is_successful() const { return successful; }
 
   uint64_t get_sample_count() const { return sample_count; }
 
-  // See interface for documentation.
-  metadata receive(baseband_gateway_buffer_writer& data) override;
-
   void start(baseband_gateway_timestamp init_time);
 
   void stop();
-
-  void wait_stop();
 };
 
 } // namespace srsran

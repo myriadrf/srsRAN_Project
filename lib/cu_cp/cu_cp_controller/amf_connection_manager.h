@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -68,6 +68,8 @@ public:
   /// Checks whether the CU-CP is connected to the AMF.
   bool is_amf_connected(plmn_identity plmn) const;
   bool is_amf_connected(amf_index_t amf_index) const;
+
+  size_t nof_amfs() const { return amfs_connected.size(); }
 
 private:
   void        handle_connection_setup_result(amf_index_t amf_index, bool success);

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -80,6 +80,35 @@ TEST_P(PucchProcessorF2Fixture, PucchProcessorF2VectorTest)
   ASSERT_EQ(result.message.get_sr_bits(), span<uint8_t>(expected_sr));
   ASSERT_EQ(result.message.get_csi_part1_bits(), span<uint8_t>(expected_csi_part_1));
   ASSERT_EQ(result.message.get_csi_part2_bits(), span<uint8_t>(expected_csi_part_2));
+}
+
+TEST_P(PucchProcessorF2Fixture, PucchProcessorF2ZerosTest)
+{
+  const test_case_t&                            test_case = GetParam();
+  const context_t&                              context   = test_case.context;
+  const pucch_processor::format2_configuration& config    = context.config;
+
+  // Prepare resource grid.
+  resource_grid_reader_spy                                grid(MAX_PORTS, MAX_NSYMB_PER_SLOT, MAX_NOF_PRBS);
+  std::vector<resource_grid_reader_spy::expected_entry_t> grid_entries = GetParam().grid.read();
+  for (auto& entry : grid_entries) {
+    entry.value = cf_t(0, 0);
+  }
+  grid.write(grid_entries);
+
+  // Make sure configuration is valid.
+  ASSERT_TRUE(validator->is_valid(config));
+
+  // Process PUCCH.
+  pucch_processor_result result = processor->process(grid, config);
+
+  // UCI payload is expected to be invalid.
+  ASSERT_EQ(result.message.get_status(), uci_status::invalid);
+
+  // The resource grid is empty, so SINR, EPRE & RSRP are expected to be -inf (0 in linear scale).
+  ASSERT_EQ(*result.csi.get_sinr_dB(), -std::numeric_limits<float>::infinity());
+  ASSERT_EQ(*result.csi.get_epre_dB(), -std::numeric_limits<float>::infinity());
+  ASSERT_EQ(*result.csi.get_rsrp_dB(), -std::numeric_limits<float>::infinity());
 }
 
 // Creates test suite that combines all possible parameters.

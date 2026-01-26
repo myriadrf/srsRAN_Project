@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,10 +25,9 @@
 
 using namespace srsran;
 
-bool srsran::validate_split6_o_du_unit_config(const split6_o_du_unit_config&   config,
-                                              const os_sched_affinity_bitmask& available_cpus)
+bool srsran::validate_split6_o_du_unit_config(const split6_o_du_unit_config& config)
 {
-  if (!validate_o_du_high_config(config.odu_high_cfg, available_cpus)) {
+  if (!validate_o_du_high_config(config.odu_high_cfg)) {
     return false;
   }
 

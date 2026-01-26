@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -270,6 +270,25 @@ public:
       am.max_handle_status_latency_us = handle_status_latency_us;
       am.max_processed_acks           = processed_acks;
       am.max_processed_nacks          = processed_nacks;
+    }
+  }
+
+  void metrics_add_t_poll_retransmission_expiry_latency_us(uint32_t t_poll_latency_us)
+  {
+    if (not enabled) {
+      return;
+    }
+    srsran_assert(std::holds_alternative<rlc_am_tx_metrics_lower>(metrics_lo.mode_specific),
+                  "Wrong mode for AM metrics.");
+    auto& am = std::get<rlc_am_tx_metrics_lower>(metrics_lo.mode_specific);
+    am.poll_latency.sum_latency_us += t_poll_latency_us;
+    am.poll_latency.num_latency_meas++;
+
+    am.poll_latency.min_latency_us = am.poll_latency.min_latency_us
+                                         ? std::min(*am.poll_latency.min_latency_us, t_poll_latency_us)
+                                         : t_poll_latency_us;
+    if (am.poll_latency.max_latency_us < t_poll_latency_us) {
+      am.poll_latency.max_latency_us = t_poll_latency_us;
     }
   }
 

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -51,29 +51,32 @@ class base_scheduler_policy_test
 {
 protected:
   base_scheduler_policy_test(
-      policy_scheduler_type   policy,
-      scheduler_expert_config sched_cfg_ = config_helpers::make_default_scheduler_expert_config(),
-      const sched_cell_configuration_request_message& msg =
-          sched_config_helper::make_default_sched_cell_configuration_request()) :
+      policy_scheduler_type      policy,
+      scheduler_expert_config    sched_cfg_ = config_helpers::make_default_scheduler_expert_config(),
+      cell_config_builder_params params_    = {}) :
+    params(params_),
+    cell_cfg_req(sched_config_helper::make_default_sched_cell_configuration_request(params)),
     logger(srslog::fetch_basic_logger("SCHED", true)),
-    res_logger(false, msg.pci),
+    res_logger(false, cell_cfg_req.pci),
     sched_cfg([&sched_cfg_, policy]() {
       if (policy == policy_scheduler_type::time_qos) {
-        sched_cfg_.ue.strategy_cfg = time_qos_scheduler_expert_config{};
+        sched_cfg_.ue.policy_cfg = time_qos_scheduler_config{};
       }
       return sched_cfg_;
     }()),
-    cell_cfg(*[this, &msg]() {
-      return cell_cfg_list.emplace(to_du_cell_index(0), std::make_unique<cell_configuration>(sched_cfg, msg)).get();
+    cell_cfg(*[this]() {
+      return cell_cfg_list.emplace(to_du_cell_index(0), std::make_unique<cell_configuration>(sched_cfg, cell_cfg_req))
+          .get();
     }()),
+    cell_ues(ues.add_cell(to_du_cell_index(0))),
     slice_sched(cell_cfg, ues),
-    cell_metrics(cell_cfg, msg.metrics),
+    cell_metrics(cell_cfg, cell_cfg_req.metrics),
     intra_slice_sched(cell_cfg.expert_cfg.ue, ues, pdcch_alloc, uci_alloc, res_grid, cell_metrics, cell_harqs, logger)
   {
     logger.set_level(srslog::basic_levels::debug);
     srslog::init();
 
-    cfg_pool.add_cell(msg);
+    cfg_pool.add_cell(cell_cfg_req);
   }
 
   ~base_scheduler_policy_test() { srslog::flush(); }
@@ -128,7 +131,8 @@ protected:
     ue_ded_cell_cfg_list.push_back(
         std::make_unique<ue_configuration>(ue_req.ue_index, ue_req.crnti, cell_cfg_list, cfg_pool.add_ue(ue_req)));
     ues.add_ue(
-        std::make_unique<ue>(ue_creation_command{*ue_ded_cell_cfg_list.back(), ue_req.starts_in_fallback, cell_harqs}));
+        std::make_unique<ue>(ue_creation_command{*ue_ded_cell_cfg_list.back(), ue_req.starts_in_fallback, cell_harqs}),
+        ue_ded_cell_cfg_list.back()->logical_channels());
     slice_sched.add_ue(ue_req.ue_index);
     return ues[ue_req.ue_index];
   }
@@ -138,7 +142,7 @@ protected:
                                                        const std::initializer_list<lcid_t>& lcids_to_activate,
                                                        lcg_id_t                             lcg_id)
   {
-    sched_ue_creation_request_message req = sched_config_helper::create_default_sched_ue_creation_request();
+    sched_ue_creation_request_message req = sched_config_helper::create_default_sched_ue_creation_request(params);
     req.ue_index                          = ue_index;
     req.crnti                             = rnti;
     // Set LCG ID for SRBs provided in the LCIDs to activate list.
@@ -177,6 +181,9 @@ protected:
     ues[ue_index].handle_bsr_indication(msg);
   }
 
+  const cell_config_builder_params               params;
+  const sched_cell_configuration_request_message cell_cfg_req;
+
   srslog::basic_logger&                          logger;
   scheduler_result_logger                        res_logger;
   scheduler_expert_config                        sched_cfg;
@@ -196,6 +203,7 @@ protected:
   pucch_allocator_impl pucch_alloc{cell_cfg, sched_cfg.ue.max_pucchs_per_slot, sched_cfg.ue.max_ul_grants_per_slot};
   uci_allocator_impl   uci_alloc{pucch_alloc};
   ue_repository        ues;
+  ue_cell_repository&  cell_ues;
   // NOTE: Policy scheduler is part of RAN slice instances created in slice scheduler.
   inter_slice_scheduler slice_sched;
   cell_metrics_handler  cell_metrics;
@@ -467,7 +475,7 @@ protected:
                                                                                  .nof_dl_symbols            = 5,
                                                                                  .nof_ul_slots              = 4,
                                                                                  .nof_ul_symbols            = 0}};
-      return sched_config_helper::make_default_sched_cell_configuration_request(builder_params);
+      return builder_params;
     }())
   {
     next_slot = {to_numerology_value(subcarrier_spacing::kHz30), 0};

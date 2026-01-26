@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,9 +24,10 @@
 
 #include "srsran/adt/bounded_bitset.h"
 #include "srsran/adt/byte_buffer.h"
-#include "srsran/adt/slotted_array.h"
 #include "srsran/adt/slotted_vector.h"
 #include "srsran/pdcp/pdcp_config.h"
+#include "srsran/ran/cause/e1ap_cause.h"
+#include "srsran/ran/cause/f1ap_cause.h"
 #include "srsran/ran/cause/ngap_cause.h"
 #include "srsran/ran/crit_diagnostics.h"
 #include "srsran/ran/cu_types.h"
@@ -79,13 +80,13 @@ inline ue_index_t uint_to_ue_index(std::underlying_type_t<ue_index_t> index)
 enum class du_index_t : uint16_t { min = 0, max = MAX_NOF_DUS - 1, invalid = MAX_NOF_DUS };
 
 /// Convert integer to DU index type.
-constexpr inline du_index_t uint_to_du_index(std::underlying_type_t<du_index_t> index)
+constexpr du_index_t uint_to_du_index(std::underlying_type_t<du_index_t> index)
 {
   return static_cast<du_index_t>(index);
 }
 
 /// Convert DU index type to integer.
-constexpr inline std::underlying_type_t<du_index_t> du_index_to_uint(du_index_t du_index)
+constexpr std::underlying_type_t<du_index_t> du_index_to_uint(du_index_t du_index)
 {
   return static_cast<std::underlying_type_t<du_index_t>>(du_index);
 }
@@ -94,13 +95,13 @@ constexpr inline std::underlying_type_t<du_index_t> du_index_to_uint(du_index_t 
 enum class cu_up_index_t : uint16_t { min = 0, max = MAX_NOF_CU_UPS - 1, invalid = MAX_NOF_CU_UPS };
 
 /// Convert integer to CU-UP index type.
-constexpr inline cu_up_index_t uint_to_cu_up_index(std::underlying_type_t<cu_up_index_t> index)
+constexpr cu_up_index_t uint_to_cu_up_index(std::underlying_type_t<cu_up_index_t> index)
 {
   return static_cast<cu_up_index_t>(index);
 }
 
 /// Convert CU-UP index type to integer.
-constexpr inline std::underlying_type_t<cu_up_index_t> cu_up_index_to_uint(cu_up_index_t cu_up_index)
+constexpr std::underlying_type_t<cu_up_index_t> cu_up_index_to_uint(cu_up_index_t cu_up_index)
 {
   return static_cast<std::underlying_type_t<cu_up_index_t>>(cu_up_index);
 }
@@ -115,7 +116,7 @@ inline du_cell_index_t uint_to_du_cell_index(std::underlying_type_t<du_cell_inde
 }
 
 /// Convert DU cell index type to integer.
-constexpr inline std::underlying_type_t<du_cell_index_t> du_cell_index_to_uint(du_cell_index_t du_cell_index)
+constexpr std::underlying_type_t<du_cell_index_t> du_cell_index_to_uint(du_cell_index_t du_cell_index)
 {
   return static_cast<std::underlying_type_t<du_cell_index_t>>(du_cell_index);
 }
@@ -124,16 +125,28 @@ constexpr inline std::underlying_type_t<du_cell_index_t> du_cell_index_to_uint(d
 enum class amf_index_t : uint16_t { min = 0, max = MAX_NOF_AMFS - 1, invalid = MAX_NOF_AMFS };
 
 /// Convert integer to AMF index type.
-constexpr inline amf_index_t uint_to_amf_index(std::underlying_type_t<amf_index_t> index)
+constexpr amf_index_t uint_to_amf_index(std::underlying_type_t<amf_index_t> index)
 {
   return static_cast<amf_index_t>(index);
 }
 
 /// Convert AMF index type to integer.
-constexpr inline std::underlying_type_t<amf_index_t> amf_index_to_uint(amf_index_t amf_index)
+constexpr std::underlying_type_t<amf_index_t> amf_index_to_uint(amf_index_t amf_index)
 {
   return static_cast<std::underlying_type_t<amf_index_t>>(amf_index);
 }
+
+/// Notification from the E1AP/F1AP that transaction reference information for some UEs has been lost.
+struct ue_transaction_info_loss_event {
+  std::vector<ue_index_t> ues_lost;
+};
+
+/// Common interface reset message for E1AP (E1 Reset), F1AP (F1 Reset) and NGAP (NG Reset).
+struct cu_cp_reset {
+  std::variant<e1ap_cause_t, f1ap_cause_t, ngap_cause_t> cause;
+  bool                                                   interface_reset = false;
+  std::vector<ue_index_t>                                ues_to_reset;
+};
 
 /// QoS Configuration, i.e. 5QI and the associated PDCP
 /// and SDAP configuration for DRBs
@@ -587,6 +600,11 @@ struct cu_cp_paging_message {
   std::optional<cu_cp_ue_radio_cap_for_paging> ue_radio_cap_for_paging;
   std::optional<bool>                          paging_origin;
   std::optional<cu_cp_assist_data_for_paging>  assist_data_for_paging;
+};
+
+struct cu_cp_bearer_context_release_request {
+  ue_index_t   ue_index = ue_index_t::invalid;
+  ngap_cause_t cause;
 };
 
 struct cu_cp_inactivity_notification {

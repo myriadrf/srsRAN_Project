@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #pragma once
 
 #include "srsran/support/async/coroutine.h"
+#include "srsran/support/timers.h"
 
 namespace srsran {
 
@@ -32,7 +33,7 @@ namespace srsran {
 /// \param duration_msec duration in msec until the timer gets triggered.
 /// \return awaitable object which returns true on resume if timer was notify_stop, and false if it expired.
 template <typename UniqueTimer>
-auto async_wait_for(UniqueTimer&& timer, std::chrono::milliseconds duration_msec)
+[[nodiscard]] auto async_wait_for(UniqueTimer&& timer, std::chrono::milliseconds duration_msec)
 {
   class async_timer
   {

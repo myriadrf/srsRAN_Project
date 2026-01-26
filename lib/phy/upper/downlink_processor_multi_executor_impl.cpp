@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,8 +25,8 @@
 #include "srsran/phy/upper/channel_processors/pdcch/formatters.h"
 #include "srsran/phy/upper/channel_processors/pdsch/formatters.h"
 #include "srsran/phy/upper/channel_processors/ssb/formatters.h"
+#include "srsran/phy/upper/signal_processors/nzp_csi_rs/nzp_csi_rs_formatter.h"
 #include "srsran/phy/upper/signal_processors/prs/formatters.h"
-#include "srsran/phy/upper/signal_processors/signal_processor_formatters.h"
 #include "srsran/phy/upper/upper_phy_rg_gateway.h"
 #include "srsran/srslog/srslog.h"
 #include "srsran/support/executors/task_executor.h"
@@ -78,7 +78,7 @@ void downlink_processor_multi_executor_impl::process_pdcch(const pdcch_processor
   pdcch_processor::pdu_t& pdu_ref = pdcch_list.emplace_back(pdu);
 
   // Try to enqueue the PDU processing task.
-  bool enqueued = pdcch_executor.execute([this, &pdu_ref]() SRSRAN_RTSAN_NONBLOCKING {
+  bool enqueued = pdcch_executor.defer([this, &pdu_ref]() noexcept SRSRAN_RTSAN_NONBLOCKING {
     trace_point process_pdcch_tp = l1_dl_tracer.now();
 
     // Do not execute if the grid is not available.
@@ -112,7 +112,7 @@ void downlink_processor_multi_executor_impl::process_pdsch(
   pdsch_proc_args& pdsch_args = pdsch_list.emplace_back(pdu, std::move(data_));
 
   // Try to enqueue the PDU processing task.
-  bool enqueued = pdsch_executor.execute([this, &pdsch_args]() mutable SRSRAN_RTSAN_NONBLOCKING {
+  bool enqueued = pdsch_executor.defer([this, &pdsch_args]() mutable noexcept SRSRAN_RTSAN_NONBLOCKING {
     trace_point process_pdsch_tp = l1_dl_tracer.now();
 
     // Do not execute if the grid is not available.
@@ -150,7 +150,7 @@ void downlink_processor_multi_executor_impl::process_ssb(const ssb_processor::pd
   ssb_processor::pdu_t& pdu_ref = ssb_list.emplace_back(pdu);
 
   // Try to enqueue the PDU processing task.
-  bool enqueued = ssb_executor.execute([this, &pdu_ref]() SRSRAN_RTSAN_NONBLOCKING {
+  bool enqueued = ssb_executor.defer([this, &pdu_ref]() noexcept SRSRAN_RTSAN_NONBLOCKING {
     trace_point process_ssb_tp = l1_dl_tracer.now();
 
     // Do not execute if the grid is not available.
@@ -182,7 +182,7 @@ void downlink_processor_multi_executor_impl::process_nzp_csi_rs(const nzp_csi_rs
   nzp_csi_rs_generator::config_t& config_ref = nzp_csi_rs_list.emplace_back(config);
 
   // Try to enqueue the PDU processing task.
-  bool enqueued = csi_rs_executor.execute([this, &config_ref]() SRSRAN_RTSAN_NONBLOCKING {
+  bool enqueued = csi_rs_executor.defer([this, &config_ref]() noexcept SRSRAN_RTSAN_NONBLOCKING {
     trace_point process_nzp_csi_rs_tp = l1_dl_tracer.now();
 
     // Do not execute if the grid is not available.
@@ -214,7 +214,7 @@ void downlink_processor_multi_executor_impl::process_prs(const prs_generator_con
   prs_generator_configuration& config_ref = prs_list.emplace_back(config);
 
   // Try to enqueue the PDU processing task.
-  bool enqueued = prs_executor.execute([this, &config_ref]() SRSRAN_RTSAN_NONBLOCKING {
+  bool enqueued = prs_executor.defer([this, &config_ref]() noexcept SRSRAN_RTSAN_NONBLOCKING {
     trace_point process_prs_tp = l1_dl_tracer.now();
 
     // Do not execute if the grid is not available.
@@ -257,6 +257,7 @@ downlink_processor_multi_executor_impl::configure_resource_grid(const resource_g
   pdsch_list.clear();
   ssb_list.clear();
   nzp_csi_rs_list.clear();
+  prs_list.clear();
 
   l1_dl_tracer << instant_trace_event("configure_rg", instant_trace_event::cpu_scope::global);
 

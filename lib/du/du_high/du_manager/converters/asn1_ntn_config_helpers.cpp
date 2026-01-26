@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -69,6 +69,7 @@ sib19_r17_s srsran::srs_du::make_asn1_rrc_cell_sib19(const sib19_info& sib19_par
     ta_info.ta_common_drift_r17                 = static_cast<int32_t>(sib19_params.ta_info->ta_common_drift / 0.0002);
     ta_info.ta_common_drift_variant_r17 =
         static_cast<uint16_t>(sib19_params.ta_info->ta_common_drift_variant / 0.00002);
+    ta_info.ta_common_r17 += static_cast<int32_t>(sib19_params.ta_info->ta_common_offset / 0.004072);
   }
 
   // Ephemeris info.

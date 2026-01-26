@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -158,9 +158,7 @@ public:
 
   public:
     scoped_frame_buffer() : buffer(nullptr, buffer_deleter{nullptr}) {}
-    explicit scoped_frame_buffer(unique_frame_buffer* ptr, buffer_deleter&& deleter) : buffer(ptr, std::move(deleter))
-    {
-    }
+    scoped_frame_buffer(unique_frame_buffer* ptr, buffer_deleter deleter) : buffer(ptr, deleter) {}
 
     /// These two methods simplify access to the frame buffer directly.
     frame_buffer* operator->() const noexcept { return (*buffer).get(); }
@@ -407,7 +405,7 @@ public:
                                   static_vector<scoped_frame_buffer, MAX_TX_BURST_SIZE>& burst)
   {
     auto& p_entry = get_pool_entry(symbol_point.get_slot(), symbol_point.get_symbol_index());
-    return p_entry.enqueue_pending(burst);
+    p_entry.enqueue_pending(burst);
   }
 
   /// Enqueues buffers pending in the pools allocated for the given interval of symbols.
@@ -429,16 +427,17 @@ public:
   }
 
   /// Pops 'pending' buffers from the pool corresponding to the given slot and symbol and checks whether they are
-  /// expired. Clears expired buffers and logs the respective message.
-  void clear_slot(slot_point slot, unsigned sector)
+  /// expired. Clears expired buffers and logs the respective message. Returns the number of messages that could not be
+  /// transmitted or 0 if there is no pending messages to transmit.
+  unsigned clear_slot(slot_point slot, unsigned sector)
   {
+    unsigned nof_lates = 0;
     {
       static_vector<scoped_frame_buffer, MAX_TX_BURST_SIZE> frame_burst;
 
       auto& entry = get_pool_entry(slot, 0);
       entry.pop_pending(frame_burst);
 
-      unsigned   nof_lates = 0;
       slot_point late_slot = {};
 
       for (auto& scoped_buffer : frame_burst) {
@@ -452,22 +451,21 @@ public:
         }
       }
       if (nof_lates) {
-        logger.warning("Sector #{}: Detected {} late {} {} message(s) in the transmitter queue for slot '{}'",
-                       sector,
-                       nof_lates,
-                       pool_frames_data_direction == ofh::data_direction::downlink ? "downlink" : "uplink",
-                       pool_frames_type == ofh::message_type::control_plane ? "C-Plane" : "U-Plane",
-                       late_slot);
+        logger.info("Sector #{}: Detected {} late {} {} message(s) in the transmitter queue for slot '{}'",
+                    sector,
+                    nof_lates,
+                    pool_frames_data_direction == ofh::data_direction::downlink ? "downlink" : "uplink",
+                    pool_frames_type == ofh::message_type::control_plane ? "C-Plane" : "U-Plane",
+                    late_slot);
       }
     }
 
     // DL C-Plane is only written in the first symbol of a slot.
     if (pool_frames_type == ofh::message_type::control_plane &&
         pool_frames_data_direction == ofh::data_direction::downlink) {
-      return;
+      return nof_lates;
     }
 
-    unsigned   nof_lates = 0;
     slot_point late_slot = {};
     for (unsigned symbol = 1; symbol != NOF_OFDM_SYM_PER_SLOT_NORMAL_CP; ++symbol) {
       static_vector<scoped_frame_buffer, MAX_TX_BURST_SIZE> frame_burst;
@@ -486,18 +484,19 @@ public:
         }
       }
       if (nof_lates) {
-        logger.warning("Sector #{}: Detected {} late {} {} message(s) in the transmitter queue for slot '{}'",
-                       sector,
-                       nof_lates,
-                       pool_frames_data_direction == ofh::data_direction::downlink ? "downlink" : "uplink",
-                       pool_frames_type == ofh::message_type::control_plane ? "C-Plane" : "U-Plane",
-                       late_slot);
+        logger.info("Sector #{}: Detected {} late {} {} message(s) in the transmitter queue for slot '{}'",
+                    sector,
+                    nof_lates,
+                    pool_frames_data_direction == ofh::data_direction::downlink ? "downlink" : "uplink",
+                    pool_frames_type == ofh::message_type::control_plane ? "C-Plane" : "U-Plane",
+                    late_slot);
       }
     }
+    return nof_lates;
   }
 
   /// Returns number of slots the pool can accommodate.
-  size_t pool_size_in_slots() const { return NUM_SLOTS; }
+  static size_t pool_size_in_slots() { return NUM_SLOTS; }
 
 private:
   srslog::basic_logger&                           logger;

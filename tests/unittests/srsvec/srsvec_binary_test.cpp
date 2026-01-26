@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -45,7 +45,7 @@ void test_binary_xor(std::size_t N)
 
   std::vector<T> z(N);
 
-  srsvec::binary_xor(x, y, z);
+  srsvec::binary_xor(z, x, y);
 
   for (size_t i = 0; i != N; ++i) {
     T gold_z = x[i] ^ y[i];
@@ -70,7 +70,7 @@ void test_binary_and(std::size_t N)
 
   std::vector<T> z(N);
 
-  srsvec::binary_and(x, y, z);
+  srsvec::binary_and(z, x, y);
 
   for (size_t i = 0; i != N; ++i) {
     T gold_z = x[i] & y[i];
@@ -95,7 +95,7 @@ void test_binary_or(std::size_t N)
 
   std::vector<T> z(N);
 
-  srsvec::binary_or(x, y, z);
+  srsvec::binary_or(z, x, y);
 
   for (size_t i = 0; i != N; ++i) {
     T gold_z = x[i] | y[i];

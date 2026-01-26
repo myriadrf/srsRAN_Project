@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -132,11 +132,11 @@ mac_scheduler_dummy_adapter::handle_ue_reconfiguration_request(const mac_ue_reco
   });
 }
 
-async_task<bool> mac_scheduler_dummy_adapter::handle_ue_removal_request(const mac_ue_delete_request& msg)
+async_task<void> mac_scheduler_dummy_adapter::handle_ue_removal_request(const mac_ue_delete_request& msg)
 {
-  return launch_async([](coro_context<async_task<bool>>& ctx) {
+  return launch_async([](coro_context<async_task<void>>& ctx) {
     CORO_BEGIN(ctx);
-    CORO_RETURN(true);
+    CORO_RETURN();
   });
 }
 

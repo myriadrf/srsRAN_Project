@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,10 +25,13 @@
 #include "rx_payload_buffer_pool.h"
 #include "uplink_pdu_slot_repository_impl.h"
 #include "uplink_processor_fsm.h"
+#include "uplink_slot_processor_alt_impl.h"
 #include "srsran/instrumentation/traces/du_traces.h"
 #include "srsran/phy/support/resource_grid_context.h"
+#include "srsran/phy/support/resource_grid_reader.h"
 #include "srsran/phy/support/shared_resource_grid.h"
 #include "srsran/phy/upper/channel_processors/pusch/pusch_processor_result_notifier.h"
+#include "srsran/phy/upper/phy_tap/phy_tap.h"
 #include "srsran/phy/upper/rx_buffer_pool.h"
 #include "srsran/phy/upper/signal_processors/srs/srs_estimator.h"
 #include "srsran/phy/upper/uplink_processor.h"
@@ -40,6 +43,7 @@
 
 namespace srsran {
 namespace detail {
+
 /// \brief Adapts the PUSCH processor result notifier to the upper PHY receive results notifier.
 ///
 /// It collects the Channel State Information (CSI), control and data decoding information from a PUSCH processor object
@@ -162,32 +166,10 @@ public:
 
     bool execute(task_type&& task) { return executor.execute(std::move(task)); }
 
+    bool defer(task_type&& task) { return executor.defer(std::move(task)); }
+
   private:
     task_executor& executor;
-  };
-
-  /// Uplink processor dummy instance - it only processes PRACH and ignores the rest.
-  class dummy_instance : public uplink_slot_processor
-  {
-  public:
-    dummy_instance(uplink_slot_processor& base_) : base(base_) {}
-
-    void handle_rx_symbol(unsigned end_symbol_index) override
-    {
-      // Ignore symbol.
-    }
-    void process_prach(const prach_buffer& buffer, const prach_buffer_context& context) override
-    {
-      base.process_prach(buffer, context);
-    }
-
-    void discard_slot() override
-    {
-      // Ignore.
-    }
-
-  private:
-    uplink_slot_processor& base;
   };
 
   /// Collects task executors.
@@ -207,6 +189,7 @@ public:
                         std::unique_ptr<pucch_processor> pucch_proc_,
                         std::unique_ptr<srs_estimator>   srs_,
                         std::unique_ptr<resource_grid>   grid_,
+                        std::unique_ptr<phy_tap>         ul_tap_,
                         task_executor_collection&        task_executors_,
                         rx_buffer_pool&                  rm_buffer_pool_,
                         upper_phy_rx_results_notifier&   notifier_,
@@ -227,13 +210,23 @@ private:
   static std::atomic<unsigned>& get_grid_ref_counter();
 
   // See uplink_slot_processor interface for documentation.
-  void handle_rx_symbol(unsigned end_symbol_index) override;
+  void handle_rx_symbol(unsigned end_symbol_index, bool is_valid) override;
 
   // See uplink_slot_processor interface for documentation.
-  void process_prach(const prach_buffer& buffer, const prach_buffer_context& context) override;
+  void process_prach(shared_prach_buffer buffer, const prach_buffer_context& context) override;
 
   // See uplink_slot_processor interface for documentation.
   void discard_slot() override;
+
+  /// \brief Processes the physical layer PDUs associated to the received symbols.
+  ///
+  /// Retrieves the PDUs by which the last symbol in the allocation matches the given \c end_symbol_index and forwards
+  /// them to the respective channel or signal processors. If an instance of the physical layer tap plugin is
+  /// configured, the received symbols, along with the retrieved PDUs, are first forwarded to the tap plugin for
+  /// external processing.
+  ///
+  /// \param[in] end_symbol_index Last received symbol in the slot.
+  void process_symbol_pdus(unsigned end_symbol_index);
 
   /// Helper method for processing PUSCH.
   void process_pusch(const uplink_pdu_slot_repository::pusch_pdu& pdu);
@@ -278,9 +271,6 @@ private:
   std::unique_ptr<resource_grid> grid;
   /// Task executors.
   task_executor_collection task_executors;
-  /// Internal dummy instance to avoid exposing \c handle_rx_symbol() and \c discard_slot() in slots that do not match
-  /// the configured slot.
-  dummy_instance dummy;
   /// Receive buffer pool.
   rx_buffer_pool& rm_buffer_pool;
   /// Pool of containers for the payload.
@@ -293,5 +283,10 @@ private:
   upper_phy_rx_results_notifier& notifier;
   /// Counts the number of processed symbols. It is used to avoid skipping symbols.
   unsigned nof_processed_symbols;
+  /// Optional physical layer tap plugin.
+  std::unique_ptr<phy_tap> ul_tap;
+  /// Internal alternative instance to avoid exposing \c handle_rx_symbol() and \c discard_slot() in slots that do not
+  /// contain any receive requests.
+  uplink_slot_processor_alt_impl alternative_processor;
 };
 } // namespace srsran

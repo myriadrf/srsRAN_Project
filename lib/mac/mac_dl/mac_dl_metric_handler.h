@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -39,7 +39,7 @@ class task_executor;
 class timer_manager;
 
 /// Clock time point type used for metric capture.
-using metric_clock = std::chrono::high_resolution_clock;
+using metric_clock = std::chrono::steady_clock;
 
 /// Handling of MAC DL cell metrics.
 class mac_dl_cell_metric_handler
@@ -71,6 +71,13 @@ public:
 
     auto start_time_point() const { return start_tp; }
 
+    void on_sched()
+    {
+      if (enabled()) {
+        sched_tp = metric_clock::now();
+      }
+    }
+
     void on_dl_tti_req()
     {
       if (enabled()) {
@@ -99,6 +106,7 @@ public:
     slot_point                                                  sl_tx;
     metric_clock::time_point                                    slot_ind_enqueue_tp;
     metric_clock::time_point                                    start_tp;
+    metric_clock::time_point                                    sched_tp;
     metric_clock::time_point                                    dl_tti_req_tp;
     metric_clock::time_point                                    tx_data_req_tp;
     metric_clock::time_point                                    ul_tti_req_tp;
@@ -131,12 +139,13 @@ private:
 
   struct non_persistent_data {
     struct latency_data {
+      unsigned                 count{0};
+      slot_point               max_slot;
       std::chrono::nanoseconds min{std::chrono::nanoseconds::max()};
       std::chrono::nanoseconds max{0};
       std::chrono::nanoseconds sum{0};
-      slot_point               max_slot;
 
-      mac_dl_cell_metric_report::latency_report get_report(unsigned nof_slots) const;
+      mac_dl_cell_metric_report::latency_report get_report() const;
 
       void save_sample(slot_point sl_tx, std::chrono::nanoseconds tdiff);
     };
@@ -144,12 +153,12 @@ private:
     unsigned     nof_slots = 0;
     slot_point   start_slot;
     latency_data wall;
-    latency_data user;
-    latency_data sys;
-    latency_data slot_enqueue;
+    latency_data slot_dequeue;
+    latency_data sched;
     latency_data dl_tti_req;
     latency_data tx_data_req;
     latency_data ul_tti_req;
+    latency_data slot_distance;
     unsigned     count_vol_context_switches{0};
     unsigned     count_invol_context_switches{0};
     /// \brief Whether the cell was marked for deactivation and this is the last report.
@@ -168,7 +177,10 @@ private:
   slot_point last_sl_tx;
 
   // Metrics tracked
+  /// Data that is reset on every report.
   non_persistent_data data;
+  /// Time point when the last slot indication was sent.
+  metric_clock::time_point last_slot_ind_enqueue_tp{};
 };
 
 } // namespace srsran

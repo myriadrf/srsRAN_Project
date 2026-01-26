@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -31,6 +31,7 @@
 #include "srsran/hal/phy/upper/channel_processors/pusch/ext_harq_buffer_context_repository_factory.h"
 #include "srsran/hal/phy/upper/channel_processors/pusch/hw_accelerator_factories.h"
 #include "srsran/hal/phy/upper/channel_processors/pusch/hw_accelerator_pusch_dec_factory.h"
+#include "srsran/srslog/srslog.h"
 #endif // HWACC_PDSCH_ENABLED && HWACC_PUSCH_ENABLED
 
 using namespace srsran;
@@ -208,7 +209,8 @@ srsran::create_sw_pusch_processor_factory(task_executor&                        
   std::shared_ptr<crc_calculator_factory> crc_calc_factory = create_crc_calculator_factory_sw("auto");
   report_fatal_error_if_not(crc_calc_factory, "Failed to create factory.");
 
-  std::shared_ptr<ldpc_decoder_factory> ldpc_decoder_factory = create_ldpc_decoder_factory_sw("auto");
+  std::shared_ptr<ldpc_decoder_factory> ldpc_decoder_factory =
+      create_ldpc_decoder_factory_sw("auto", {.force_decoding = false});
   report_fatal_error_if_not(ldpc_decoder_factory, "Failed to create factory.");
 
   std::shared_ptr<ldpc_rate_dematcher_factory> ldpc_rate_dematcher_factory =
@@ -268,6 +270,8 @@ srsran::create_sw_pusch_processor_factory(task_executor&                        
       create_dmrs_pusch_estimator_factory_sw(pseudo_random_gen_factory,
                                              low_papr_sequence_gen_factory,
                                              chan_estimator_factory,
+                                             executor,
+                                             pusch_constants::MAX_NOF_RX_PORTS,
                                              port_channel_estimator_fd_smoothing_strategy::filter,
                                              td_interpolation_strategy,
                                              compensate_cfo);

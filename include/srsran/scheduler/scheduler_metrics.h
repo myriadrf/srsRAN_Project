@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,19 +22,24 @@
 
 #pragma once
 
-#include "srsran/adt/span.h"
+#include "srsran/ran/du_types.h"
 #include "srsran/ran/pci.h"
 #include "srsran/ran/rnti.h"
 #include "srsran/ran/sch/sch_mcs.h"
 #include "srsran/ran/slot_point.h"
 #include "srsran/support/math/stats.h"
 #include "srsran/support/zero_copy_notifier.h"
+#include <array>
+#include <chrono>
 #include <optional>
+#include <vector>
 
 namespace srsran {
 
 /// \brief Snapshot of the metrics for a UE.
 struct scheduler_ue_metrics {
+  /// UE index in the DU for this UE.
+  du_ue_index_t ue_index;
   /// PCI of the UE's PCell.
   pci_t pci;
   /// Currently used C-RNTI for this UE.
@@ -91,10 +96,14 @@ struct scheduler_ue_metrics {
   std::optional<float> max_pusch_harq_delay_ms;
   std::optional<float> avg_pucch_harq_delay_ms;
   std::optional<float> max_pucch_harq_delay_ms;
+  std::optional<float> avg_sr_to_pusch_delay_ms;
+  std::optional<float> max_sr_to_pusch_delay_ms;
   /// @}
-  std::optional<float> last_dl_olla;
-  std::optional<float> last_ul_olla;
-  std::optional<int>   last_phr;
+  std::optional<float>    last_dl_olla;
+  std::optional<float>    last_ul_olla;
+  std::optional<int>      last_phr;
+  std::optional<unsigned> max_pdsch_distance_ms;
+  std::optional<unsigned> max_pusch_distance_ms;
   /// Time advance statistics in seconds.
   sample_statistics<float> ta_stats;
   sample_statistics<float> pusch_ta_stats;
@@ -119,7 +128,7 @@ struct scheduler_cell_event {
 
 inline const char* sched_event_to_string(scheduler_cell_event::event_type ev)
 {
-  std::array<const char*, 3> names = {"ue_add", "ue_reconf", "ue_rem"};
+  static constexpr std::array<const char*, 3> names = {"ue_add", "ue_reconf", "ue_rem"};
   return names[std::min(static_cast<size_t>(ev), names.size() - 1)];
 }
 
@@ -156,22 +165,27 @@ struct scheduler_cell_metrics {
   unsigned nof_msg3_ok = 0;
   /// Number of MSG3 KOs.
   unsigned nof_msg3_nok = 0;
-  /// Average PRACH delay in ms.
-  std::optional<float> avg_prach_delay_ms;
+  /// Average PRACH delay in slots.
+  std::optional<float> avg_prach_delay_slots;
   /// Number of failed PDSCH allocations due to late HARQs.
   unsigned nof_failed_pdsch_allocs_late_harqs = 0;
   /// Number of failed PUSCH allocations due to late HARQs.
   unsigned nof_failed_pusch_allocs_late_harqs = 0;
   /// Number of UE events not reported because the maximum number of events was reached.
   unsigned nof_filtered_events = 0;
+  /// Average number of RBs used for PUCCH per UL slot.
+  float pucch_tot_rb_usage_avg = 0.0f;
 
   unsigned                                nof_error_indications = 0;
   std::chrono::microseconds               average_decision_latency{0};
   std::chrono::microseconds               max_decision_latency{0};
   slot_point                              max_decision_latency_slot;
   std::array<unsigned, latency_hist_bins> latency_histogram{0};
-  std::vector<scheduler_cell_event>       events;
-  std::vector<scheduler_ue_metrics>       ue_metrics;
+  /// Average number of RBs used for PUSCH per slot index in the TDD pattern.
+  std::vector<unsigned>             pusch_prbs_used_per_tdd_slot_idx;
+  std::vector<unsigned>             pdsch_prbs_used_per_tdd_slot_idx;
+  std::vector<scheduler_cell_event> events;
+  std::vector<scheduler_ue_metrics> ue_metrics;
 };
 
 /// Scheduler metrics report for all active cells of the DU.

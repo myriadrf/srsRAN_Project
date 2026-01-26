@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -23,9 +23,11 @@ Ping + Reestablishment Tests
 """
 import logging
 from contextlib import contextmanager
+from time import sleep
 from typing import Dict, Generator, Optional, Sequence, Tuple, Union
 
 import pytest
+from google.protobuf.wrappers_pb2 import UInt32Value
 from pytest import mark
 from retina.client.manager import RetinaTestManager
 from retina.launcher.artifacts import RetinaTestData
@@ -43,21 +45,32 @@ from .steps.stub import (
     iperf_sequentially,
     iperf_start,
     iperf_wait_until_finish,
+    multi_ue_mobility_iperf,
     ping_start,
     ping_wait_until_finish,
     start_network,
     stop,
+    ue_move,
     ue_reestablishment,
     ue_reestablishment_parallel,
     ue_start_and_attach,
+    UE_STARTUP_TIMEOUT,
     ue_validate_no_reattaches,
 )
 
-_ONLY_RERUN = ["failed to start", "Attach timeout reached", "StatusCode.ABORTED", "socket is already closed"]
+_ONLY_RERUN = [
+    "failed to start",
+    "Attach timeout reached",
+    "StatusCode.ABORTED",
+    "socket is already closed",
+    "License unavailable",
+    "Timeout reached while reserving",
+]
 
 
 @mark.zmq
 @mark.smoke
+@mark.flaky(reruns=2, only_rerun=["License unavailable", "Timeout reached while reserving"])
 def test_smoke_sequentially(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
@@ -79,6 +92,7 @@ def test_smoke_sequentially(
         common_scs=30,
         bandwidth=50,
         noise_spd=0,
+        ue_startup_timeout=30,
         always_download_artifacts=False,
     )
 
@@ -95,7 +109,7 @@ def test_smoke_sequentially(
 @mark.zmq
 @mark.flaky(reruns=2, only_rerun=_ONLY_RERUN)
 # pylint: disable=too-many-arguments,too-many-positional-arguments
-def test_zmq_reestablishment_sequentially(
+def test_zmq_sequentially(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_8: Tuple[UEStub, ...],
@@ -126,6 +140,7 @@ def test_zmq_reestablishment_sequentially(
 
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
 def _reestablishment_sequentially_ping(
+    *,  # This enforces keyword-only arguments
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_array: Tuple[UEStub, ...],
@@ -136,6 +151,7 @@ def _reestablishment_sequentially_ping(
     common_scs: int,
     bandwidth: int,
     noise_spd: int,
+    ue_startup_timeout: int = UE_STARTUP_TIMEOUT,
     always_download_artifacts: bool = True,
 ):
     """
@@ -161,16 +177,19 @@ def _reestablishment_sequentially_ping(
         noise_spd=noise_spd,
         log_ip_level="debug",
         warning_as_errors=True,
+        ue_startup_timeout=ue_startup_timeout,
     ):
         # Launch pings
         ping_task_array = ping_start(
-            {**reest_ue_attach_info_dict, **other_ue_attach_info_dict}, fivegc, traffic_duration
+            ue_attach_info_dict={**reest_ue_attach_info_dict, **other_ue_attach_info_dict},
+            fivegc=fivegc,
+            ping_count=traffic_duration,
         )
 
         # Trigger reestablishments
         for ue_stub in reest_ue_attach_info_dict:
             for _ in range(int(traffic_duration / reestablishment_interval)):
-                ue_reestablishment(ue_stub, reestablishment_interval)
+                ue_reestablishment(ue_stub=ue_stub, reestablishment_interval=reestablishment_interval)
 
         # Wait and validate pings
         ping_wait_until_finish(ping_task_array)
@@ -194,7 +213,7 @@ def _reestablishment_sequentially_ping(
 @mark.zmq
 @mark.flaky(reruns=2, only_rerun=_ONLY_RERUN)
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-def test_zmq_reestablishment_sequentially_full_rate(
+def test_zmq_sequentially_full_rate(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_8: Tuple[UEStub, ...],
@@ -236,7 +255,15 @@ def test_zmq_reestablishment_sequentially_full_rate(
         iperf_dict = tuple(
             (
                 ue_attached_info,
-                *iperf_start(ue_stub, ue_attached_info, fivegc, protocol, direction, traffic_duration, 0),
+                *iperf_start(
+                    ue_stub=ue_stub,
+                    ue_attached_info=ue_attached_info,
+                    fivegc=fivegc,
+                    protocol=protocol,
+                    direction=direction,
+                    duration=traffic_duration,
+                    bitrate=0,
+                ),
             )
             for ue_stub, ue_attached_info in {**reest_ue_attach_info_dict, **other_ue_attach_info_dict}.items()
         )
@@ -244,16 +271,18 @@ def test_zmq_reestablishment_sequentially_full_rate(
         # Trigger reestablishments
         for ue_stub in reest_ue_attach_info_dict:
             for _ in range(int(traffic_duration / reestablishment_interval)):
-                ue_reestablishment(ue_stub, reestablishment_interval)
+                ue_reestablishment(ue_stub=ue_stub, reestablishment_interval=reestablishment_interval)
 
         # Wait for reestablished UEs
         for ue_attached_info, task, iperf_request in iperf_dict:
-            iperf_wait_until_finish(ue_attached_info, fivegc, task, iperf_request)
+            iperf_wait_until_finish(
+                ue_attached_info=ue_attached_info, fivegc=fivegc, task=task, iperf_request=iperf_request
+            )
 
 
 @mark.zmq
 @mark.flaky(reruns=2, only_rerun=_ONLY_RERUN)
-def test_zmq_reestablishment_sequentially_full_rate_verify_bitrate(
+def test_zmq_sequentially_full_rate_verify_bitrate(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue: Tuple[UEStub, ...],
@@ -304,7 +333,7 @@ def test_zmq_reestablishment_sequentially_full_rate_verify_bitrate(
 
         # Reestablishment
         for _ in range(int(traffic_duration / reestablishment_interval)):
-            ue_reestablishment(ue, reestablishment_interval)
+            ue_reestablishment(ue_stub=ue, reestablishment_interval=reestablishment_interval)
 
         # Iperf after reestablishment
         _, result_after = iperf_sequentially(
@@ -352,7 +381,7 @@ def test_zmq_reestablishment_sequentially_full_rate_verify_bitrate(
 @mark.zmq
 @mark.flaky(reruns=2, only_rerun=_ONLY_RERUN)
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-def test_zmq_reestablishment_parallel(
+def test_zmq_parallel(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_8: Tuple[UEStub, ...],
@@ -391,12 +420,16 @@ def test_zmq_reestablishment_parallel(
 
         for i in range(number_of_reestablishments):
             logging.info("Starting Reestablishment for all UEs + Traffic running in background. Iteration %s", i + 1)
-            ping_task_array = ping_start(ue_attach_info_dict, fivegc, reestablishment_time)
-            ue_reestablishment_parallel(ue_8, reestablishment_time)
+            ping_task_array = ping_start(
+                ue_attach_info_dict=ue_attach_info_dict, fivegc=fivegc, ping_count=reestablishment_time
+            )
+            ue_reestablishment_parallel(ue_array=ue_8, reestablishment_interval=reestablishment_time)
             ping_wait_until_finish(ping_task_array)
 
         logging.info("Starting traffic after all reestablishments have been completed")
-        ping_task_array = ping_start(ue_attach_info_dict, fivegc, reestablishment_time)
+        ping_task_array = ping_start(
+            ue_attach_info_dict=ue_attach_info_dict, fivegc=fivegc, ping_count=reestablishment_time
+        )
         ping_wait_until_finish(ping_task_array)
 
 
@@ -418,7 +451,7 @@ def test_zmq_reestablishment_parallel(
 @mark.zmq
 @mark.flaky(reruns=2, only_rerun=_ONLY_RERUN)
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-def test_zmq_reestablishment_parallel_full_rate(
+def test_zmq_parallel_full_rate(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_8: Tuple[UEStub, ...],
@@ -464,22 +497,39 @@ def test_zmq_reestablishment_parallel_full_rate(
             iperf_dict = tuple(
                 (
                     ue_attached_info,
-                    *iperf_start(ue_stub, ue_attached_info, fivegc, protocol, direction, reestablishment_time, 0),
+                    *iperf_start(
+                        ue_stub=ue_stub,
+                        ue_attached_info=ue_attached_info,
+                        fivegc=fivegc,
+                        protocol=protocol,
+                        direction=direction,
+                        duration=reestablishment_time,
+                        bitrate=0,
+                    ),
                 )
                 for ue_stub, ue_attached_info in ue_attach_info_dict.items()
             )
-            ue_reestablishment_parallel(ue_8, reestablishment_time)
+            ue_reestablishment_parallel(ue_array=ue_8, reestablishment_interval=reestablishment_time)
             for ue_attached_info, task, iperf_request in iperf_dict:
-                iperf_wait_until_finish(ue_attached_info, fivegc, task, iperf_request)
+                iperf_wait_until_finish(
+                    ue_attached_info=ue_attached_info, fivegc=fivegc, task=task, iperf_request=iperf_request
+                )
 
         logging.info("Starting traffic after all reestablishments have been completed")
         iperf_parallel(
-            ue_attach_info_dict, fivegc, protocol, direction, reestablishment_time, 0, parallel_iperfs=len(ue_8)
+            ue_attach_info_dict=ue_attach_info_dict,
+            fivegc=fivegc,
+            protocol=protocol,
+            direction=direction,
+            iperf_duration=reestablishment_time,
+            bitrate=0,
+            parallel_iperfs=len(ue_8),
         )
 
 
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
 def _iterator_over_attached_ues(
+    *,  # This enforces keyword-only arguments
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_array: Sequence[UEStub],
@@ -496,6 +546,7 @@ def _iterator_over_attached_ues(
     noise_spd: int,
     log_ip_level: str,
     warning_as_errors: bool = True,
+    ue_startup_timeout: int = UE_STARTUP_TIMEOUT,
 ) -> Generator[Tuple[Dict[UEStub, UEAttachedInfo], Dict[UEStub, UEAttachedInfo]], None, None]:
 
     with _test_reestablishments(
@@ -515,6 +566,7 @@ def _iterator_over_attached_ues(
         noise_spd=noise_spd,
         log_ip_level=log_ip_level,
         warning_as_errors=warning_as_errors,
+        ue_startup_timeout=ue_startup_timeout,
     ) as ue_attach_info_dict:
 
         # Reestablishment while traffic
@@ -537,6 +589,7 @@ def _iterator_over_attached_ues(
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
 @contextmanager
 def _test_reestablishments(
+    *,  # This enforces keyword-only arguments
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_array: Sequence[UEStub],
@@ -553,6 +606,7 @@ def _test_reestablishments(
     noise_spd: int,
     log_ip_level: str,
     warning_as_errors: bool = True,
+    ue_startup_timeout: int = UE_STARTUP_TIMEOUT,
 ) -> Generator[Dict[UEStub, UEAttachedInfo], None, None]:
 
     logging.info("Reestablishment Test")
@@ -576,9 +630,23 @@ def _test_reestablishments(
         always_download_artifacts=always_download_artifacts,
     )
 
-    start_network(ue_array, gnb, fivegc, gnb_post_cmd=("log --cu_level=debug", "log --mac_level=debug"))
+    start_network(
+        ue_array=ue_array,
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        gnb_post_cmd=(
+            "log --cu_level=debug",
+            "log --mac_level=debug cell_cfg pdcch common --ss1_n_candidates=0 0 2 0 0"
+            " pdsch --max_consecutive_kos=200 pusch --max_consecutive_kos=200",
+        ),
+    )
 
-    ue_attach_info_dict = ue_start_and_attach(ue_array, gnb, fivegc)
+    ue_attach_info_dict = ue_start_and_attach(
+        ue_array=ue_array,
+        du_definition=[gnb.GetDefinition(UInt32Value(value=0))],
+        fivegc=fivegc,
+        ue_startup_timeout=ue_startup_timeout,
+    )
 
     try:
         yield ue_attach_info_dict
@@ -586,7 +654,119 @@ def _test_reestablishments(
         for ue_stub in ue_array:
             ue_validate_no_reattaches(ue_stub)
 
-        stop(ue_array, gnb, fivegc, retina_data, warning_as_errors=warning_as_errors)
+        stop(
+            ue_array=ue_array,
+            gnb_array=[gnb],
+            fivegc=fivegc,
+            retina_data=retina_data,
+            warning_as_errors=warning_as_errors,
+        )
 
     finally:
-        get_kpis(gnb, ue_array=ue_array, metrics_summary=metrics_summary)
+        get_kpis(du_or_gnb_array=[gnb], ue_array=ue_array, metrics_summary=metrics_summary)
+
+
+HIGH_BITRATE = int(15e6)
+
+
+@mark.parametrize(
+    "protocol",
+    (
+        param(IPerfProto.UDP, id="udp", marks=mark.udp),
+        param(IPerfProto.TCP, id="tcp", marks=mark.tcp),
+    ),
+)
+@mark.parametrize(
+    "band, common_scs, bandwidth, noise_spd",
+    (
+        param(3, 15, 50, -164, id="band:%s-scs:%s-bandwidth:%s-noise:%s"),
+        param(41, 30, 50, -164, id="band:%s-scs:%s-bandwidth:%s-noise:%s"),
+    ),
+)
+@mark.zmq_single_ue
+@mark.flaky(
+    reruns=2,
+    only_rerun=[
+        "failed to start",
+        "Attach timeout reached",
+        "StatusCode.ABORTED",
+        "License unavailable",
+        "Timeout reached while reserving",
+    ],
+)
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+def test_zmq_mobility_noise_reestablishment(
+    retina_manager: RetinaTestManager,
+    retina_data: RetinaTestData,
+    ue: UEStub,
+    fivegc: FiveGCStub,
+    gnb: GNBStub,
+    metrics_summary: MetricsSummary,
+    band: int,
+    common_scs: int,
+    bandwidth: int,
+    noise_spd: int,
+    protocol: IPerfProto,
+):
+    """
+    ZMQ mobility noise reestablishment test
+    """
+
+    with multi_ue_mobility_iperf(
+        retina_manager=retina_manager,
+        retina_data=retina_data,
+        ue_array=[ue],
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        metrics_summary=metrics_summary,
+        band=band,
+        common_scs=common_scs,
+        bandwidth=bandwidth,
+        bitrate=HIGH_BITRATE,
+        protocol=protocol,
+        direction=IPerfDir.BIDIRECTIONAL,
+        sample_rate=None,  # default from testbed
+        global_timing_advance=0,
+        time_alignment_calibration=0,
+        always_download_artifacts=True,
+        noise_spd=noise_spd,
+        sleep_between_movement_steps=1,
+        warning_as_errors=True,
+        allow_failure=True,
+    ) as (ue_attach_info_dict, movements, _):
+
+        for ue_stub, ue_attach_info in ue_attach_info_dict.items():
+            logging.info(
+                "Zigzag mobility reestablishment for UE [%s] (%s) + iPerf running in background for all UEs",
+                id(ue_stub),
+                ue_attach_info.ipv4,
+            )
+
+            for _from_position, _to_position, _movement_steps, _sleep_between_movement_steps in movements:
+                logging.info(
+                    "Moving UE [%s] from %s to %s (allowing handover failure)",
+                    id(ue_stub),
+                    _from_position,
+                    _to_position,
+                )
+
+                for i in range(_movement_steps + 1):
+                    ue_move(
+                        ue_stub=ue_stub,
+                        x_coordinate=(
+                            int(
+                                round(_from_position[0] + (i * (_to_position[0] - _from_position[0]) / _movement_steps))
+                            )
+                        ),
+                        y_coordinate=(
+                            int(
+                                round(_from_position[1] + (i * (_to_position[1] - _from_position[1]) / _movement_steps))
+                            )
+                        ),
+                        z_coordinate=(
+                            int(
+                                round(_from_position[2] + (i * (_to_position[2] - _from_position[2]) / _movement_steps))
+                            )
+                        ),
+                    )
+                    sleep(_sleep_between_movement_steps)

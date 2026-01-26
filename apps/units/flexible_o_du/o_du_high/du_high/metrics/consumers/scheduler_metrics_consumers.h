@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #pragma once
 
 #include "srsran/scheduler/scheduler_metrics.h"
+#include "srsran/srslog/log_channel.h"
 #include <optional>
 
 namespace srsran {
@@ -43,22 +44,6 @@ public:
 
 private:
   unsigned nof_lines = MAX_NOF_STDOUT_METRIC_LINES_WITHOUT_HEADER;
-};
-
-/// JSON consumer for the scheduler cell metrics.
-class scheduler_cell_metrics_consumer_json
-{
-public:
-  explicit scheduler_cell_metrics_consumer_json(srslog::log_channel& log_chan_) : log_chan(log_chan_)
-  {
-    srsran_assert(log_chan.enabled(), "JSON log channel is not enabled");
-  }
-
-  /// Handle scheduler metrics.
-  void handle_metric(const std::optional<scheduler_metrics_report>& report);
-
-private:
-  srslog::log_channel& log_chan;
 };
 
 /// Logger consumer for the scheduler cell metrics.

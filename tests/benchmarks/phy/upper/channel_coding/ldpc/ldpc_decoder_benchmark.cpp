@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,7 +25,6 @@
 
 #include "srsran/phy/upper/channel_coding/channel_coding_factories.h"
 #include "srsran/phy/upper/channel_coding/ldpc/ldpc_encoder_buffer.h"
-#include "srsran/srsvec/bit.h"
 #include "srsran/support/benchmark_utils.h"
 #include "srsran/support/srsran_test.h"
 #include <getopt.h>
@@ -77,7 +76,7 @@ static void parse_args(int argc, char** argv)
       case 'h':
       default:
         usage(argv[0]);
-        exit(0);
+        std::exit(0);
     }
   }
 }
@@ -106,7 +105,8 @@ int main(int argc, char** argv)
       std::unique_ptr<crc_calculator> crc16   = nullptr;
       std::unique_ptr<ldpc_encoder>   encoder = nullptr;
       // Decoder.
-      std::shared_ptr<ldpc_decoder_factory> decoder_factory = create_ldpc_decoder_factory_sw(dec_type);
+      std::shared_ptr<ldpc_decoder_factory> decoder_factory =
+          create_ldpc_decoder_factory_sw(dec_type, {.force_decoding = false});
       TESTASSERT(decoder_factory);
       std::unique_ptr<ldpc_decoder> decoder = decoder_factory->create();
       TESTASSERT(decoder);
@@ -158,8 +158,11 @@ int main(int argc, char** argv)
           unsigned checksum = crc16->calculate(msg_span);
           to_encode.insert(checksum, msg_len_minus_crc, 16);
           // Encode entire message.
-          srsran::codeblock_metadata::tb_common_metadata cfg_enc;
-          cfg_enc                              = {bg, ls};
+          ldpc_encoder::configuration cfg_enc = {
+              .base_graph   = bg,
+              .lifting_size = ls,
+              .Nref         = 0,
+          };
           const ldpc_encoder_buffer& rm_buffer = encoder->encode(to_encode, cfg_enc);
 
           // Write codeblock in the encoded intermediate buffer.
@@ -174,20 +177,21 @@ int main(int argc, char** argv)
         // Prepare message storage.
         dynamic_bit_buffer message(msg_length);
 
-        srsran::codeblock_metadata cfg_dec  = {};
-        cfg_dec.tb_common.lifting_size      = ls;
-        cfg_dec.tb_common.base_graph        = bg;
-        cfg_dec.cb_specific.nof_crc_bits    = 16;
-        cfg_dec.cb_specific.nof_filler_bits = 0;
+        srsran::ldpc_decoder::configuration cfg_dec = {.base_graph      = bg,
+                                                       .lifting_size    = ls,
+                                                       .nof_filler_bits = 0,
+                                                       .nof_crc_bits    = 16,
+                                                       .max_iterations  = nof_iterations};
 
         fmt::memory_buffer descr_buffer;
         fmt::format_to(std::back_inserter(descr_buffer),
-                       "BG={} LS={:<3} cb_len={}",
+                       "BG={} LS={:<3} cb_len={} R={:.3f}",
                        fmt::underlying(bg),
                        fmt::underlying(ls),
-                       cb_length);
-        perf_meas_generic.new_measure(to_string(descr_buffer), codeblock.size(), [&]() {
-          decoder->decode(message, codeblock, crc16.get(), {cfg_dec, {nof_iterations, 0.8}});
+                       cb_length,
+                       static_cast<double>(msg_length) / static_cast<double>(cb_length));
+        perf_meas_generic.new_measure(to_string(descr_buffer), msg_length, [&]() {
+          decoder->decode(message, codeblock, crc16.get(), cfg_dec);
           do_not_optimize(codeblock);
         });
       }

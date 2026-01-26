@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,12 +22,14 @@
 
 #pragma once
 
-#include "srsran/support/async/async_task.h"
 #include "srsran/support/executors/task_executor.h"
 #include "srsran/support/timers.h"
 #include <optional>
 
 namespace srsran {
+
+class executor_metrics_channel_registry;
+
 namespace srs_cu_up {
 
 /// \brief This class holds the executors available to a given UE in the CU-UP.
@@ -35,11 +37,6 @@ class ue_executor_mapper
 {
 public:
   virtual ~ue_executor_mapper() = default;
-
-  /// \brief Initiate the shutdown of the executors associated with the respective UE context.
-  /// \return Returns an asynchronous task that is only completed when all the UE executors finished their pending
-  /// tasks.
-  virtual async_task<void> stop() = 0;
 
   /// \brief Returns the task executor appropriate for the control aspects of the UE context (e.g. timers, deletion).
   virtual task_executor& ctrl_executor() = 0;
@@ -77,7 +74,17 @@ public:
   /// \brief Gets task executor that is used by the E2 CU-UP agent.
   virtual task_executor& e2_executor() = 0;
 
-  virtual task_executor& n3_executor() = 0;
+  /// \brief Gets task executor used to read N3 data from the IO. This executor allows parallelization.
+  virtual task_executor& n3_rx_executor() = 0;
+
+  /// \brief Gets task executor used to read E1 data from the IO. This executor allows parallelization.
+  virtual task_executor& e1_rx_executor() = 0;
+
+  /// \brief Gets task executor used to read E2 data from the IO. This executor allows parallelization.
+  virtual task_executor& e2_rx_executor() = 0;
+
+  /// \brief Gets task executor used to read F1-U data from the IO. This executor allows parallelization.
+  virtual task_executor& f1u_rx_executor() = 0;
 
   /// \brief Instantiate executors for a created UE in the CU-UP.
   virtual std::unique_ptr<ue_executor_mapper> create_ue_executor_mapper() = 0;
@@ -90,28 +97,32 @@ struct strand_based_executor_config {
   /// task queue), which will reduce inter-UE isolation and the ability to parallelize across UEs. If
   /// \c max_nof_ue_strands is high, more memory will be used to instantiate the UE strand queues.
   unsigned max_nof_ue_strands;
-  /// \brief Default size for the task queues of the strands created in the CU-UP.
+  /// Default size for the task queues of the strands created in the CU-UP.
   unsigned default_task_queue_size;
-  /// \brief Size for the task queues of the strands created in the CU-UP for UE DL PDU processing.
+  /// Size for the task queues of the strands created in the CU-UP for UE DL PDU processing.
   unsigned dl_ue_task_queue_size;
-  /// \brief Size for the task queues of the strands created in the CU-UP for UE UL PDU processing.
+  /// Size for the task queues of the strands created in the CU-UP for UE UL PDU processing.
   unsigned ul_ue_task_queue_size;
-  /// \brief Size for the task queues of the strands created in the CU-UP for UE control tasks.
+  /// Size for the task queues of the strands created in the CU-UP for UE control tasks.
   unsigned ctrl_ue_task_queue_size;
-  /// \brief Maximum number of tasks that run in a strand before yeilding.
+  /// Maximum number of tasks that run in a strand before yeilding.
   unsigned strand_batch_size;
-  /// \brief Executor to which CU-UP strands and crypto tasks will be associated.
+  /// Executor to which CU-UP strands and crypto tasks will be associated.
   task_executor& medium_prio_executor;
-  /// \brief Executor to which CU-UP packet reception tasks will be associated.
+  /// Executor to which CU-UP packet reception tasks will be associated.
   task_executor& low_prio_executor;
-  /// \brief Whether to instantiate a dedicated strand for sending UL PDUs to the IO.
+  /// Executor used to read SCTP messages from the E1/E2 sockets.
+  task_executor& sctp_io_reader_executor;
+  /// Whether to instantiate a dedicated strand for sending UL PDUs to the IO.
   bool dedicated_io_strand;
-  /// \brief Timers used by the application.
+  /// Timers used by the application.
   timer_manager* timers;
-  /// \brief Enable CU-UP executor tracing.
+  /// Enable CU-UP executor tracing.
   bool tracing_enabled;
-  /// \brief CU-UP executor metrics period.
-  std::optional<std::chrono::milliseconds> metrics_period;
+  /// \brief Optional executor metrics channel registry.
+  ///
+  /// If it is initialized, the executor mapper wraps the executors with metric decorators.
+  executor_metrics_channel_registry* exec_metrics_channel_registry = nullptr;
 };
 
 /// \brief Creates an executor mapper for the CU-UP that is based on strands of a worker pool.

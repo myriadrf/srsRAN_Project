@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -270,7 +270,7 @@ protected:
   }
 };
 
-class radio_notifier_spy : public radio_notification_handler
+class radio_notifier_spy : public radio_event_notifier
 {
 public:
   void on_radio_rt_event(const event_description& description) override {}

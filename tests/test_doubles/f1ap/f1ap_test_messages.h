@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "../rrc/rrc_packed_test_messages.h"
 #include "srsran/adt/byte_buffer.h"
 #include "srsran/asn1/f1ap/f1ap_ies.h"
 #include "srsran/f1ap/common/interface_management.h"
@@ -34,6 +35,7 @@
 #include "srsran/ran/nr_band.h"
 #include "srsran/ran/nr_cgi.h"
 #include "srsran/ran/pci.h"
+#include "srsran/ran/plmn_identity.h"
 #include "srsran/ran/positioning/positioning_ids.h"
 #include "srsran/ran/rb_id.h"
 #include "srsran/ran/rnti.h"
@@ -48,16 +50,18 @@ namespace test_helpers {
 
 struct served_cell_item_info {
   struct meas_timing_config {
-    uint32_t           carrier_freq = 535930;
+    uint32_t           carrier_freq = 620928;
     subcarrier_spacing scs          = subcarrier_spacing::kHz30;
   };
 
+  plmn_identity      plmn_id  = plmn_identity::test_value();
   nr_cell_identity   nci      = nr_cell_identity::create(gnb_id_t{411, 22}, 0U).value();
   pci_t              pci      = 0;
   tac_t              tac      = 7;
   nr_band            band     = nr_band::n78;
-  uint32_t           nr_arfcn = 626748;
+  uint32_t           nr_arfcn = 620688;
   meas_timing_config meas_timing_cfg;
+  std::string        sib1_str = create_sib1_hex_string(plmn_identity::test_value());
 };
 
 /// \brief Generates dummy F1 RESET message, sent by the CU to the DU, as per TS 38.473 section 8.2.1.1.
@@ -119,12 +123,11 @@ f1ap_message generate_ue_context_setup_request(gnb_cu_ue_f1ap_id_t              
 
 /// \brief Generates dummy F1AP UE CONTEXT SETUP RESPONSE message, sent by the DU to the CU, as per TS 38.473
 /// section 8.3.1.2.
-f1ap_message generate_ue_context_setup_response(
-    gnb_cu_ue_f1ap_id_t   cu_ue_id,
-    gnb_du_ue_f1ap_id_t   du_ue_id,
-    std::optional<rnti_t> crnti = std::nullopt,
-    byte_buffer           cell_group_config =
-        make_byte_buffer("5c02b091117aec701061e000b1c03544cde4a20c7c080408c008241000100000").value());
+f1ap_message
+generate_ue_context_setup_response(gnb_cu_ue_f1ap_id_t   cu_ue_id,
+                                   gnb_du_ue_f1ap_id_t   du_ue_id,
+                                   std::optional<rnti_t> crnti             = std::nullopt,
+                                   byte_buffer           cell_group_config = test_helpers::create_cell_group_config());
 
 /// \brief Generates dummy F1AP UE CONTEXT SETUP FAILURE message, sent by the DU to the CU, as per TS 38.473
 /// section 8.3.1.3.
@@ -163,7 +166,8 @@ generate_ue_context_modification_response(gnb_du_ue_f1ap_id_t          du_ue_id,
                                           gnb_cu_ue_f1ap_id_t          cu_ue_id,
                                           rnti_t                       crnti               = to_rnti(0x4601),
                                           const std::vector<drb_id_t>& drbs_setup_mod_list = {drb_id_t::drb1},
-                                          const std::vector<drb_id_t>& drbs_modified_list  = {});
+                                          const std::vector<drb_id_t>& drbs_modified_list  = {},
+                                          byte_buffer cell_group_config = test_helpers::create_cell_group_config());
 
 /// \brief Generates dummy F1AP UE CONTEXT MODIFICATION FAILURE message, sent by the DU to the CU, as per TS 38.473
 /// section 8.3.4.3.
@@ -171,13 +175,16 @@ f1ap_message generate_ue_context_modification_failure(gnb_cu_ue_f1ap_id_t cu_ue_
 
 /// \brief Generates dummy F1AP INITIAL UL RRC Transfer message without DU to CU container, sent by the DU to the CU, as
 /// per TS 38.473 section 8.4.1.1.
-f1ap_message generate_init_ul_rrc_message_transfer_without_du_to_cu_container(gnb_du_ue_f1ap_id_t du_ue_id,
-                                                                              rnti_t              crnti);
+f1ap_message
+generate_init_ul_rrc_message_transfer_without_du_to_cu_container(gnb_du_ue_f1ap_id_t du_ue_id,
+                                                                 rnti_t              crnti = to_rnti(0x4601),
+                                                                 plmn_identity plmn_id = plmn_identity::test_value());
 
 /// \brief Generates dummy F1AP Initial UL RRC TRANSFER message, sent by the DU to the CU, as per TS 38.473
 /// section 8.4.1.1.
 f1ap_message generate_init_ul_rrc_message_transfer(gnb_du_ue_f1ap_id_t du_ue_id,
                                                    rnti_t              crnti          = to_rnti(0x4601),
+                                                   plmn_identity       plmn_id        = plmn_identity::test_value(),
                                                    byte_buffer         cell_group_cfg = {},
                                                    byte_buffer         rrc_container  = {});
 

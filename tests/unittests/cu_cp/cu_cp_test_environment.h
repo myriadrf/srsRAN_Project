@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -122,7 +122,10 @@ public:
   bool run_e1_setup(unsigned cu_up_idx);
 
   /// Connect a new UE to CU-CP through a provided DU. It runs the full RRC setup procedure.
-  [[nodiscard]] bool connect_new_ue(unsigned du_idx, gnb_du_ue_f1ap_id_t du_ue_id, rnti_t crnti);
+  [[nodiscard]] bool connect_new_ue(unsigned            du_idx,
+                                    gnb_du_ue_f1ap_id_t du_ue_id,
+                                    rnti_t              crnti,
+                                    plmn_identity       plmn = plmn_identity::test_value());
   /// Runs the NAS Authentication for a given UE.
   [[nodiscard]] bool authenticate_ue(unsigned du_idx, gnb_du_ue_f1ap_id_t du_ue_id, amf_ue_id_t amf_ue_id);
   /// Runs the Security Mode procedure for a given UE.
@@ -241,6 +244,8 @@ public:
       const std::vector<pdu_session_id_t>& expected_pdu_sessions_to_setup,
       const std::vector<pdu_session_id_t>& expected_pdu_sessions_failed_to_setup);
 
+  rrc_timers_t rrc_test_timer_values;
+
 private:
   class worker_manager;
 
@@ -256,7 +261,7 @@ private:
   /// Notifiers for the CU-CP interface.
   std::map<unsigned, cu_cp_test_amf_config> amf_configs;
 
-  // emulated CU-UP nodes.
+  // Emulated CU-UP nodes.
   std::unordered_map<unsigned, std::unique_ptr<mock_cu_up>> cu_ups;
   unsigned                                                  next_cu_up_idx = 0;
 

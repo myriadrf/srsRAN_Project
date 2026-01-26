@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -105,4 +105,9 @@ ue_con_res_id_t mac_dl_ue_repository::get_con_res_id(rnti_t rnti)
     return {};
   }
   return ue_db[ue_index].get_con_res_id();
+}
+
+void mac_dl_ue_repository::clear()
+{
+  ue_db.clear();
 }

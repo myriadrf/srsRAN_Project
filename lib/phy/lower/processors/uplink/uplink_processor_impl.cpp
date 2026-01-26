@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,6 +29,7 @@
 #include "srsran/phy/lower/processors/uplink/puxch/puxch_processor_baseband.h"
 #include "srsran/phy/lower/processors/uplink/uplink_processor_notifier.h"
 #include "srsran/srsvec/compare.h"
+#include "srsran/srsvec/conversion.h"
 #include "srsran/srsvec/copy.h"
 #include "srsran/srsvec/dot_prod.h"
 #include "srsran/support/math/stats.h"
@@ -50,7 +51,8 @@ lower_phy_uplink_processor_impl::lower_phy_uplink_processor_impl(std::unique_ptr
   temp_buffer(config.nof_rx_ports, 2 * config.rate.get_dft_size(config.scs)),
   prach_proc(std::move(prach_proc_)),
   puxch_proc(std::move(puxch_proc_)),
-  cfo_processor(config.rate)
+  cfo_processor(config.rate),
+  temp_cf_buffer({2 * config.rate.get_dft_size(config.scs), config.nof_rx_ports})
 {
   srsran_assert(prach_proc, "Invalid PRACH processor.");
   srsran_assert(puxch_proc, "Invalid PUxCH processor.");
@@ -201,10 +203,10 @@ void lower_phy_uplink_processor_impl::process_collecting(const baseband_gateway_
   // For each port, concatenate samples.
   for (unsigned i_port = 0; i_port != nof_rx_ports; ++i_port) {
     // Select view of the temporary buffer.
-    span<cf_t> temp_buffer_dst = temp_buffer[i_port].subspan(temp_buffer_write_index, nof_samples);
+    span<ci16_t> temp_buffer_dst = temp_buffer[i_port].subspan(temp_buffer_write_index, nof_samples);
 
     // Select view of the input samples.
-    span<const cf_t> temp_buffer_src = samples.get_channel_buffer(i_port).first(nof_samples);
+    span<const ci16_t> temp_buffer_src = samples.get_channel_buffer(i_port).first(nof_samples);
 
     // Append input samples into the temporary buffer.
     srsvec::copy(temp_buffer_dst, temp_buffer_src);
@@ -219,69 +221,66 @@ void lower_phy_uplink_processor_impl::process_collecting(const baseband_gateway_
     return;
   }
 
+  // View over the temporary float-based complex samples for CFO processor.
+  span<cf_t> view;
   // Perform carrier frequency offset compensation.
   for (unsigned i_channel = 0; i_channel != temp_buffer.get_nof_channels(); ++i_channel) {
-    span<cf_t> channel_buffer = temp_buffer.get_writer().get_channel_buffer(i_channel);
-    cfo_processor.process(channel_buffer);
+    // The CFO compensation is not currently supported for 16-bit complex integer samples. So, it must convert it to
+    // single-precision complex floating-point samples.
+    span<ci16_t> channel_buffer = temp_buffer.get_writer().get_channel_buffer(i_channel);
+    view                        = temp_cf_buffer.get_view({i_channel}).subspan(0, channel_buffer.size());
+    srsvec::convert(view, channel_buffer, scaling_factor_ci16_to_cf);
+    cfo_processor.process(view);
+    srsvec::convert(channel_buffer, view, scaling_factor_cf_to_ci16);
   }
 
   // Advance CFO processor number of samples.
   cfo_processor.advance(temp_buffer.get_nof_samples());
 
   // Process symbol by PRACH processor.
-  prach_processor_baseband::symbol_context prach_context;
-  prach_context.slot   = current_slot;
-  prach_context.symbol = current_symbol_index;
-  prach_context.sector = sector_id;
+  prach_processor_baseband::symbol_context prach_context = {
+      .slot = current_slot, .symbol = current_symbol_index, .sector = sector_id};
   prach_proc->get_baseband().process_symbol(temp_buffer.get_reader(), prach_context);
 
   // Process symbol by PUxCH processor.
-  lower_phy_rx_symbol_context puxch_context;
-  puxch_context.slot        = current_slot;
-  puxch_context.sector      = sector_id;
-  puxch_context.nof_symbols = current_symbol_index;
-  bool processed            = puxch_proc->get_baseband().process_symbol(temp_buffer.get_reader(), puxch_context);
+  lower_phy_rx_symbol_context puxch_context = {
+      .slot = current_slot, .sector = sector_id, .nof_symbols = current_symbol_index};
+  bool processed = puxch_proc->get_baseband().process_symbol(temp_buffer.get_reader(), puxch_context);
 
   if (processed) {
-    sample_statistics<float>   avg_power;
-    sample_statistics<float>   peak_power;
-    lower_phy_baseband_metrics metrics;
-    unsigned                   nof_channels = temp_buffer.get_nof_channels();
+    sample_statistics<float> avg_power;
+    sample_statistics<float> peak_power;
+    unsigned                 nof_channels = temp_buffer.get_nof_channels();
 
     uint64_t total_processed_samples = 0;
     uint64_t nof_clipped_samples     = 0;
 
     // Process received signal before demodulation.
     for (unsigned i_channel = 0; i_channel != nof_channels; ++i_channel) {
-      // Perform signal measurements.
-      span<cf_t> channel_buffer = temp_buffer.get_writer().get_channel_buffer(i_channel);
-      avg_power.update(srsvec::average_power(channel_buffer));
-      peak_power.update(srsvec::max_abs_element(channel_buffer).second);
-      nof_clipped_samples += srsvec::count_if_part_abs_greater_than(channel_buffer, 0.95);
-      total_processed_samples += channel_buffer.size();
+      // Perform signal measurements. Reuse the previous view of the float-based complex samples.
+      avg_power.update(srsvec::average_power(view));
+      peak_power.update(srsvec::max_abs_element(view).second);
+      nof_clipped_samples += srsvec::count_if_part_abs_greater_than(view, 0.95);
+      total_processed_samples += view.size();
     }
 
-    metrics.avg_power  = avg_power.get_mean();
-    metrics.peak_power = peak_power.get_max();
-    metrics.clipping   = std::pair<uint64_t, uint64_t>{nof_clipped_samples, total_processed_samples};
-
+    lower_phy_baseband_metrics metrics = {
+        .avg_power  = avg_power.get_mean(),
+        .peak_power = peak_power.get_max(),
+        .clipping   = std::pair<uint64_t, uint64_t>{nof_clipped_samples, total_processed_samples}};
     notifier->on_new_metrics(metrics);
   }
 
   // Detect half-slot boundary.
   if (current_symbol_index == (nof_symbols_per_slot / 2) - 1) {
     // Notify half slot boundary.
-    lower_phy_timing_context context;
-    context.slot = current_slot;
-    notifier->on_half_slot(context);
+    notifier->on_half_slot(lower_phy_timing_context{.slot = current_slot, .time_point = {}});
   }
 
   // Detect full slot boundary.
   if (current_symbol_index == nof_symbols_per_slot - 1) {
     // Notify full slot boundary.
-    lower_phy_timing_context context;
-    context.slot = current_slot;
-    notifier->on_full_slot(context);
+    notifier->on_full_slot(lower_phy_timing_context{.slot = current_slot, .time_point = {}});
   }
 
   // Process next symbol with the remainder samples.

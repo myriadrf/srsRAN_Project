@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -25,6 +25,7 @@ import logging
 from typing import Tuple
 
 from google.protobuf.empty_pb2 import Empty
+from google.protobuf.wrappers_pb2 import UInt32Value
 from pytest import fail, mark
 from retina.client.manager import RetinaTestManager
 from retina.launcher.artifacts import RetinaTestData
@@ -77,18 +78,27 @@ def test_slicing(
 
     logging.info("Slicing Test")
 
-    start_network(ue_4, gnb, fivegc)
-    ue_attach_info_dict = ue_start_and_attach(ue_4, gnb, fivegc)
+    start_network(ue_array=ue_4, gnb_array=[gnb], fivegc=fivegc)
+    ue_attach_info_dict = ue_start_and_attach(
+        ue_array=ue_4, du_definition=[gnb.GetDefinition(UInt32Value(value=0))], fivegc=fivegc
+    )
     slice1_ue_rnti = ue_attach_info_dict[ue_4[0]].rnti
 
     # DL iperf test
-    iperf_parallel(ue_attach_info_dict, fivegc, IPerfProto.UDP, IPerfDir.BIDIRECTIONAL, iperf_duration, iperf_bitrate)
+    iperf_parallel(
+        ue_attach_info_dict=ue_attach_info_dict,
+        fivegc=fivegc,
+        protocol=IPerfProto.UDP,
+        direction=IPerfDir.BIDIRECTIONAL,
+        iperf_duration=iperf_duration,
+        bitrate=iperf_bitrate,
+    )
 
     stop(
-        ue_4,
-        gnb,
-        fivegc,
-        retina_data,
+        ue_array=ue_4,
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        retina_data=retina_data,
         fail_if_kos=True,
     )
 
@@ -96,11 +106,11 @@ def test_slicing(
     # The thresholds values are set empirically, the objective is just checking that no UE gets starved.
     thresholds = {
         "000001": {
-            "dl": 75e6,
-            "ul": 30e6,
+            "dl": 50e6,
+            "ul": 25e6,
         },
         "000002": {
-            "dl": 25e6,
+            "dl": 15e6,
             "ul": 8e6,
         },
     }

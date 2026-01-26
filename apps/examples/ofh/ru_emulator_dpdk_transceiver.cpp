@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -46,7 +46,7 @@ void ru_emu_dpdk_receiver::start(frame_notifier& notifier_)
     report_error("Unable to start the DPDK ethernet frame receiver");
   }
 
-  // Block waiting for timing executor to start.
+  // Block waiting for receiver executor to start.
   fut.wait();
 
   logger.info("Started the DPDK ethernet frame receiver");

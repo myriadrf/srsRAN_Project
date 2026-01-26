@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -165,6 +165,7 @@ struct cell_harq_repository {
                        unsigned               harq_retx_timeout,
                        unsigned               max_harqs_per_ue,
                        unsigned               ntn_cs_koffset,
+                       bool                   harq_mode_b,
                        harq_timeout_notifier& timeout_notifier_,
                        srslog::basic_logger&  logger_);
   ~cell_harq_repository();
@@ -187,6 +188,7 @@ struct cell_harq_repository {
   std::unique_ptr<harq_alloc_history>                            alloc_hist;
 
   void               slot_indication(slot_point sl_tx);
+  void               stop();
   void               handle_harq_ack_timeout(harq_type& h, slot_point sl_tx);
   harq_type*         alloc_harq(du_ue_index_t ue_idx, slot_point sl_tx, slot_point sl_ack, unsigned max_nof_harq_retxs);
   void               dealloc_harq(harq_type& h);
@@ -198,7 +200,7 @@ struct cell_harq_repository {
   void               cancel_retxs(harq_type& h);
   harq_type*         find_ue_harq_in_state(du_ue_index_t ue_idx, harq_utils::harq_state_t state);
   const harq_type*   find_ue_harq_in_state(du_ue_index_t ue_idx, harq_utils::harq_state_t state) const;
-  bool               is_ntn_mode() const;
+  bool               is_ntn_harq_mode_b_enabled() const;
 };
 
 template <bool IsDl>
@@ -436,22 +438,28 @@ public:
 
   cell_harq_manager(unsigned                               max_ues,
                     unsigned                               max_harqs_per_ue,
-                    std::unique_ptr<harq_timeout_notifier> notifier             = nullptr,
+                    std::unique_ptr<harq_timeout_notifier> dl_notifier          = nullptr,
+                    std::unique_ptr<harq_timeout_notifier> ul_notifier          = nullptr,
                     unsigned                               dl_harq_retx_timeout = DEFAULT_HARQ_RETX_TIMEOUT_SLOTS,
                     unsigned                               ul_harq_retx_timeout = DEFAULT_HARQ_RETX_TIMEOUT_SLOTS,
                     unsigned                               max_ack_wait_timeout = DEFAULT_ACK_TIMEOUT_SLOTS,
-                    unsigned                               ntn_cs_koffset       = 0);
+                    unsigned                               ntn_cs_koffset       = 0,
+                    bool                                   dl_harq_mode_b       = false,
+                    bool                                   ul_harq_mode_b       = false);
 
   /// Update slot, and checks if there are HARQ processes that have reached maxReTx with no ACK
   void slot_indication(slot_point sl_tx);
+
+  /// Called on cell deactivation.
+  void stop();
 
   /// Create new UE HARQ entity.
   /// \param rnti RNTI of the UE
   /// \param nof_dl_harq_procs Number of DL HARQ processes that the UE can support. This value is derived based on
   /// the UE capabilities, and passed to the UE via RRC signalling. See TS38.331, "nrofHARQ-ProcessesForPDSCH".
-  /// Values: {2, 4, 6, 10, 12, 16}.
+  /// Values: {2, 4, 6, 10, 12, 16, 32}.
   /// \param nof_ul_harq_procs Number of UL HARQ processes that gNB can support. This value is implementation-defined
-  /// and can up to 16 (there are up to 4 bits for HARQ-Id signalling).
+  /// and can up to 32 (there are up to 4 bits for HARQ-Id signalling, up to 5 bits in an NTN cell).
   unique_ue_harq_entity add_ue(du_ue_index_t ue_idx,
                                rnti_t        crnti,
                                unsigned      nof_dl_harq_procs = MAX_NOF_HARQS,
@@ -482,7 +490,8 @@ private:
   new_ul_tx(du_ue_index_t ue_idx, rnti_t rnti, slot_point pusch_slot, unsigned max_harq_nof_retxs);
 
   const unsigned                         max_harqs_per_ue;
-  std::unique_ptr<harq_timeout_notifier> timeout_notifier;
+  std::unique_ptr<harq_timeout_notifier> dl_timeout_notifier;
+  std::unique_ptr<harq_timeout_notifier> ul_timeout_notifier;
   srslog::basic_logger&                  logger;
 
   harq_utils::cell_harq_repository<true>  dl;
@@ -567,8 +576,9 @@ public:
   std::optional<ul_harq_process_handle>       find_pending_ul_retx();
   std::optional<const ul_harq_process_handle> find_pending_ul_retx() const;
 
-  std::optional<dl_harq_process_handle> find_dl_harq_waiting_ack();
-  std::optional<ul_harq_process_handle> find_ul_harq_waiting_ack();
+  std::optional<dl_harq_process_handle>       find_dl_harq_waiting_ack();
+  std::optional<const dl_harq_process_handle> find_dl_harq_waiting_ack() const;
+  std::optional<ul_harq_process_handle>       find_ul_harq_waiting_ack();
 
   /// Fetch a DL HARQ process expecting ACK info based on HARQ-ACK UCI slot and HARQ bit index.
   /// \param[in] uci_slot Slot when the UCI is to be received.

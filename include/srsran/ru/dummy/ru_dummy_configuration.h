@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -39,12 +39,6 @@ struct ru_dummy_configuration {
   subcarrier_spacing scs;
   /// Number of sectors.
   unsigned nof_sectors;
-  /// Receive resource grid number of PRB.
-  unsigned rx_rg_nof_prb;
-  /// Receive resource grid number of ports.
-  unsigned rx_rg_nof_ports;
-  /// Receive PRACH buffer number of ports.
-  unsigned rx_prach_nof_ports;
   /// \brief Number of slots is notified in advance of the transmission time.
   ///
   /// Sets the maximum allowed processing delay in slots.

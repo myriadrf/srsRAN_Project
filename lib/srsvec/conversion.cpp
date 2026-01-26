@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -454,28 +454,36 @@ static void convert_scaled_int16_to_bf16_simd(bf16_t* out, const int16_t* in, co
   }
 }
 
-void srsran::srsvec::convert(span<const cf_t> x, float scale, span<int16_t> z)
+void srsran::srsvec::convert(span<int16_t> z, span<const cf_t> x, float scale)
 {
   srsran_assert(2 * x.size() == z.size(), "Invalid input or output span sizes");
 
   convert_fi_simd(reinterpret_cast<const float*>(x.data()), z.data(), scale, z.size());
 }
 
-void srsran::srsvec::convert(span<const int16_t> x, float scale, span<cf_t> z)
+void srsran::srsvec::convert(span<ci16_t> z, span<const cbf16_t> x, float scale)
+{
+  srsran_assert(x.size() == z.size(), "Invalid input or output span sizes");
+
+  convert_bf16_to_int16_simd(
+      reinterpret_cast<int16_t*>(z.data()), reinterpret_cast<const bf16_t*>(x.data()), scale, z.size());
+}
+
+void srsran::srsvec::convert(span<cf_t> z, span<const int16_t> x, float scale)
 {
   srsran_assert(x.size() == 2 * z.size(), "Invalid input or output span sizes");
 
   convert_if_simd(reinterpret_cast<float*>(z.data()), x.data(), scale, x.size());
 }
 
-void srsran::srsvec::convert(span<const int16_t> x, float scale, span<float> z)
+void srsran::srsvec::convert(span<float> z, span<const int16_t> x, float scale)
 {
   srsran_assert(x.size() == z.size(), "Invalid input or output span sizes");
 
   convert_if_simd(z.data(), x.data(), scale, x.size());
 }
 
-void srsran::srsvec::convert(span<const float> x, float scale, span<int16_t> z)
+void srsran::srsvec::convert(span<int16_t> z, span<const float> x, float scale)
 {
   srsran_assert(x.size() == z.size(), "Invalid input or output span sizes");
 
@@ -541,4 +549,18 @@ void srsran::srsvec::convert(span<bf16_t> z, span<const int16_t> x, float scale)
   srsran_assert(x.size() == z.size(), "Invalid input or output span sizes");
 
   convert_int16_to_bf16_simd(z.data(), x.data(), scale, z.size());
+}
+
+void srsran::srsvec::convert(span<ci16_t> z, span<const cf_t> x, float scale)
+{
+  srsran_assert(x.size() == z.size(), "Invalid input or output span sizes");
+
+  convert_fi_simd(reinterpret_cast<const float*>(x.data()), reinterpret_cast<int16_t*>(z.data()), scale, z.size() * 2);
+}
+
+void srsran::srsvec::convert(span<cf_t> z, span<const ci16_t> x, float scale)
+{
+  srsran_assert(x.size() == z.size(), "Invalid input or output span sizes");
+
+  convert_if_simd(reinterpret_cast<float*>(z.data()), reinterpret_cast<const int16_t*>(x.data()), scale, z.size() * 2);
 }

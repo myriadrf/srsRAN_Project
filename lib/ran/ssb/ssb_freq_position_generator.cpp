@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -126,14 +126,21 @@ ssb_freq_position_generator::ssb_freq_position_generator(unsigned           dl_a
                                                   band_helper::N_SIZE_SYNC_RASTER_2_HZ));
     }
   } else {
-    N_raster = static_cast<unsigned>(std::floor((ss_ref_l_bound_hz - band_helper::N_REF_OFFSET_24_5_GHZ_100_GHZ) /
-                                                band_helper::N_SIZE_SYNC_RASTER_3_HZ));
+    N_raster =
+        static_cast<unsigned>(std::floor((ss_ref_l_bound_hz - band_helper::BASE_FREQ_GSCN_RASTER_24_5_GHZ_100_GHZ) /
+                                         band_helper::N_SIZE_SYNC_RASTER_3_HZ));
   }
 
-  // This constraint comes from the scheduler, which cannot allocate PDCCH starting at symbols different from 0;
-  // therefore, as per Table 13-11, TS 38.213, only the searchSpaceZero indices with starting symbol 0 are those with
-  // index <= 9.
-  max_ss0_idx = 9;
+  // Select the maximum Search Space Zero index.
+  if (band_helper::get_freq_range(band) == frequency_range::FR1) {
+    // For FR1, this constraint comes from the scheduler, which cannot allocate PDCCH starting at symbols different from
+    // 0; therefore, as per Table 13-11, TS 38.213, only the searchSpaceZero indices with starting symbol 0 are those
+    // with index <= 9.
+    max_ss0_idx = 9;
+  } else {
+    // For FR2, this constraint comes from the reserved rows in Table 13-12, TS 38.213.
+    max_ss0_idx = 13;
+  }
 
   // As per TS38.213, Section 4.1.
   switch (ssb_case) {
@@ -156,7 +163,8 @@ double ssb_freq_position_generator::get_ss_ref_hz(unsigned N, unsigned M) const
 {
   // Get SS_ref given the parameters N, M, as per Table 5.4.3.1-1, TS 38.104.
   if (dl_arfcn >= band_helper::MIN_ARFCN_24_5_GHZ_100_GHZ) {
-    return band_helper::N_REF_OFFSET_24_5_GHZ_100_GHZ + static_cast<double>(N) * band_helper::N_SIZE_SYNC_RASTER_3_HZ;
+    return band_helper::BASE_FREQ_GSCN_RASTER_24_5_GHZ_100_GHZ +
+           static_cast<double>(N) * band_helper::N_SIZE_SYNC_RASTER_3_HZ;
   }
 
   if (dl_arfcn >= band_helper::MIN_ARFCN_3_GHZ_24_5_GHZ) {
@@ -198,11 +206,11 @@ unsigned ssb_freq_position_generator::find_M_raster()
     // constraints.
     if (is_ssb_inside_band) {
       const bool is_scs_30khz_spacing = scs_common == subcarrier_spacing::kHz30 && scs_ssb == subcarrier_spacing::kHz30;
-      const bool is_multiple_of_scs   = is_scs_30khz_spacing
-                                            ? fmod(static_cast<unsigned>(f_ssb_0_hz - point_A_hz),
-                                                 scs_to_khz(subcarrier_spacing::kHz30) * band_helper::KHZ_TO_HZ) == 0.0
-                                            : fmod(static_cast<unsigned>(f_ssb_0_hz - point_A_hz),
-                                                 scs_to_khz(subcarrier_spacing::kHz15) * band_helper::KHZ_TO_HZ) == 0.0;
+      const bool is_multiple_of_scs =
+          is_scs_30khz_spacing ? std::fmod(static_cast<unsigned>(f_ssb_0_hz - point_A_hz),
+                                           scs_to_khz(subcarrier_spacing::kHz30) * band_helper::KHZ_TO_HZ) == 0.0
+                               : std::fmod(static_cast<unsigned>(f_ssb_0_hz - point_A_hz),
+                                           scs_to_khz(subcarrier_spacing::kHz15) * band_helper::KHZ_TO_HZ) == 0.0;
 
       if (is_multiple_of_scs) {
         M_raster = M;
@@ -276,7 +284,7 @@ ssb_freq_location ssb_freq_position_generator::get_next_ssb_location()
     if (is_ssb_inside_band) {
       const subcarrier_spacing ref_scs = (scs_common == scs_ssb) ? scs_ssb : band_helper::get_ssb_ref_scs(scs_ssb);
       const bool               is_multiple_of_scs =
-          fmod(f_ssb_0_hz - point_A_hz, static_cast<double>(scs_to_khz(ref_scs) * band_helper::KHZ_TO_HZ)) == 0.0;
+          std::fmod(f_ssb_0_hz - point_A_hz, static_cast<double>(scs_to_khz(ref_scs) * band_helper::KHZ_TO_HZ)) == 0.0;
 
       if (is_multiple_of_scs) {
         ssb.offset_to_point_A = compute_offset_to_pointA(f_ssb_0_hz, point_A_hz, scs_common);
@@ -329,9 +337,10 @@ ssb_freq_location ssb_freq_position_generator::get_next_ssb_location_special_ras
       const bool is_scs_30khz_spacing = scs_common == subcarrier_spacing::kHz30 && scs_ssb == subcarrier_spacing::kHz30;
       const bool is_multiple_of_scs =
           is_scs_30khz_spacing
-              ? fmod(f_ssb_0_hz - point_A_hz,
-                     static_cast<double>(scs_to_khz(subcarrier_spacing::kHz30) * band_helper::KHZ_TO_HZ)) == 0.0
-              : fmod(f_ssb_0_hz - point_A_hz, scs_to_khz(subcarrier_spacing::kHz15) * band_helper::KHZ_TO_HZ) == 0.0;
+              ? std::fmod(f_ssb_0_hz - point_A_hz,
+                          static_cast<double>(scs_to_khz(subcarrier_spacing::kHz30) * band_helper::KHZ_TO_HZ)) == 0.0
+              : std::fmod(f_ssb_0_hz - point_A_hz, scs_to_khz(subcarrier_spacing::kHz15) * band_helper::KHZ_TO_HZ) ==
+                    0.0;
 
       if (is_multiple_of_scs) {
         ssb.offset_to_point_A = compute_offset_to_pointA(f_ssb_0_hz, point_A_hz, scs_common);

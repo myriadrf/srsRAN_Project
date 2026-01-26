@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,12 +22,12 @@
 
 #include "srsran/rrc/rrc_du_factory.h"
 #include "rrc_du_impl.h"
-#include "ue/rrc_ue_impl.h"
+#include "srsran/rrc/rrc_config.h"
 
 using namespace srsran;
 using namespace srs_cu_cp;
 
-std::unique_ptr<rrc_du> srsran::srs_cu_cp::create_rrc_du(const rrc_du_creation_message& msg)
+std::unique_ptr<rrc_du> srsran::srs_cu_cp::create_rrc_du(const rrc_cfg_t& cfg)
 {
-  return std::make_unique<rrc_du_impl>(msg.cfg, msg.rrc_du_cu_cp_notifier);
+  return std::make_unique<rrc_du_impl>(cfg);
 }

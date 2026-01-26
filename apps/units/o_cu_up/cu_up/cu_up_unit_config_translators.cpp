@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -58,6 +58,7 @@ srs_cu_up::cu_up_config srsran::generate_cu_up_config(const cu_up_unit_config& c
   out_cfg.test_mode_cfg.nia_algo             = config.test_mode_cfg.nia_algo;
   out_cfg.test_mode_cfg.ue_ambr              = config.test_mode_cfg.ue_ambr;
   out_cfg.test_mode_cfg.attach_detach_period = config.test_mode_cfg.attach_detach_period;
+  out_cfg.test_mode_cfg.reestablish_period   = config.test_mode_cfg.reestablish_period;
   return out_cfg;
 }
 
@@ -99,14 +100,12 @@ void srsran::fill_cu_up_worker_manager_config(worker_manager_config& config, con
 {
   config.cu_up_cfg = worker_manager_config::cu_up_config{};
 
-  config.cu_up_cfg.value().dl_ue_executor_queue_size   = unit_cfg.exec_cfg.dl_ue_executor_queue_size;
-  config.cu_up_cfg.value().ul_ue_executor_queue_size   = unit_cfg.exec_cfg.ul_ue_executor_queue_size;
-  config.cu_up_cfg.value().ctrl_ue_executor_queue_size = unit_cfg.exec_cfg.ctrl_ue_executor_queue_size;
-  config.cu_up_cfg.value().strand_batch_size           = unit_cfg.exec_cfg.strand_batch_size;
-  config.cu_up_cfg.value().executor_tracing_enable     = unit_cfg.exec_cfg.executor_tracing_enable;
-  if (unit_cfg.metrics.layers_cfg.enable_cu_up_executor) {
-    config.cu_up_cfg.value().metrics_period = std::chrono::milliseconds(unit_cfg.metrics.cu_up_report_period);
-  }
+  config.cu_up_cfg->dl_ue_executor_queue_size   = unit_cfg.exec_cfg.dl_ue_executor_queue_size;
+  config.cu_up_cfg->ul_ue_executor_queue_size   = unit_cfg.exec_cfg.ul_ue_executor_queue_size;
+  config.cu_up_cfg->ctrl_ue_executor_queue_size = unit_cfg.exec_cfg.ctrl_ue_executor_queue_size;
+  config.cu_up_cfg->strand_batch_size           = unit_cfg.exec_cfg.strand_batch_size;
+  config.cu_up_cfg->executor_tracing_enable     = unit_cfg.trace_cfg.cu_up_enable;
+  config.cu_up_cfg->skip_cu_up_executor         = unit_cfg.metrics.layers_cfg.skip_cu_up_executor;
 
   auto& pcap_cfg = config.pcap_cfg;
   if (unit_cfg.pcap_cfg.e1ap.enabled) {

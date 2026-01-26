@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -93,6 +93,12 @@ static error_type<std::string> validate_rach_cfg_common(const sched_cell_configu
       prach_configuration_get(freq_range, dplx_mode, rach_cfg_cmn.rach_cfg_generic.prach_config_index);
   VERIFY(prach_cfg.format < prach_format_type::invalid, "Invalid PRACH format");
 
+  // Check PRACH root sequence index.
+  code = prach_helper::prach_root_sequence_index_is_valid(rach_cfg_cmn.prach_root_seq_index, prach_cfg.format);
+  if (not code.has_value()) {
+    return code;
+  }
+
   subcarrier_spacing pusch_scs = msg.ul_cfg_common.init_ul_bwp.generic_params.scs;
 
   // Check if the PRACH preambles fall into UL slots
@@ -168,13 +174,6 @@ static error_type<std::string> validate_pucch_cfg_common(const sched_cell_config
 {
   VERIFY(msg.ul_cfg_common.init_ul_bwp.pucch_cfg_common.has_value(),
          "Cells without PUCCH-ConfigCommon are not supported");
-  for (const auto& pucch_guard : msg.pucch_guardbands) {
-    const auto bwp_crbs = msg.ul_cfg_common.init_ul_bwp.generic_params.crbs;
-    VERIFY(bwp_crbs.contains(prb_to_crb(bwp_crbs, pucch_guard.prbs)),
-           "PUCCH guardbands={} fall outside of the initial BWP RBs={}",
-           pucch_guard.prbs,
-           msg.ul_cfg_common.init_ul_bwp.generic_params.crbs);
-  }
 
   return {};
 }

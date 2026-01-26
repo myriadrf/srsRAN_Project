@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -45,11 +45,12 @@
 #include "tests/test_doubles/f1ap/f1ap_test_messages.h"
 #include "tests/test_doubles/mac/mac_test_messages.h"
 #include "tests/test_doubles/pdcp/pdcp_pdu_generator.h"
-#include "tests/test_doubles/scheduler/scheduler_result_test.h"
+#include "tests/test_doubles/scheduler/scheduler_result_finder.h"
 #include "tests/unittests/f1ap/du/f1ap_du_test_helpers.h"
 #include "srsran/adt/mpmc_queue.h"
 #include "srsran/asn1/f1ap/f1ap_pdu_contents_ue.h"
 #include "srsran/du/du_cell_config_helpers.h"
+#include "srsran/du/du_high/du_high_clock_controller.h"
 #include "srsran/du/du_high/du_high_configuration.h"
 #include "srsran/du/du_high/du_high_executor_mapper.h"
 #include "srsran/du/du_high/du_metrics_notifier.h"
@@ -59,6 +60,8 @@
 #include "srsran/scheduler/config/scheduler_expert_config.h"
 #include "srsran/scheduler/config/scheduler_expert_config_factory.h"
 #include "srsran/support/benchmark_utils.h"
+#include "srsran/support/format/fmt_to_c_str.h"
+#include "srsran/support/io/io_broker_factory.h"
 #include "srsran/support/rtsan.h"
 #include "srsran/support/test_utils.h"
 #include "srsran/support/tracing/event_tracing.h"
@@ -93,7 +96,7 @@ struct bench_params {
   /// \brief Logical cores used by the "du_cell" thread.
   std::vector<unsigned> du_cell_cores = {};
   /// \brief Policy scheduler type.
-  policy_scheduler_expert_config strategy_cfg = time_qos_scheduler_expert_config{};
+  scheduler_policy_config strategy_cfg = time_qos_scheduler_config{};
   /// \brief Whether the trace is enabled. This gives more diagnostics of the scheduler latency, at the cost of some
   /// slowdown.
   bool sched_trace_enabled = false;
@@ -153,7 +156,7 @@ static void parse_args(int argc, char** argv, bench_params& params)
           params.dplx_mode = duplex_mode::TDD;
         } else {
           usage(argv[0], params);
-          exit(0);
+          std::exit(0);
         }
         break;
       }
@@ -185,12 +188,12 @@ static void parse_args(int argc, char** argv, bench_params& params)
         break;
       case 'P': {
         if (std::string(optarg) == "time_qos") {
-          params.strategy_cfg = time_qos_scheduler_expert_config{};
+          params.strategy_cfg = time_qos_scheduler_config{};
         } else if (std::string(optarg) == "time_rr") {
-          params.strategy_cfg = time_rr_scheduler_expert_config{};
+          params.strategy_cfg = time_rr_scheduler_config{};
         } else {
           usage(argv[0], params);
-          exit(0);
+          std::exit(0);
         }
       } break;
       case 't':
@@ -199,7 +202,7 @@ static void parse_args(int argc, char** argv, bench_params& params)
       case 'h':
       default:
         usage(argv[0], params);
-        exit(0);
+        std::exit(0);
     }
   }
 
@@ -230,7 +233,7 @@ static void print_args(const bench_params& params)
   fmt::print("- F1-U DL PDU size [bytes]: {}\n", params.pdu_size);
   fmt::print("- BSR size [bytes]: {}\n", params.ul_bsr_bytes);
   fmt::print("- Max DL RB grant size [RBs]: {}\n", params.max_dl_rb_grant);
-  if (std::holds_alternative<time_qos_scheduler_expert_config>(params.strategy_cfg)) {
+  if (std::holds_alternative<time_qos_scheduler_config>(params.strategy_cfg)) {
     fmt::print("- Policys scheduler: time_qos\n");
   } else {
     fmt::print("- Policys scheduler: time_rr\n");
@@ -424,9 +427,11 @@ public:
 
   std::unique_ptr<f1u_du_gateway_bearer> create_du_bearer(uint32_t                                   ue_index,
                                                           drb_id_t                                   drb_id,
+                                                          s_nssai_t                                  s_nssai,
                                                           five_qi_t                                  five_qi,
                                                           srs_du::f1u_config                         config,
                                                           const gtpu_teid_t&                         dl_teid,
+                                                          gtpu_teid_pool&                            dl_teid_pool,
                                                           const up_transport_layer_info&             ul_up_tnl_info,
                                                           srs_du::f1u_du_gateway_bearer_rx_notifier& du_rx,
                                                           timer_factory                              timers,
@@ -572,14 +577,14 @@ class du_high_bench
   static constexpr unsigned PDCP_MAX_HDR_LEN    = 3;
 
 public:
-  du_high_bench(unsigned                              dl_bytes_per_slot_,
-                unsigned                              ul_bsr_bytes_,
-                unsigned                              max_nof_rbs_per_dl_grant,
-                units::bytes                          f1u_pdu_size_,
-                span<unsigned>                        du_cell_cores,
-                const policy_scheduler_expert_config& strategy_cfg,
-                bool                                  sched_tracing_enabled,
-                const cell_config_builder_params&     builder_params = {}) :
+  du_high_bench(unsigned                          dl_bytes_per_slot_,
+                unsigned                          ul_bsr_bytes_,
+                unsigned                          max_nof_rbs_per_dl_grant,
+                units::bytes                      f1u_pdu_size_,
+                span<unsigned>                    du_cell_cores,
+                const scheduler_policy_config&    strategy_cfg,
+                bool                              sched_tracing_enabled,
+                const cell_config_builder_params& builder_params = {}) :
     params(builder_params),
     f1u_dl_pdu_bytes_per_slot(dl_bytes_per_slot_),
     f1u_pdu_size(f1u_pdu_size_),
@@ -606,7 +611,7 @@ public:
     cfg.ran.cells                                  = {config_helpers::make_default_du_cell_config(params)};
     cfg.ran.sched_cfg                              = config_helpers::make_default_scheduler_expert_config();
     cfg.ran.sched_cfg.log_high_latency_diagnostics = sched_tracing_enabled;
-    cfg.ran.sched_cfg.ue.strategy_cfg              = strategy_cfg;
+    cfg.ran.sched_cfg.ue.policy_cfg                = strategy_cfg;
     cfg.ran.sched_cfg.ue.pdsch_nof_rbs             = {1, max_nof_rbs_per_dl_grant};
     cfg.ran.mac_cfg                                = mac_expert_config{.configs = {{10000, 10000, 10000}}};
     cfg.ran.qos = config_helpers::make_default_du_qos_config_list(/* warn_on_drop */ true, 1000);
@@ -615,17 +620,17 @@ public:
     dependencies.f1c_client  = &sim_cu_cp;
     dependencies.f1u_gw      = &sim_cu_up;
     dependencies.phy_adapter = &sim_phy;
-    dependencies.timers      = &timers;
+    dependencies.timer_ctrl  = timer_ctrl.get();
     dependencies.du_notifier = &metrics_handler;
     dependencies.mac_p       = &mac_pcap;
     dependencies.rlc_p       = &rlc_pcap;
 
     // Increase nof. PUCCH resources to accommodate more UEs.
-    cfg.ran.cells[0].pucch_cfg.nof_sr_resources                     = 30;
-    cfg.ran.cells[0].pucch_cfg.nof_csi_resources                    = 30;
-    cfg.ran.cells[0].pucch_cfg.nof_ue_pucch_f2_or_f3_or_f4_res_harq = 8;
-    cfg.ran.cells[0].pucch_cfg.nof_ue_pucch_f0_or_f1_res_harq       = 8;
-    cfg.ran.cells[0].pucch_cfg.nof_cell_harq_pucch_res_sets         = 4;
+    cfg.ran.cells[0].pucch_cfg.nof_cell_sr_resources    = 30;
+    cfg.ran.cells[0].pucch_cfg.nof_cell_csi_resources   = 30;
+    cfg.ran.cells[0].pucch_cfg.res_set_1_size           = 8;
+    cfg.ran.cells[0].pucch_cfg.res_set_0_size           = 8;
+    cfg.ran.cells[0].pucch_cfg.nof_cell_res_set_configs = 4;
     auto& f1_params                             = cfg.ran.cells[0].pucch_cfg.f0_or_f1_params.emplace<pucch_f1_params>();
     f1_params.nof_cyc_shifts                    = pucch_nof_cyclic_shifts::six;
     f1_params.occ_supported                     = true;
@@ -654,6 +659,7 @@ public:
   void stop()
   {
     du_hi->stop();
+    timer_ctrl.reset();
     workers->stop();
   }
 
@@ -751,6 +757,9 @@ public:
 
     // Wait until it's a full UL slot to send Msg3.
     auto next_ul_slot = [this]() {
+      // Synchronization point to avoid that the upper layer executors get starved.
+      this->workers->wait_pending_tasks();
+
       return not cfg.ran.cells[to_du_cell_index(0)].tdd_ul_dl_cfg_common.has_value() or
              not is_tdd_full_ul_slot(cfg.ran.cells[to_du_cell_index(0)].tdd_ul_dl_cfg_common.value(),
                                      slot_point(next_sl_tx - tx_rx_delay - 1).slot_index());
@@ -768,6 +777,9 @@ public:
 
     // Wait for Msg4.
     auto dl_pdu_sched = [this, rnti]() {
+      // Synchronization point to avoid that the upper layer executors get starved.
+      this->workers->wait_pending_tasks();
+
       if (sim_phy.slot_dl_result.dl_res != nullptr) {
         return find_ue_pdsch_with_lcid(rnti, LCID_SRB0, sim_phy.slot_dl_result.dl_res->ue_grants) != nullptr;
       }
@@ -787,6 +799,9 @@ public:
     // Wait for RRC Setup Complete.
     std::unique_ptr<f1ap_message> pdu;
     auto                          ul_rrc_msg_rx = [this, &pdu]() {
+      // Synchronization point to avoid that the upper layer executors get starved.
+      this->workers->wait_pending_tasks();
+
       return sim_cu_cp.rx_f1ap_pdus.try_pop(pdu) and
              pdu->pdu.type().value == asn1::f1ap::f1ap_pdu_c::types_opts::init_msg and
              pdu->pdu.init_msg().value.type().value ==
@@ -815,6 +830,9 @@ public:
 
     // Wait for UE Context Setup Response.
     auto ue_setup_resp_rx = [this, &pdu]() {
+      // Synchronization point to avoid that the upper layer executors get starved.
+      this->workers->wait_pending_tasks();
+
       return sim_cu_cp.rx_f1ap_pdus.try_pop(pdu) and
              pdu->pdu.type().value == asn1::f1ap::f1ap_pdu_c::types_opts::successful_outcome and
              pdu->pdu.successful_outcome().value.type().value ==
@@ -836,6 +854,9 @@ public:
     bool rlc_status_rx      = false;
     bool rrc_reconf_comp_rx = false;
     report_fatal_error_if_not(run_slot_until([&]() {
+                                // Synchronization point to avoid that the upper layer executors get starved.
+                                this->workers->wait_pending_tasks();
+
                                 rlc_status_rx |= dl_pdu_sched_srb1();
                                 rrc_reconf_comp_rx |= ul_rrc_msg_rx();
                                 return rlc_status_rx & rrc_reconf_comp_rx;
@@ -1131,13 +1152,17 @@ public:
   dummy_metrics_handler                                 metrics_handler;
   timer_manager                                         timers{2048};
   std::unique_ptr<test_helpers::du_high_worker_manager> workers;
-  null_mac_pcap                                         mac_pcap;
-  null_rlc_pcap                                         rlc_pcap;
-  std::unique_ptr<du_high_impl>                         du_hi;
-  cu_cp_simulator                                       sim_cu_cp;
-  cu_up_simulator                                       sim_cu_up;
-  phy_simulator                                         sim_phy;
-  slot_point                                            next_sl_tx{0, 0};
+  std::unique_ptr<io_broker>                            broker{
+      create_io_broker(io_broker_type::epoll, io_broker_config{os_thread_realtime_priority::min() + 5})};
+  std::unique_ptr<mac_clock_controller> timer_ctrl{
+      srs_du::create_du_high_clock_controller(timers, *broker, workers->timer_executor())};
+  null_mac_pcap                 mac_pcap;
+  null_rlc_pcap                 rlc_pcap;
+  std::unique_ptr<du_high_impl> du_hi;
+  cu_cp_simulator               sim_cu_cp;
+  cu_up_simulator               sim_cu_up;
+  phy_simulator                 sim_phy;
+  slot_point                    next_sl_tx{0, 0};
 
   /// Determines whether a UE setup has completed.
   std::array<bool, MAX_NOF_DU_UES> ue_created_flag_list{false};
@@ -1214,17 +1239,17 @@ static cell_config_builder_params generate_custom_cell_config_builder_params(dup
 }
 
 /// \brief Benchmark DU-high with DL and/or UL only traffic using an RLC UM bearer.
-void benchmark_dl_ul_only_rlc_um(benchmarker&                          bm,
-                                 unsigned                              nof_ues,
-                                 duplex_mode                           dplx_mode,
-                                 unsigned                              dl_bytes_per_slot,
-                                 unsigned                              ul_bsr_bytes,
-                                 unsigned                              max_nof_rbs_per_dl_grant,
-                                 units::bytes                          dl_pdu_size,
-                                 span<unsigned>                        du_cell_cores,
-                                 bool                                  sched_tracing_enabled,
-                                 const policy_scheduler_expert_config& strategy_cfg,
-                                 unsigned                              nof_repetitions)
+void benchmark_dl_ul_only_rlc_um(benchmarker&                   bm,
+                                 unsigned                       nof_ues,
+                                 duplex_mode                    dplx_mode,
+                                 unsigned                       dl_bytes_per_slot,
+                                 unsigned                       ul_bsr_bytes,
+                                 unsigned                       max_nof_rbs_per_dl_grant,
+                                 units::bytes                   dl_pdu_size,
+                                 span<unsigned>                 du_cell_cores,
+                                 bool                           sched_tracing_enabled,
+                                 const scheduler_policy_config& strategy_cfg,
+                                 unsigned                       nof_repetitions)
 {
   auto                benchname = fmt::format("{}{}{}, {} UEs, RLC UM",
                                dl_bytes_per_slot > 0 ? "DL" : "",
@@ -1331,8 +1356,8 @@ static void configure_main_thread(span<const unsigned> du_cell_cores)
       CPU_SET(i, &cpuset);
     }
     int ret;
-    if ((ret = pthread_setaffinity_np(self, sizeof(cpuset), &cpuset)) != 0) {
-      fmt::print("Warning: Unable to set affinity for test thread. Cause: '{}'\n", strerror(ret));
+    if ((ret = ::pthread_setaffinity_np(self, sizeof(cpuset), &cpuset)) != 0) {
+      fmt::print("Warning: Unable to set affinity for test thread. Cause: '{}'\n", ::strerror(ret));
       return;
     }
   }

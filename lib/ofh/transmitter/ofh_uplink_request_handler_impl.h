@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -57,6 +57,8 @@ struct uplink_request_handler_impl_config {
   std::chrono::microseconds ul_processing_time;
   /// Transmission window timing parameters for delay management.
   tx_window_timing_parameters tx_timing_params;
+  /// If set to true, logs late events as warnings, otherwise as info.
+  bool enable_log_warnings_for_lates;
 };
 
 /// Uplink request handler implmentation dependencies.
@@ -85,7 +87,7 @@ public:
                               uplink_request_handler_impl_dependencies&& dependencies);
 
   // See interface for documentation.
-  void handle_prach_occasion(const prach_buffer_context& context, prach_buffer& buffer) override;
+  void handle_prach_occasion(const prach_buffer_context& context, shared_prach_buffer buffer) override;
 
   // See interface for documentation.
   void handle_new_uplink_slot(const resource_grid_context& context, const shared_resource_grid& grid) override;
@@ -111,6 +113,7 @@ private:
   std::shared_ptr<ether::eth_frame_pool>                  frame_pool;
   error_notifier&                                         err_notifier;
   uplink_request_handler_metrics_collector                metrics_collector;
+  bool                                                    enable_log_warnings_for_lates;
 };
 
 } // namespace ofh

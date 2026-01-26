@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,8 +22,8 @@
 
 #pragma once
 
-#include "srsran/support/detail/has_method.h"
 #include "srsran/support/executors/task_executor.h"
+#include "srsran/support/has_method.h"
 #include "srsran/support/srsran_assert.h"
 
 namespace srsran {

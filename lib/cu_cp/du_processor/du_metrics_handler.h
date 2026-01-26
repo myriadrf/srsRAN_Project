@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,7 +34,7 @@ public:
   virtual ~du_metrics_handler() = default;
 
   /// \brief Handle new request for metrics relative to a connected DU.
-  virtual metrics_report::du_info handle_du_metrics_report_request() const = 0;
+  virtual cu_cp_metrics_report::du_info handle_du_metrics_report_request() const = 0;
 };
 
 /// Interface used to capture the DU metrics from all the connected DUs to the CU-CP.
@@ -44,7 +44,7 @@ public:
   virtual ~du_repository_metrics_handler() = default;
 
   /// \brief Handle new metrics request for all the DU nodes connected to the CU-CP.
-  virtual std::vector<metrics_report::du_info> handle_du_metrics_report_request() const = 0;
+  virtual std::vector<cu_cp_metrics_report::du_info> handle_du_metrics_report_request() const = 0;
 };
 
 } // namespace srs_cu_cp

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,8 +29,8 @@
 
 namespace srsran {
 
-/// OFDM demodulator factory configuration. Provides the necessary dependency instances.
-struct ofdm_demodulator_common_configuration {
+/// OFDM demodulator dependencies. Provides the necessary dependency instances.
+struct ofdm_demodulator_dependencies {
   /// DFT instance. The ownership is transferred to the demodulator.
   std::unique_ptr<dft_processor> dft;
 };
@@ -38,7 +38,6 @@ struct ofdm_demodulator_common_configuration {
 /// Describes a generic OFDM symbol demodulator.
 class ofdm_symbol_demodulator_impl : public ofdm_symbol_demodulator
 {
-private:
   /// Indicates the DFT size.
   unsigned dft_size;
   /// Indicates the resource grid bandwidth in resource elements.
@@ -68,10 +67,10 @@ private:
 
 public:
   /// \brief Constructs an OFDM symbol demodulator.
-  /// \param[in] common_config Provides specific configuration parameters from the factory.
-  /// \param[in] ofdm_config Provides generic OFDM configuration parameters.
-  ofdm_symbol_demodulator_impl(ofdm_demodulator_common_configuration& common_config,
-                               const ofdm_demodulator_configuration&  ofdm_config);
+  /// \param[in] ofdm_config  Provides generic OFDM configuration parameters.
+  /// \param[in] dependencies Provides specific dependencies.
+  ofdm_symbol_demodulator_impl(const ofdm_demodulator_configuration& ofdm_config,
+                               ofdm_demodulator_dependencies         dependencies);
 
   /// \brief Gets the resource grid bandwidth in resource elements.
   /// \return The number of resource elements in the grid.
@@ -90,7 +89,10 @@ public:
   }
 
   // See interface for documentation.
-  void set_center_frequency(double center_frequency_Hz) override { next_center_freq_Hz = center_frequency_Hz; }
+  void set_center_frequency(double center_frequency_Hz) override
+  {
+    next_center_freq_Hz.store(center_frequency_Hz, std::memory_order_relaxed);
+  }
 
   // See interface for documentation.
   void
@@ -100,21 +102,20 @@ public:
 /// Describes a generic OFDM slot demodulator.
 class ofdm_slot_demodulator_impl : public ofdm_slot_demodulator
 {
-private:
   /// Cyclic prefix type.
   cyclic_prefix cp;
   /// Instance of symbol demodulator.
-  ofdm_symbol_demodulator_impl symbol_demodulator;
+  std::unique_ptr<ofdm_symbol_demodulator> symbol_demodulator;
 
 public:
   /// \brief Constructs an OFDM slot demodulator.
-  /// \param[in] common_config Provides specific configuration parameters from the factory.
-  /// \param[in] ofdm_config Provides generic OFDM configuration parameters.
-  ofdm_slot_demodulator_impl(ofdm_demodulator_common_configuration& common_config,
-                             const ofdm_demodulator_configuration&  ofdm_config) :
-    cp(ofdm_config.cp), symbol_demodulator(common_config, ofdm_config)
+  /// \param[in] ofdm_config       OFDM factory parameters.
+  /// \param[in] symbol_modulator_ OFDM symbol demodulator instance.
+  ofdm_slot_demodulator_impl(const ofdm_demodulator_configuration&    ofdm_config,
+                             std::unique_ptr<ofdm_symbol_demodulator> symbol_demodulator_) :
+    cp(ofdm_config.cp), symbol_demodulator(std::move(symbol_demodulator_))
   {
-    // Do nothing.
+    srsran_assert(symbol_demodulator, "Invalid OFDM symbol demodulator.");
   }
 
   // See interface for documentation;

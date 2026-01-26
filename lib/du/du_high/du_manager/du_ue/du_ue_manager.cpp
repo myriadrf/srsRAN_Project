@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -58,11 +58,6 @@ du_ue_index_t du_ue_manager::find_unused_du_ue_index()
   return INVALID_DU_UE_INDEX;
 }
 
-async_task<void> du_ue_manager::handle_f1_reset_request(const std::vector<du_ue_index_t>& ues_to_reset)
-{
-  return launch_async<du_ue_reset_procedure>(ues_to_reset, *this, cfg);
-}
-
 void du_ue_manager::handle_ue_create_request(const ul_ccch_indication_message& msg)
 {
   du_ue_index_t ue_idx_candidate = find_unused_du_ue_index();
@@ -113,16 +108,16 @@ du_ue_manager::handle_ue_config_request(const f1ap_ue_context_update_request& ms
   return launch_async<ue_configuration_procedure>(msg, *this, cfg);
 }
 
-async_task<void> du_ue_manager::handle_ue_delete_request(const f1ap_ue_delete_request& msg)
+async_task<void> du_ue_manager::handle_ue_delete_request(const f1ap_ue_delete_request& req)
 {
   // Enqueue UE deletion procedure
-  return launch_async<ue_deletion_procedure>(msg.ue_index, *this, cfg);
+  return launch_async<ue_deletion_procedure>(req.ue_index, *this, cfg, req.ran_resource_release_timeout);
 }
 
-async_task<void> du_ue_manager::handle_ue_deactivation_request(du_ue_index_t ue_index)
+async_task<void> du_ue_manager::handle_ue_drb_deactivation_request(du_ue_index_t ue_index)
 {
   if (not ue_db.contains(ue_index)) {
-    logger.warning("ue={}: UE deactivation request for inexistent UE index", fmt::underlying(ue_index));
+    logger.warning("ue={}: UE DRB deactivation request for inexistent UE index", fmt::underlying(ue_index));
     return launch_no_op_task();
   }
   return ue_db[ue_index].handle_activity_stop_request(false);
@@ -155,7 +150,7 @@ void du_ue_manager::handle_ue_config_applied(du_ue_index_t ue_index)
   ue_db[ue_index].resources.handle_ue_config_applied();
 
   // Forward configuration to MAC.
-  cfg.mac.ue_cfg.handle_ue_config_applied(ue_index);
+  cfg.mac.mgr.get_ue_configurator().handle_ue_config_applied(ue_index);
 }
 
 async_task<du_mac_sched_control_config_response>
@@ -264,6 +259,7 @@ void du_ue_manager::remove_ue(du_ue_index_t ue_index)
 
   srsran_assert(is_du_ue_index_valid(ue_index), "Invalid ue index={}", fmt::underlying(ue_index));
   logger.debug("ue={}: Scheduled deletion of UE context", fmt::underlying(ue_index));
+  ue_ctrl_loop[ue_index].clear_pending_tasks();
 
   // Schedule UE removal task
   ue_ctrl_loop[ue_index].schedule([this, ue_index](coro_context<async_task<void>>& ctx) {

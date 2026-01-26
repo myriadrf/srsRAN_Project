@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,7 +33,7 @@ namespace srsran {
 ///
 /// \param config Scheduler expert configuration.
 /// \return In case an invalid parameter is detected, returns a string containing an error message.
-error_type<std::string> is_scheduler_expert_config_valid(const scheduler_expert_config& config)
+inline error_type<std::string> is_scheduler_expert_config_valid(const scheduler_expert_config& config)
 {
   // :TODO: Implement me!
   return {};

@@ -8,7 +8,7 @@
 
 include:
   - project: softwareradiosystems/ci/tools
-    ref: "22"
+    ref: "23"
     file: .gitlab/ci-shared/setup/all.yml
   - local: .gitlab/ci/build.yml
 
@@ -19,7 +19,7 @@ build trx driver:
   extends: .build_and_unit
   variables:
     AMARISOFT_PACKAGE_REGISTRY: ${CI_API_V4_URL}/projects/44296988/packages/generic/amarisoft
-    AMARISOFT_VERSION: "2023-09-08"
+    AMARISOFT_VERSION: "2025-09-19"
     KUBERNETES_CPU_REQUEST: ${SRS_CPU_LIMIT}
     KUBERNETES_CPU_LIMIT: ${SRS_CPU_LIMIT}
     KUBERNETES_MEMORY_REQUEST: ${SRS_MEMORY_LIMIT}
@@ -31,8 +31,6 @@ build trx driver:
     - if: $ON_MR == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != $CI_DEFAULT_BRANCH
       when: never
     - if: $ON_MR
-    - if: $ON_WEB
-    - if: $ON_API
   retry: 2
   script:
     - |
@@ -88,33 +86,26 @@ build trx driver:
   artifacts: &trx_artifacts
     paths:
       - build_trx_srsran/libtrx_srsran.so
-    expire_in: 4 hours
+    expire_in: 3 days
 
 build amariue zmq driver:
   extends: build trx driver
   rules:
     - if: $CI_DESCRIPTION =~ /Nightly E2E Tests/
-  artifacts:
-    <<: *trx_artifacts
-    expire_in: 3 days
 
-build uesim zmq driver:
+custom zmq driver:
   extends: build trx driver
   rules:
-    - if: $CI_DESCRIPTION =~ /Nightly E2E Tests/
-  variables:
-    OS: fedora-39
-    AMARISOFT_VERSION: "2024-03-15"
-  artifacts:
-    <<: *trx_artifacts
-    expire_in: 3 days
-
-build amariue ntn zmq driver:
-  extends: build trx driver
-  rules:
-    - if: $CI_DESCRIPTION =~ /Nightly E2E Tests/
-  variables:
-    AMARISOFT_VERSION: "2024-12-13"
-  artifacts:
-    <<: *trx_artifacts
-    expire_in: 3 days
+    - if: $ON_MR
+      when: never
+    - if: $ON_DEFAULT_BRANCH
+      when: never
+    - if: $ON_SCHEDULE
+      when: never
+    - if: $ON_TAG
+      when: never
+    - if: $GROUP == "viavi" || $GROUP == "rf"
+      when: never
+    - if: $TESTBED != ""
+      variables:
+        AMARISOFT_VERSION: "2025-09-19"

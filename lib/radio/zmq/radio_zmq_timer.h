@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -66,10 +66,9 @@ public:
 
 private:
   /// No time value.
-  const std::chrono::time_point<std::chrono::steady_clock> no_time{};
-
+  static constexpr std::chrono::time_point<std::chrono::steady_clock> no_time{};
   /// Timeout value.
-  const std::chrono::milliseconds wait_timeout{1000};
+  static constexpr std::chrono::milliseconds wait_timeout{1000};
 
   /// Current expiration time.
   std::chrono::time_point<std::chrono::steady_clock> wait_expire_time = no_time;

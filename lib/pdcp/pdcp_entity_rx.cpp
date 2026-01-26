@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #include "pdcp_entity_rx.h"
 #include "../security/security_engine_impl.h"
 #include "srsran/instrumentation/traces/up_traces.h"
+#include "srsran/rohc/rohc_support.h"
 #include "srsran/support/bit_encoding.h"
 #include "srsran/support/executors/execution_context_description.h"
 #include "srsran/support/resource_usage/scoped_resource_usage.h"
@@ -63,6 +64,36 @@ pdcp_entity_rx::pdcp_entity_rx(uint32_t                        ue_index,
     });
     metrics_timer.run();
   }
+
+  // Validate configuration
+  if (is_srb()) {
+    if (cfg.header_compression.has_value()) {
+      report_error("ROHC not allowed for SRBs. {}", cfg);
+    }
+  } else {
+    if (cfg.t_reordering == pdcp_t_reordering::infinity) {
+      logger.log_warning("t-Reordering of infinity on DRBs is not advised. It can cause data stalls.");
+    }
+    if (cfg.header_compression.has_value()) {
+      const auto& header_compression = *cfg.header_compression;
+      if (header_compression.rohc_type == rohc::rohc_type_t::uplink_only_rohc) {
+        // Uplink-only ROHC allows only ROHC profile 0x0006, see TS 38.331 Sec. 6.3
+        for (auto profile : rohc::all_rohc_profiles) {
+          if (profile != rohc::rohc_profile::profile0x0006 && header_compression.profiles.is_profile_enabled(profile)) {
+            logger.log_error(
+                "Invalid ROHC profile for {}. profiles={}", header_compression.rohc_type, header_compression.profiles);
+            break;
+          }
+        }
+      }
+      if (!rohc::rohc_supported()) {
+        report_error("ROHC is not not supported. {}", cfg);
+      }
+    }
+  }
+
+  logger.log_info("PDCP configured. {}", cfg);
+
   // t-Reordering timer
   if (cfg.t_reordering != pdcp_t_reordering::ms0 && cfg.t_reordering != pdcp_t_reordering::infinity) {
     reordering_timer = ue_ul_timer_factory.create_timer();
@@ -71,10 +102,6 @@ pdcp_entity_rx::pdcp_entity_rx(uint32_t                        ue_index,
                            reordering_callback{this});
     }
   }
-  if (cfg.rb_type == pdcp_rb_type::drb && cfg.t_reordering == pdcp_t_reordering::infinity) {
-    logger.log_warning("t-Reordering of infinity on DRBs is not advised. It can cause data stalls.");
-  }
-  logger.log_info("PDCP configured. {}", cfg);
 
   // Populate null security engines
   sec_engine_pool.reserve(max_nof_crypto_workers);
@@ -116,6 +143,23 @@ void pdcp_entity_rx::restart_pdu_processing()
   }
 }
 
+void pdcp_entity_rx::begin_buffering()
+{
+  buffering = true;
+  logger.log_debug("Begin PDU buffering");
+}
+
+void pdcp_entity_rx::end_buffering()
+{
+  logger.log_debug("End PDU buffering");
+  buffering = false;
+  while (not pdu_buffer.empty()) {
+    byte_buffer_chain buf = std::move(pdu_buffer.top());
+    pdu_buffer.pop();
+    handle_pdu(std::move(buf));
+  }
+}
+
 manual_event_flag& pdcp_entity_rx::crypto_awaitable()
 {
   return token_mngr.get_awaitable();
@@ -125,6 +169,15 @@ void pdcp_entity_rx::handle_pdu(byte_buffer_chain buf)
 {
   if (stopped) {
     logger.log_info("Dropping PDU. Entity is stopped");
+    return;
+  }
+
+  if (buffering) {
+    if (not pdu_buffer.try_push(std::move(buf))) {
+      logger.log_debug("Dropping PDU. SDU buffer is full");
+      return;
+    }
+    logger.log_debug("Buffered PDU. Entity is paused");
     return;
   }
 
@@ -278,11 +331,10 @@ void pdcp_entity_rx::handle_data_pdu(byte_buffer pdu, std::chrono::system_clock:
                             .token           = pdcp_crypto_token(token_mngr)};
 
   // apply security in crypto executor
-  auto fn = [this, pdu_info = std::move(pdu_info)]() mutable {
-    apply_security(std::move(pdu_info)); // we should not use the PDCP entity past this point, as we possibly no longer
-                                         // hold the crypto token causing races upon deletion.
-  };
-  if (not crypto_executor.execute(std::move(fn))) {
+  if (not crypto_executor.execute([this, pdu_info = std::move(pdu_info)]() mutable {
+        apply_security(std::move(pdu_info)); // we should not use the PDCP entity past this point, as we possibly no
+                                             // longer hold the crypto token causing races upon deletion.
+      })) {
     logger.log_warning("Dropped PDU, crypto executor queue is full. count={}", rcvd_count);
   }
 }
@@ -338,11 +390,10 @@ void pdcp_entity_rx::apply_security(pdcp_rx_pdu_info&& pdu_info)
   metrics.add_crypto_processing_latency(sdu_latency_ns.count());
 
   // apply reordering in UE executor
-  auto fn = [this, pdu_info = std::move(pdu_info)]() mutable {
-    metrics.add_integrity_verified_pdus(1);
-    apply_reordering(std::move(pdu_info));
-  };
-  if (not ue_ul_executor.execute(std::move(fn))) {
+  if (not ue_ul_executor.execute([this, pdu_info = std::move(pdu_info)]() mutable {
+        metrics.add_integrity_verified_pdus(1);
+        apply_reordering(std::move(pdu_info));
+      })) {
     logger.log_warning("Dropped PDU, UE executor queue is full. count={}", rcvd_count);
   }
 }
@@ -376,6 +427,7 @@ void pdcp_entity_rx::apply_reordering(pdcp_rx_pdu_info pdu_info)
   // Store PDU in Rx window
   pdcp_rx_sdu_info& sdu_info = rx_window.add_sn(rcvd_count);
   sdu_info.buf               = std::move(pdu_info.buf);
+  sdu_info.count             = pdu_info.count;
   sdu_info.time_of_arrival   = pdu_info.time_of_arrival;
 
   // Update RX_NEXT
@@ -533,7 +585,6 @@ byte_buffer pdcp_entity_rx::compile_status_report()
 security::security_result pdcp_entity_rx::apply_deciphering_and_integrity_check(byte_buffer buf, uint32_t count)
 {
   // obtain the thread-specific ID of the worker
-
   uint32_t worker_idx = execution_context::get_current_worker_index();
 
   if (worker_idx >= max_nof_crypto_workers) {
@@ -582,7 +633,7 @@ void pdcp_entity_rx::configure_security(security::sec_128_as_config sec_cfg,
                                         security::ciphering_enabled ciphering_enabled_)
 {
   srsran_assert((is_srb() && sec_cfg.domain == security::sec_domain::rrc) ||
-                    (is_drb() && sec_cfg.domain == security::sec_domain::up),
+                    (!is_srb() && sec_cfg.domain == security::sec_domain::up),
                 "Invalid sec_domain={} for {} in {}",
                 sec_cfg.domain,
                 rb_type,
@@ -595,7 +646,7 @@ void pdcp_entity_rx::configure_security(security::sec_128_as_config sec_cfg,
   // From TS 38.501 Sec. 6.7.3.6: UEs that are in limited service mode (LSM) and that cannot be authenticated (...)
   // may still be allowed to establish emergency session by sending the emergency registration request message. (...)
   if ((sec_cfg.integ_algo == security::integrity_algorithm::nia0) &&
-      (is_drb() || (is_srb() && sec_cfg.cipher_algo != security::ciphering_algorithm::nea0))) {
+      (!is_srb() || sec_cfg.cipher_algo != security::ciphering_algorithm::nea0)) {
     logger.log_error("Integrity algorithm NIA0 is only permitted for SRBs configured with NEA0. is_srb={} NIA{} NEA{}",
                      is_srb(),
                      sec_cfg.integ_algo,

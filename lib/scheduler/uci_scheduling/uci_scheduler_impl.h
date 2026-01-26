@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "../ue_scheduling/ue_repository.h"
+#include "../ue_context/ue_repository.h"
 #include "uci_scheduler.h"
 
 namespace srsran {
@@ -38,6 +38,9 @@ public:
   explicit uci_scheduler_impl(const cell_configuration& cell_cfg_, uci_allocator& uci_alloc_, ue_repository& ues_);
 
   void run_slot(cell_resource_allocator& res_alloc) override;
+
+  /// Called on cell deactivation.
+  void stop();
 
   void add_ue(const ue_cell_configuration& ue_cfg);
 

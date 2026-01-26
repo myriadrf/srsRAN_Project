@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -31,6 +31,8 @@
 
 namespace srsran {
 namespace ofh {
+
+class operation_controller;
 
 /// Open Fronthaul Control-Plane PRACH context parameters.
 struct data_flow_cplane_scheduling_prach_context {
@@ -76,6 +78,9 @@ class data_flow_cplane_scheduling_commands
 public:
   /// Default destructor.
   virtual ~data_flow_cplane_scheduling_commands() = default;
+
+  /// Returns the controller of this Open Fronthaul Control-Plane data flow.
+  virtual operation_controller& get_operation_controller() = 0;
 
   /// Enqueues Open Fronthaul section type 1 message with the given slot and eAxC.
   virtual void enqueue_section_type_1_message(const data_flow_cplane_type_1_context& context) = 0;

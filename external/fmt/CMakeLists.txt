@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -26,3 +26,5 @@ add_library(fmt STATIC ${SOURCES})
 target_link_libraries(fmt ${CMAKE_THREAD_LIBS_INIT})
 
 add_to_exported_libs(fmt)
+
+set(SBOM_FMT_VERSION "11.1.2" CACHE STRING "SBOM version for FMT")

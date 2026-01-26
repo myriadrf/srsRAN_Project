@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -31,8 +31,9 @@
 #include "srsran/phy/upper/channel_processors/pdsch/pdsch_modulator.h"
 #include "srsran/phy/upper/channel_processors/pdsch/pdsch_processor.h"
 #include "srsran/phy/upper/sequence_generators/sequence_generator_factories.h"
+#include "srsran/phy/upper/signal_processors/pdsch/factories.h"
 #include "srsran/phy/upper/signal_processors/ptrs/ptrs_pdsch_generator_factory.h"
-#include "srsran/phy/upper/signal_processors/signal_processor_factories.h"
+#include "srsran/srslog/logger.h"
 #include "srsran/support/executors/task_executor.h"
 #include <memory>
 
@@ -108,6 +109,11 @@ create_pdsch_block_processor_factory_hw(std::shared_ptr<hal::hw_accelerator_pdsc
                                         std::shared_ptr<pseudo_random_generator_factory>       prg_factory,
                                         std::shared_ptr<modulation_mapper_factory>             modulator_factory);
 
+std::shared_ptr<pdsch_block_processor_factory>
+create_pdsch_block_processor_pool_factory(std::shared_ptr<pdsch_block_processor_factory> base,
+                                          task_executor&                                 executor,
+                                          unsigned                                       nof_concurrent_threads);
+
 std::shared_ptr<pdsch_processor_factory>
 create_pdsch_flexible_processor_factory_sw(std::shared_ptr<ldpc_segmenter_tx_factory>     ldpc_segmenter_factory,
                                            std::shared_ptr<pdsch_block_processor_factory> block_processor_factory,
@@ -117,10 +123,6 @@ create_pdsch_flexible_processor_factory_sw(std::shared_ptr<ldpc_segmenter_tx_fac
                                            task_executor&                                 executor,
                                            unsigned                                       nof_concurrent_threads,
                                            unsigned                                       cb_batch_length = 0);
-
-std::shared_ptr<pdsch_processor_factory>
-create_pdsch_processor_asynchronous_pool(std::shared_ptr<pdsch_processor_factory> pdsch_proc_factory,
-                                         unsigned                                 max_nof_processors);
 
 std::shared_ptr<pdsch_processor_factory>
 create_pdsch_processor_pool(std::shared_ptr<pdsch_processor_factory> pdsch_proc_factory, unsigned max_nof_processors);

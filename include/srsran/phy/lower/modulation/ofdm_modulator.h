@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,6 +47,7 @@ struct ofdm_modulator_configuration {
 };
 
 /// \brief Describes an OFDM modulator that modulates at symbol granularity.
+///
 /// \remark Performs OFDM modulation as per TS38.211 Section 5.3.1 OFDM baseband signal generation for all channels
 /// except PRACH.
 /// \remark In addition to modulation, it applies phase compensation as per TS38.211 Section 5.4 Modulation and
@@ -82,6 +83,7 @@ public:
 };
 
 /// \brief Describes an OFDM modulator with slot granularity.
+///
 /// \remark Performs OFDM modulation as per TS38.211 Section 5.3.1 OFDM baseband signal generation for all channels
 /// except PRACH.
 /// \remark In addition to modulation, it applies phase compensation as per TS38.211 Section 5.4 Modulation and

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,8 +21,8 @@
  */
 
 #include "srsran/phy/support/support_factories.h"
-#include "srsran/phy/upper/signal_processors/dmrs_pdsch_processor.h"
-#include "srsran/phy/upper/signal_processors/signal_processor_factories.h"
+#include "srsran/phy/upper/signal_processors/pdsch/dmrs_pdsch_processor.h"
+#include "srsran/phy/upper/signal_processors/pdsch/factories.h"
 #include "srsran/support/benchmark_utils.h"
 #include "srsran/support/srsran_test.h"
 #include <getopt.h>
@@ -70,7 +70,7 @@ static void parse_args(int argc, char** argv)
       case 'h':
       default:
         usage(argv[0]);
-        exit(0);
+        std::exit(0);
     }
   }
 }

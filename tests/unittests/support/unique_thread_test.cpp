@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -66,7 +66,7 @@ void test_init_unique_thread()
   TESTASSERT_NEQ(std::string(t.get_name()), this_thread_name());
 
   while (running) {
-    usleep(100);
+    ::usleep(100);
   }
   fmt::print("Main Thread [{}:{}] completed.\n", this_thread_name(), std::this_thread::get_id());
 }

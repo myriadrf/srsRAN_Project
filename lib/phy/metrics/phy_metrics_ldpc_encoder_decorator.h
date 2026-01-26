@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -53,7 +53,7 @@ public:
   }
 
   // See interface for documentation.
-  const ldpc_encoder_buffer& encode(const bit_buffer& input, const codeblock_metadata::tb_common_metadata& cfg) override
+  const ldpc_encoder_buffer& encode(const bit_buffer& input, const configuration& cfg) override
   {
     static dummy_encoder_buffer                       dummy_buffer;
     std::reference_wrapper<const ldpc_encoder_buffer> ret(dummy_buffer);

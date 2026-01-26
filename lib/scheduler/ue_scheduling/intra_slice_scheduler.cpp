@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,59 +21,11 @@
  */
 
 #include "intra_slice_scheduler.h"
+#include "../logging/scheduler_metrics_handler.h"
 #include "srsran/ran/pdcch/search_space.h"
+#include "srsran/support/math/mod_math_utils.h"
 
 using namespace srsran;
-
-/// Helper function to form groups of UE candidates in a round-robin fashion.
-/// \return The next \c next_ue_index_offset and \c group_rr_count to be used.
-template <typename UECandidateFactory>
-static std::pair<du_ue_index_t, unsigned> round_robin_ue_candidate_groups(std::vector<ue_newtx_candidate>& candidates,
-                                                                          const slice_ue_repository&       slice_ues,
-                                                                          unsigned                         group_size,
-                                                                          unsigned      group_rr_period,
-                                                                          du_ue_index_t next_ue_index_offset,
-                                                                          unsigned      group_rr_count,
-                                                                          const UECandidateFactory& factory)
-{
-  candidates.clear();
-
-  const unsigned nof_ues = slice_ues.size();
-  group_size             = std::min(nof_ues, group_size);
-
-  unsigned count   = 0;
-  auto     next_it = slice_ues.lower_bound(next_ue_index_offset);
-  next_it          = next_it == slice_ues.end() ? slice_ues.begin() : next_it;
-  for (auto ue_it = next_it; count != nof_ues; ++ue_it) {
-    ++count;
-    if (ue_it == slice_ues.end()) {
-      // wrap-around.
-      ue_it = slice_ues.begin();
-    }
-
-    std::optional<ue_newtx_candidate> ue_candidate = factory(*ue_it);
-    if (ue_candidate.has_value()) {
-      candidates.push_back(ue_candidate.value());
-      if (candidates.size() >= group_size) {
-        break;
-      }
-    }
-  }
-
-  if (candidates.empty() or count >= nof_ues) {
-    // In case all UEs have been traversed, we do not need to implement Round-robin of UE groups.
-    return std::make_pair(to_du_ue_index(0), 0U);
-  }
-
-  if (++group_rr_count < group_rr_period) {
-    // If we are not at the end of the group RR period, we return the same next UE index offset.
-    return std::make_pair(next_ue_index_offset, group_rr_count);
-  }
-  group_rr_count = 0;
-
-  // Determine the next UE group RR offset as the UE after the last UE candidate.
-  return std::make_pair(to_du_ue_index(candidates.back().ue->ue_index() + 1), group_rr_count);
-}
 
 /// \brief Helper function to determine the expected number of PDSCHs that can be allocated per slot in a manner that
 /// ensures fair distribution of PDSCHs across slots.
@@ -105,10 +57,86 @@ static unsigned compute_expected_pdschs_per_slot(const cell_configuration& cell_
   return pdschs_per_slot;
 }
 
+// class intra_slice_scheduler::slice_ue_group_scheduler
+
+void intra_slice_scheduler::slice_ue_group_scheduler::fill_ue_dl_candidate_group(
+    std::vector<ue_newtx_candidate>& candidates,
+    const dl_ran_slice_candidate&    slice)
+{
+  fill_ue_candidate_group(candidates, true, slice.get_slice_ues());
+}
+
+void intra_slice_scheduler::slice_ue_group_scheduler::fill_ue_ul_candidate_group(
+    std::vector<ue_newtx_candidate>& candidates,
+    const ul_ran_slice_candidate&    slice)
+{
+  fill_ue_candidate_group(candidates, false, slice.get_slice_ues());
+}
+
+void intra_slice_scheduler::slice_ue_group_scheduler::fill_ue_candidate_group(
+    std::vector<ue_newtx_candidate>& candidates,
+    bool                             is_dl,
+    const slice_ue_repository&       slice_ues)
+{
+  candidates.clear();
+
+  const unsigned nof_ues = slice_ues.size();
+  if (nof_ues > parent->expert_cfg.pre_policy_rr_ue_group_size) {
+    if (not last_pdcch_tx.valid() or last_pdcch_tx.sfn() != parent->pdcch_slot.sfn()) {
+      // Update group_offset whenever we enter a new SFN.
+      // The new group offset is chosen as the UE index after the last UE index considered in the previous group.
+      // > Compute max ue index + 1, which will be used to perform the wrap-around of the group offset.
+      const unsigned ue_idx_mod = (--slice_ues.end())->ue_index() + 1;
+      // > Given that DL and UL UE groups are independent, we choose the minimum of the two last UE indexes, to ensure
+      // that no UE is left unconsidered in any direction.
+      auto jump = std::max(std::min(max_dl_ue_count, max_ul_ue_count), parent->expert_cfg.pre_policy_rr_ue_group_size);
+      group_offset    = (group_offset + jump) % ue_idx_mod;
+      max_dl_ue_count = 0;
+      max_ul_ue_count = 0;
+    }
+  } else {
+    // The number of UEs is less than the group size, so we consider all UEs from the beginning.
+    group_offset = 0;
+  }
+  last_pdcch_tx = parent->pdcch_slot;
+
+  // Build list of candidates, starting from the UE group offset.
+  unsigned                             count                = 0;
+  unsigned                             last_candidate_count = 0;
+  const unsigned                       group_size  = std::min(nof_ues, parent->expert_cfg.pre_policy_rr_ue_group_size);
+  auto                                 start_ue_it = slice_ues.lower_bound(to_du_ue_index(group_offset));
+  const bounded_bitset<MAX_NOF_DU_UES> ues_with_data = slice_ues.get_ues_with_pending_newtx_data(is_dl);
+  for (auto ue_it = start_ue_it; count != nof_ues; ++ue_it) {
+    ++count;
+    if (ue_it == slice_ues.end()) {
+      // wrap-around.
+      ue_it = slice_ues.begin();
+    }
+    if (not ues_with_data.test(ue_it->ue_index())) {
+      // No pending data for this UE in this slice.
+      continue;
+    }
+
+    std::optional<ue_newtx_candidate> ue_candidate =
+        is_dl ? parent->create_newtx_dl_candidate(*ue_it) : parent->create_newtx_ul_candidate(*ue_it);
+    if (ue_candidate.has_value()) {
+      candidates.push_back(ue_candidate.value());
+      last_candidate_count = count;
+      if (candidates.size() >= group_size) {
+        break;
+      }
+    }
+  }
+
+  // Update the next UE group offset, if the last UE index went beyond next group offset.
+  auto& max_count = is_dl ? max_dl_ue_count : max_ul_ue_count;
+  max_count       = std::max(max_count, last_candidate_count);
+}
+
 // class intra_slice_scheduler
 
 intra_slice_scheduler::intra_slice_scheduler(const scheduler_ue_expert_config& expert_cfg_,
-                                             ue_repository&                    ues,
+                                             ue_repository&                    ues_,
                                              pdcch_resource_allocator&         pdcch_alloc,
                                              uci_allocator&                    uci_alloc_,
                                              cell_resource_allocator&          cell_alloc_,
@@ -120,6 +148,7 @@ intra_slice_scheduler::intra_slice_scheduler(const scheduler_ue_expert_config& e
   cell_metrics(cell_metrics_),
   cell_harqs(cell_harqs_),
   uci_alloc(uci_alloc_),
+  ues(ues_),
   logger(logger_),
   expected_pdschs_per_slot(compute_expected_pdschs_per_slot(cell_alloc.cfg)),
   ue_alloc(expert_cfg, ues, pdcch_alloc, uci_alloc, cell_alloc_, logger_)
@@ -130,7 +159,7 @@ intra_slice_scheduler::intra_slice_scheduler(const scheduler_ue_expert_config& e
   pending_ul_newtxs.reserve(MAX_UE_PDUS_PER_SLOT);
 
   // Pre-reserve memory for slice context.
-  const unsigned max_expected_ran_slices = 8;
+  constexpr unsigned max_expected_ran_slices = 8;
   slice_ctxt_list.reserve(max_expected_ran_slices);
 }
 
@@ -226,7 +255,7 @@ static std::pair<unsigned, unsigned> get_max_grants_and_rb_grant_size(span<const
     return std::make_pair(0, 0);
   }
 
-  // Determine how many UE grants to allocate in the slot (assuming full buffer). As an heuristic, we divide the number
+  // Determine how many UE grants to allocate in the slot (assuming full buffer). As a heuristic, we divide the number
   // of candidates by 4 and set 8 as the maximum number of UEs to be scheduled per slot, assuming full buffer. This
   // heuristic is a result of a tradeoff between minimizing latency and ensuring we don't deplete the PDCCH resources.
   static constexpr unsigned MAX_UE_GRANT_PER_SLOT = 8;
@@ -334,7 +363,10 @@ unsigned intra_slice_scheduler::schedule_ul_retx_candidates(ul_ran_slice_candida
     }
 
     // Allocate PDCCH and PUSCH.
-    auto result = ue_alloc.allocate_ul_grant(ue_retx_ul_grant_request{u, pusch_slot, h, used_ul_vrbs});
+    // NOTE: the symbols passed to the grant are the symbols that are available for PUSCH and for which the used VRBs
+    // have been computed.
+    auto result = ue_alloc.allocate_ul_grant(
+        ue_retx_ul_grant_request{u, pusch_slot, h, used_ul_vrbs, ofdm_symbol_range{0, min_srs_symbol}});
     if (not result.has_value() and result.error() == alloc_status::skip_slot) {
       // Received signal to stop allocations in the slot.
       break;
@@ -364,21 +396,11 @@ void intra_slice_scheduler::prepare_newtx_dl_candidates(const dl_ran_slice_candi
                                                         scheduler_policy&             dl_policy)
 {
   // Build list of UE candidates for newTx.
-  const slice_ue_repository& slice_ues = slice.get_slice_ues();
   if (not slice_ctxt_list.contains(slice.id())) {
-    slice_ctxt_list.emplace(slice.id());
+    slice_ctxt_list.emplace(slice.id(), *this);
   }
   auto& slice_sched = slice_ctxt_list[slice.id()];
-  auto [next_offset, next_count] =
-      round_robin_ue_candidate_groups(newtx_candidates,
-                                      slice_ues,
-                                      expert_cfg.pre_policy_rr_dl_ue_group_size,
-                                      expert_cfg.pre_policy_rr_dl_ue_group_period,
-                                      slice_sched.dl_next_rr_group_offset,
-                                      slice_sched.dl_rr_count,
-                                      [this](const slice_ue& u) { return create_newtx_dl_candidate(u); });
-  slice_sched.dl_next_rr_group_offset = next_offset;
-  slice_sched.dl_rr_count             = next_count;
+  slice_sched.fill_ue_dl_candidate_group(newtx_candidates, slice);
   if (newtx_candidates.empty()) {
     return;
   }
@@ -402,21 +424,11 @@ void intra_slice_scheduler::prepare_newtx_ul_candidates(const ul_ran_slice_candi
                                                         scheduler_policy&             ul_policy)
 {
   // Build list of UE candidates for newTx.
-  const slice_ue_repository& slice_ues = slice.get_slice_ues();
   if (not slice_ctxt_list.contains(slice.id())) {
-    slice_ctxt_list.emplace(slice.id());
+    slice_ctxt_list.emplace(slice.id(), *this);
   }
   auto& slice_sched = slice_ctxt_list[slice.id()];
-  auto [next_offset, next_count] =
-      round_robin_ue_candidate_groups(newtx_candidates,
-                                      slice_ues,
-                                      expert_cfg.pre_policy_rr_ul_ue_group_size,
-                                      expert_cfg.pre_policy_rr_ul_ue_group_period,
-                                      slice_sched.ul_next_rr_group_offset,
-                                      slice_sched.ul_rr_count,
-                                      [this](const slice_ue& u) { return create_newtx_ul_candidate(u); });
-  slice_sched.ul_next_rr_group_offset = next_offset;
-  slice_sched.ul_rr_count             = next_count;
+  slice_sched.fill_ue_ul_candidate_group(newtx_candidates, slice);
   if (newtx_candidates.empty()) {
     return;
   }
@@ -458,9 +470,13 @@ unsigned intra_slice_scheduler::schedule_dl_newtx_candidates(dl_ran_slice_candid
   bool     pucch_grant_limit_exceeded = false;
   for (const auto& ue_candidate : newtx_candidates) {
     if (pucch_grant_limit_exceeded) {
-      // Only select UE if it has a UCI already pending in a future slot.
-      if (not ue_candidate.ue_cc->harqs.last_ack_slot().valid() or
-          ue_candidate.ue_cc->harqs.last_ack_slot() < pdsch_slot) {
+      // The PUCCH is likely saturated and there is no space for new PUCCHs.
+      // As a heuristic, we only allocate DL grants to UEs which already have a PUCCH or a PUSCH in a future slot that
+      // can likely accommodate more HARQ-ACK bits.
+      if (not(ue_candidate.ue_cc->harqs.last_ack_slot().valid() and
+              ue_candidate.ue_cc->harqs.last_ack_slot() > pdsch_slot) and
+          not(ue_candidate.ue_cc->harqs.last_pusch_slot().valid() and
+              ue_candidate.ue_cc->harqs.last_pusch_slot() > pdsch_slot)) {
         continue;
       }
     }
@@ -520,14 +536,17 @@ unsigned intra_slice_scheduler::schedule_dl_newtx_candidates(dl_ran_slice_candid
     // Derive recommended parameters for the DL newTx grant.
     vrb_interval alloc_vrbs = grant_builder.recommended_vrbs(used_dl_vrbs, max_grant_size);
     if (alloc_vrbs.empty()) {
-      logger.error("ue={} c-rnti={}: Failed to allocate PDSCH CRBs",
-                   fmt::underlying(grant_builder.ue().ue_index()),
-                   grant_builder.ue().crnti());
+      logger.warning("ue={} c-rnti={}: Failed to allocate RBs for PDSCH grant at slot={}",
+                     fmt::underlying(grant_builder.ue().ue_index()),
+                     grant_builder.ue().crnti(),
+                     slice.get_slot_tx());
+      // We let the grant be empty. It will be skipped in the post-processing scheduling step.
+      grant_builder.set_pdsch_params({}, {}, enable_pdsch_interleaving);
       continue;
     }
 
     // Compute the corresponding CRBs.
-    constexpr static search_space_id      ue_ded_ss_id = to_search_space_id(2);
+    static constexpr search_space_id      ue_ded_ss_id = to_search_space_id(2);
     const auto&                           ss_info      = grant_builder.ue().get_cc().cfg().search_space(ue_ded_ss_id);
     std::pair<crb_interval, crb_interval> alloc_crbs;
     if (enable_pdsch_interleaving) {
@@ -582,8 +601,10 @@ unsigned intra_slice_scheduler::schedule_ul_newtx_candidates(ul_ran_slice_candid
   unsigned rb_count = 0;
   for (const auto& ue_candidate : newtx_candidates) {
     // Create UL grant builder.
-    auto result =
-        ue_alloc.allocate_ul_grant(ue_newtx_ul_grant_request{*ue_candidate.ue, pusch_slot, ue_candidate.pending_bytes});
+    // NOTE: the symbols passed to the grant are the symbols that are available for PUSCH and for which the used VRBs
+    // have been computed.
+    auto result = ue_alloc.allocate_ul_grant(ue_newtx_ul_grant_request{
+        *ue_candidate.ue, pusch_slot, ue_candidate.pending_bytes, ofdm_symbol_range{0, min_srs_symbol}});
 
     if (result.has_value()) {
       // Allocation was successful. Move grant builder to list of pending newTx grants.
@@ -633,9 +654,12 @@ unsigned intra_slice_scheduler::schedule_ul_newtx_candidates(ul_ran_slice_candid
     // Derive recommended parameters for the DL newTx grant.
     vrb_interval alloc_vrbs = grant_builder.recommended_vrbs(used_ul_vrbs, max_grant_size);
     if (alloc_vrbs.empty()) {
-      logger.error("ue={} c-rnti={}: Failed to allocate PUSCH CRBs",
+      logger.error("ue={} c-rnti={}: Failed to allocate RBs for PUSCH grant at slot={}",
                    fmt::underlying(grant_builder.ue().ue_index()),
-                   grant_builder.ue().crnti());
+                   grant_builder.ue().crnti(),
+                   slice.get_slot_tx());
+      // We let the grant be empty. It will be skipped in the post-processing scheduling step.
+      grant_builder.set_pusch_params({});
       continue;
     }
 
@@ -649,7 +673,7 @@ unsigned intra_slice_scheduler::schedule_ul_newtx_candidates(ul_ran_slice_candid
     // Update slice state.
     slice.store_grant(nof_rbs_alloc);
     rb_count += nof_rbs_alloc;
-    rbs_missing = (max_grant_size - nof_rbs_alloc);
+    rbs_missing = max_grant_size - nof_rbs_alloc;
   }
 
   // Clear grant builders.
@@ -740,7 +764,7 @@ std::optional<ue_newtx_candidate> intra_slice_scheduler::create_newtx_ul_candida
   return ue_newtx_candidate{&u, &ue_cc, pending_bytes, forbid_sched_priority};
 }
 
-unsigned intra_slice_scheduler::max_pdschs_to_alloc(const dl_ran_slice_candidate& slice)
+unsigned intra_slice_scheduler::max_pdschs_to_alloc(const dl_ran_slice_candidate& slice) const
 {
   // We cannot allocate more than the number of UEs available.
   int pdschs_to_alloc = slice.get_slice_ues().size();
@@ -777,7 +801,7 @@ unsigned intra_slice_scheduler::max_pdschs_to_alloc(const dl_ran_slice_candidate
   return std::max(pdschs_to_alloc, 0);
 }
 
-unsigned intra_slice_scheduler::max_puschs_to_alloc(const ul_ran_slice_candidate& slice)
+unsigned intra_slice_scheduler::max_puschs_to_alloc(const ul_ran_slice_candidate& slice) const
 {
   if (not cell_alloc.cfg.is_ul_enabled(slice.get_slot_tx())) {
     return 0;
@@ -866,6 +890,13 @@ void intra_slice_scheduler::update_used_dl_vrbs(const dl_ran_slice_candidate& sl
 
 void intra_slice_scheduler::update_used_ul_vrbs(const ul_ran_slice_candidate& slice)
 {
+  // Update the min SRS symbol before checking the used VRBs.
+  // NOTE: Reset to max symbol index before looking for the min.
+  min_srs_symbol = NOF_OFDM_SYM_PER_SLOT_NORMAL_CP;
+  for (const auto& srs : cell_alloc[pusch_slot - pdcch_slot].result.ul.srss) {
+    min_srs_symbol = std::min(static_cast<unsigned>(srs.symbols.start()), min_srs_symbol);
+  }
+
   // The mapping from CRBs to VRBs is different for UEs configured with a common SearchSpace that uses DCI 1_0.
   // [Implementation defined] We assume all the UEs of this cell are configured the same way in that regard.
   const slice_ue_repository&       slice_ues   = slice.get_slice_ues();
@@ -875,8 +906,29 @@ void intra_slice_scheduler::update_used_ul_vrbs(const ul_ran_slice_candidate& sl
 
   // (Implementation-defined) We use the common PUSCH TD resources as a reference for the computation of RBs unavailable
   // for PDSCH. This assumes that these resources are not colliding with SRS.
-  const auto&              init_ul_bwp      = cell_alloc.cfg.ul_cfg_common.init_ul_bwp;
-  const ofdm_symbol_range& symbols_to_check = init_ul_bwp.pusch_cfg_common->pusch_td_alloc_list[0].symbols;
+  const auto& init_ul_bwp = cell_alloc.cfg.ul_cfg_common.init_ul_bwp;
+  srsran_assert(slice.get_slot_tx() - cell_alloc[0].slot > 0, "PUSCH slot cannot precede its corresponding PDCCH slot");
+  const unsigned    slice_candidate_k2 = slice.get_slot_tx() - cell_alloc[0].slot;
+  ofdm_symbol_range symbols_to_check   = {0, 0};
+  // Find the max symbols such that symbols.stop() <= min_srs_symbol;
+  for (auto& td_res : init_ul_bwp.pusch_cfg_common->pusch_td_alloc_list) {
+    // We can choose only the symbols for the same k2.
+    if (td_res.k2 < slice_candidate_k2) {
+      continue;
+    }
+    if (td_res.k2 == slice_candidate_k2) {
+      if (td_res.symbols.stop() <= min_srs_symbol and td_res.symbols.stop() > symbols_to_check.stop())
+        symbols_to_check = td_res.symbols;
+    }
+    if (td_res.k2 > slice_candidate_k2) {
+      break;
+    }
+  }
+
+  if (symbols_to_check.empty()) {
+    logger.debug(
+        "No symbols available for PUSCH allocation on slot={} for slice_id={}", pusch_slot, slice.id().value());
+  }
 
   used_ul_vrbs = cell_alloc[pusch_slot]
                      .ul_res_grid.used_prbs(init_ul_bwp.generic_params.scs, ul_crb_lims, symbols_to_check)

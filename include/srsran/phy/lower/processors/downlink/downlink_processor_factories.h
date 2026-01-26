@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,7 +22,6 @@
 
 #pragma once
 
-#include "srsran/phy/lower/amplitude_controller/amplitude_controller_factories.h"
 #include "srsran/phy/lower/processors/downlink/downlink_processor.h"
 #include "srsran/phy/lower/processors/downlink/pdxch/pdxch_processor_factories.h"
 #include "srsran/phy/lower/sampling_rate.h"
@@ -58,12 +57,12 @@ public:
   virtual ~lower_phy_downlink_processor_factory() = default;
 
   /// Creates a lower PHY downlink processor.
-  virtual std::unique_ptr<lower_phy_downlink_processor> create(const downlink_processor_configuration& config) = 0;
+  virtual std::unique_ptr<lower_phy_downlink_processor> create(const downlink_processor_configuration& config,
+                                                               task_executor& modulation_executor) = 0;
 };
 
 /// Creates a software based downlink processor factory.
 std::shared_ptr<lower_phy_downlink_processor_factory>
-create_downlink_processor_factory_sw(std::shared_ptr<pdxch_processor_factory>      pdxch_proc_factory,
-                                     std::shared_ptr<amplitude_controller_factory> amplitude_control_factory);
+create_downlink_processor_factory_sw(std::shared_ptr<pdxch_processor_factory> pdxch_proc_factory);
 
 } // namespace srsran

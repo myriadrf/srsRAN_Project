@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 #include "ngu_session_manager.h"
 #include "ue_manager_interfaces.h"
 #include "srsran/adt/slotted_array.h"
+#include "srsran/cu_up/cu_up_state.h"
 #include "srsran/f1u/cu_up/f1u_gateway.h"
 #include "srsran/gtpu/gtpu_teid_pool.h"
 #include "srsran/support/async/fifo_async_task_scheduler.h"
@@ -43,10 +44,11 @@ struct ue_manager_config {
 
 /// UE manager dependencies.
 struct ue_manager_dependencies {
-  e1ap_control_message_handler& e1ap;
+  e1ap_interface&               e1ap;
   timer_manager&                timers;
   f1u_cu_up_gateway&            f1u_gw;
   ngu_session_manager&          ngu_session_mngr;
+  cu_up_manager_pdcp_interface& cu_up_mngr_pdcp_if;
   gtpu_demux_ctrl&              gtpu_rx_demux;
   gtpu_teid_pool&               n3_teid_allocator;
   gtpu_teid_pool&               f1u_teid_allocator;
@@ -66,9 +68,18 @@ public:
 
   async_task<void> stop() override;
   ue_context*      add_ue(const ue_context_cfg& cfg) override;
+  async_task<void> remove_all_ues() override;
   async_task<void> remove_ue(ue_index_t ue_index) override;
   ue_context*      find_ue(ue_index_t ue_index) override;
   size_t           get_nof_ues() const override { return ue_db.size(); }
+  up_state_t       get_up_state() const override
+  {
+    up_state_t st;
+    for (const std::pair<const ue_index_t, std::unique_ptr<ue_context>>& ue : ue_db) {
+      st.insert({ue.first, ue.second->get_pdu_session_state()});
+    }
+    return st;
+  }
 
   void schedule_ue_async_task(ue_index_t ue_index, async_task<void> task);
 
@@ -81,9 +92,10 @@ private:
 
   const n3_interface_config&    n3_config;
   const cu_up_test_mode_config& test_mode_config;
-  e1ap_control_message_handler& e1ap;
+  e1ap_interface&               e1ap;
   f1u_cu_up_gateway&            f1u_gw;
   ngu_session_manager&          ngu_session_mngr;
+  cu_up_manager_pdcp_interface& cu_up_mngr_pdcp_if;
   gtpu_demux_ctrl&              gtpu_rx_demux;
   gtpu_teid_pool&               n3_teid_allocator;
   gtpu_teid_pool&               f1u_teid_allocator;

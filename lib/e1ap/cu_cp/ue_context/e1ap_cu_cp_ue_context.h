@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -106,6 +106,12 @@ public:
     return &it->second;
   }
 
+  e1ap_ue_context* find_ue(ue_index_t ue_idx)
+  {
+    auto it = ue_index_to_ue_e1ap_id.find(ue_idx);
+    return it != ue_index_to_ue_e1ap_id.end() ? &ues.at(it->second) : nullptr;
+  }
+
   e1ap_ue_context& operator[](gnb_cu_cp_ue_e1ap_id_t cu_cp_ue_e1ap_id)
   {
     srsran_assert(ues.find(cu_cp_ue_e1ap_id) != ues.end(),
@@ -137,6 +143,11 @@ public:
 
   /// \brief Transfer E1AP UE context to new CU-CP specific UE index.
   void update_ue_index(ue_index_t new_ue_index, ue_index_t old_ue_index);
+
+  std::unordered_map<gnb_cu_cp_ue_e1ap_id_t, e1ap_ue_context>::iterator       begin() { return ues.begin(); }
+  std::unordered_map<gnb_cu_cp_ue_e1ap_id_t, e1ap_ue_context>::const_iterator begin() const { return ues.begin(); }
+  std::unordered_map<gnb_cu_cp_ue_e1ap_id_t, e1ap_ue_context>::iterator       end() { return ues.end(); }
+  std::unordered_map<gnb_cu_cp_ue_e1ap_id_t, e1ap_ue_context>::const_iterator end() const { return ues.end(); }
 
 private:
   gnb_cu_cp_ue_e1ap_id_t next_cu_cp_ue_e1ap_id = gnb_cu_cp_ue_e1ap_id_t::min;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,8 +25,8 @@
 #include "srsran/gateways/baseband/baseband_gateway.h"
 #include "srsran/gateways/baseband/baseband_gateway_timestamp.h"
 #include "srsran/radio/radio_configuration.h"
+#include "srsran/radio/radio_event_notifier.h"
 #include "srsran/radio/radio_management_plane.h"
-#include "srsran/radio/radio_notification_handler.h"
 
 namespace srsran {
 

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,10 +25,12 @@
 #include "CLI/CLI11.hpp"
 
 namespace srsran {
+namespace app_services {
 
 struct buffer_pool_appconfig;
 
 /// Configures the given CLI11 application with the buffer pool application configuration schema.
 void configure_cli11_with_buffer_pool_appconfig_schema(CLI::App& app, buffer_pool_appconfig& config);
 
+} // namespace app_services
 } // namespace srsran

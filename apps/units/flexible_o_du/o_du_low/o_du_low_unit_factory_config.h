@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,9 +47,9 @@ struct o_du_low_unit_config {
     unsigned                               nof_tx_antennas;
   };
 
-  const du_low_unit_config&             du_low_unit_cfg;
-  std::vector<du_low_config>            cells;
-  fapi_adaptor::phy_fapi_adaptor_config fapi_cfg;
+  const du_low_unit_config&                      du_low_unit_cfg;
+  std::vector<du_low_config>                     cells;
+  fapi_adaptor::phy_fapi_fastpath_adaptor_config fapi_cfg;
 };
 
 /// O-RAN DU low unit dependencies.

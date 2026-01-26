@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,6 +34,8 @@ struct cu_up_unit_logger_config {
   srslog::basic_levels pdcp_level = srslog::basic_levels::warning;
   srslog::basic_levels f1u_level  = srslog::basic_levels::warning;
   srslog::basic_levels sdap_level = srslog::basic_levels::warning;
+  srslog::basic_levels sec_level  = srslog::basic_levels::warning;
+  srslog::basic_levels rohc_level = srslog::basic_levels::warning;
   /// Maximum number of bytes to write when dumping hex arrays.
   int hex_max_size = 0;
   /// Enable JSON generation for the E1AP Tx and Rx PDUs.

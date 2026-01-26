@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -208,7 +208,7 @@ static bool validate_rapid(unsigned value, message_type_id msg_id, validator_rep
 static bool validate_harq_id(unsigned value, message_type_id msg_id, validator_report& report)
 {
   static constexpr unsigned MIN_VALUE = 0;
-  static constexpr unsigned MAX_VALUE = 15;
+  static constexpr unsigned MAX_VALUE = MAX_HARQ_ID;
 
   return validate_field(MIN_VALUE, MAX_VALUE, value, "HARQ ID", msg_id, report);
 }

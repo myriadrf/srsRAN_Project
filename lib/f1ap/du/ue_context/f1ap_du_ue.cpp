@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,8 +28,9 @@
 using namespace srsran;
 using namespace srsran::srs_du;
 
-void f1ap_du_ue::handle_ue_context_modification_request(const asn1::f1ap::ue_context_mod_request_s& msg)
+void f1ap_du_ue::handle_ue_context_modification_request(const asn1::f1ap::ue_context_mod_request_s& msg,
+                                                        const f1ap_du_context&                      ctxt_)
 {
   du_handler.get_ue_handler(context.ue_index)
-      .schedule_async_task(launch_async<f1ap_du_ue_context_modification_procedure>(msg, *this));
+      .schedule_async_task(launch_async<f1ap_du_ue_context_modification_procedure>(msg, *this, ctxt_));
 }

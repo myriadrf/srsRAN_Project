@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -173,7 +173,7 @@ public:
   ///
   /// The size of each transport block is determined by <tt> data[TB index].size() </tt>.
   ///
-  /// \param[out]    data      Received transport block..
+  /// \param[out]    data      Received transport block.
   /// \param[in,out] rm_buffer Rate matcher buffer.
   /// \param[in]     notifier  Result notification interface.
   /// \param[in]     grid      Source resource grid.

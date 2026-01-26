@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,7 +24,6 @@
 
 #include "apps/services/app_resource_usage/metrics/app_resource_usage_metrics.h"
 #include "srsran/srslog/log_channel.h"
-#include "srsran/srslog/logger.h"
 
 namespace srsran {
 

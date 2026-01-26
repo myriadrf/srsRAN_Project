@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -31,6 +31,16 @@ static void fill_cu_up_f1u_socket_entry(YAML::Node& node, const f1u_socket_appco
 {
   node["bind_addr"] = config.bind_addr;
   node["ext_addr"]  = config.udp_config.ext_addr;
+  if (config.sst.has_value()) {
+    node["sst"] = *config.sst;
+  }
+  if (config.sd.has_value()) {
+    node["sd"] = *config.sd;
+  }
+  if (config.five_qi.has_value()) {
+    node["five_qi"] = five_qi_to_uint(*config.five_qi);
+  }
+
   fill_udp_config_in_yaml_schema(node["udp"], config.udp_config);
 }
 
@@ -48,5 +58,7 @@ static void fill_f1u_socket_section(YAML::Node& node, const std::vector<f1u_sock
 void srsran::fill_f1u_config_yaml_schema(YAML::Node& node, const f1u_sockets_appconfig& config)
 {
   YAML::Node f1u_node = node["f1u"];
+  node["bind_port"]   = config.bind_port;
+  node["peer_port"]   = config.peer_port;
   fill_f1u_socket_section(f1u_node, config.f1u_socket_cfg);
 }

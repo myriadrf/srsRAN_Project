@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,9 +27,10 @@
 #include "srsran/ngap/ngap_handover.h"
 #include "srsran/ngap/ngap_init_context_setup.h"
 #include "srsran/ngap/ngap_metrics.h"
-#include "srsran/ngap/ngap_reset.h"
+#include "srsran/ngap/ngap_rrc_inactive_transition.h"
 #include "srsran/ngap/ngap_setup.h"
 #include "srsran/ngap/ngap_ue_radio_capability_management.h"
+#include "srsran/ran/plmn_identity.h"
 #include "srsran/support/async/async_task.h"
 
 namespace srsran {
@@ -89,7 +90,7 @@ public:
 
   /// \brief Initiates NG Reset procedure as per TS 38.413 section 8.7.4.2.2.
   /// \param[in] msg The ng reset message to transmit.
-  virtual async_task<void> handle_ng_reset_message(const cu_cp_ng_reset& msg) = 0;
+  virtual async_task<void> handle_ng_reset_message(const cu_cp_reset& msg) = 0;
 };
 
 /// Handle ue context removal.
@@ -138,7 +139,7 @@ public:
   /// \brief Notify the CU-CP about a security context
   /// \param[in] sec_ctxt The received security context
   /// \return True if the security context was successfully initialized, false otherwise
-  virtual bool init_security_context(security::security_context sec_ctxt) = 0;
+  virtual bool init_security_context(const security::security_context& sec_ctxt) = 0;
 
   /// \brief Check if security is enabled
   [[nodiscard]] virtual bool is_security_enabled() const = 0;
@@ -161,11 +162,14 @@ public:
   /// \returns True if the task was successfully scheduled, false otherwise.
   virtual bool schedule_async_task(ue_index_t ue_index, async_task<void> task) = 0;
 
-  /// \brief Notify the CU-CP about a security context received in a handover request.
+  /// \brief Notify the CU-CP about a handover request received.
   /// \param[in] ue_index Index of the UE.
+  /// \param[in] selected_plmn The selected PLMN identity of the UE.
   /// \param[in] sec_ctxt The received security context.
-  /// \return True if the security context was successfully initialized, false otherwise.
-  virtual bool on_handover_request_received(ue_index_t ue_index, security::security_context sec_ctxt) = 0;
+  /// \return True if the handover request handling is successful, false otherwise.
+  virtual bool on_handover_request_received(ue_index_t                        ue_index,
+                                            const plmn_identity&              selected_plmn,
+                                            const security::security_context& sec_ctxt) = 0;
 
   /// \brief Notify about the reception of a new Initial Context Setup Request.
   /// \param[in] request The received Initial Context Setup Request.
@@ -206,6 +210,10 @@ public:
   /// \returns True if the Handover command is valid and was successfully handled by the DU.
   virtual async_task<bool> on_new_handover_command(ue_index_t ue_index, byte_buffer command) = 0;
 
+  /// \brief Notify the CU-CP to await the RRC Reconfiguration Complete and the DL Status Transfer.
+  /// \param[in] ue_index The index of the UE.
+  virtual void on_n2_handover_execution(ue_index_t ue_index) = 0;
+
   /// \brief Notify that the TNL connection to the AMF was lost.
   /// \param[in] amf_index The index of the lost AMF.
   virtual void on_n2_disconnection(amf_index_t amf_index) = 0;
@@ -214,7 +222,7 @@ public:
   virtual void on_paging_message(cu_cp_paging_message& msg) = 0;
 
   /// \brief Request UE index allocation on the CU-CP on N2 handover request.
-  virtual ue_index_t request_new_ue_index_allocation(nr_cell_global_id_t cgi) = 0;
+  virtual ue_index_t request_new_ue_index_allocation(nr_cell_global_id_t cgi, const plmn_identity& plmn) = 0;
 
   /// \brief Notifies the CU-CP about a Handover Request.
   virtual async_task<ngap_handover_resource_allocation_response>
@@ -271,7 +279,14 @@ public:
   virtual async_task<ngap_handover_preparation_response>
   handle_handover_preparation_request(const ngap_handover_preparation_request& msg) = 0;
 
-  /// \brief Handle the reception of an inter CU handove related RRC Reconfiguration Complete.
+  /// \brief Initiates the transmission of an UL RAN status transfer message.
+  virtual void handle_ul_ran_status_transfer(const ngap_ul_ran_status_transfer& ul_status_transfer) = 0;
+
+  /// \brief Prepares the reception of a DL RAN status transfer message.
+  virtual async_task<expected<ngap_dl_ran_status_transfer>>
+  handle_dl_ran_status_transfer_required(ue_index_t ue_index) = 0;
+
+  /// \brief Handle the reception of an inter CU handover related RRC Reconfiguration Complete.
   virtual void
   handle_inter_cu_ho_rrc_recfg_complete(const ue_index_t ue_index, const nr_cell_global_id_t& cgi, const tac_t tac) = 0;
 
@@ -283,6 +298,10 @@ public:
 
   /// \brief Handle the reception of a UL non UE associated NRPPa message.
   virtual async_task<void> handle_ul_non_ue_associated_nrppa_transport(const byte_buffer& nrppa_pdu) = 0;
+
+  /// \brief Initiates the transmission of a RRC inactive transition report.
+  virtual async_task<bool>
+  handle_rrc_inactive_transition_report_required(const ngap_rrc_inactive_transition_report& report) = 0;
 };
 
 /// Interface to control the NGAP.

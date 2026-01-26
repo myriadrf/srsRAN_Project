@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -64,7 +64,7 @@ void phy_cell_test_dummy::on_cell_results_completion(slot_point slot)
           last_ul_res->ul_res = &last_ul_sched_res;
         }
       });
-  srsran_assert(result, "Failed to execute task");
+  report_fatal_error_if_not(result, "Failed to execute task");
   cached_dl_res  = {};
   cached_dl_data = {};
   cached_ul_res  = {};

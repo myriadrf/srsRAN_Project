@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,6 +26,7 @@
 #include "../support/bwp_helpers.h"
 #include "../support/rb_helper.h"
 #include "srsran/adt/circular_array.h"
+#include "srsran/adt/circular_vector.h"
 #include "srsran/ran/slot_point.h"
 #include "srsran/scheduler/resource_grid_util.h"
 #include "srsran/scheduler/result/sched_result.h"
@@ -62,6 +63,18 @@ struct grant_info {
   grant_info(const bwp_sch_grant_info& grant) :
     scs(grant.bwp_cfg->scs), symbols(grant.symbols), crbs(prb_to_crb(*grant.bwp_cfg, grant.prbs))
   {
+  }
+
+  bool operator==(const grant_info& other) const
+  {
+    return scs == other.scs and symbols == other.symbols and crbs == other.crbs;
+  }
+  bool operator!=(const grant_info& other) const { return not(*this == other); }
+
+  /// Checks whether this grant overlaps with another grant in time and frequency.
+  bool overlaps(const grant_info& other) const
+  {
+    return scs == other.scs and symbols.overlaps(other.symbols) and crbs.overlaps(other.crbs);
   }
 };
 
@@ -257,12 +270,14 @@ struct cell_slot_resource_allocator {
 
   /// copies and moves are disabled to ensure pointer/reference validity.
   cell_slot_resource_allocator(const cell_slot_resource_allocator&)            = delete;
-  cell_slot_resource_allocator(cell_slot_resource_allocator&&)                 = delete;
+  cell_slot_resource_allocator(cell_slot_resource_allocator&&) noexcept        = default;
   cell_slot_resource_allocator& operator=(const cell_slot_resource_allocator&) = delete;
-  cell_slot_resource_allocator& operator=(cell_slot_resource_allocator&&)      = delete;
 
   /// Sets new slot.
   void slot_indication(slot_point sl);
+
+  /// Clears all the allocated resources and resets the scheduling result.
+  void clear();
 };
 
 /// Circular Ring of cell_slot_resource_grid objects. This class manages the automatic resetting of
@@ -272,7 +287,7 @@ struct cell_resource_allocator {
   ///
   /// Having access to past decisions is useful during the handling of error indications.
   static const size_t RING_MAX_HISTORY_SIZE = 16;
-  /// Number of slots managed by this container.
+  /// Maximum number of slots managed by this container.
   static const size_t RING_ALLOCATOR_SIZE = get_allocator_ring_size_gt_min(
       RING_MAX_HISTORY_SIZE + get_max_slot_ul_alloc_delay(NTN_CELL_SPECIFIC_KOFFSET_MAX));
 
@@ -287,6 +302,9 @@ struct cell_resource_allocator {
 
   /// Indicate the processing of a new slot in the scheduler.
   void slot_indication(slot_point sl_tx);
+
+  /// Called when cell is deactivated.
+  void stop();
 
   /// Cell index of the resource grid.
   du_cell_index_t cell_index() const { return cfg.cell_index; }
@@ -303,7 +321,7 @@ struct cell_resource_allocator {
   {
     assert_valid_sl(slot_delay);
     slot_point                          sl_tx = last_slot_ind + slot_delay;
-    const cell_slot_resource_allocator& r     = *slots[sl_tx.to_uint() % slots.size()];
+    const cell_slot_resource_allocator& r     = slots[sl_tx.count()];
     srsran_assert(r.slot == sl_tx, "Bad access to uninitialized cell_resource_grid");
     return r;
   }
@@ -311,7 +329,7 @@ struct cell_resource_allocator {
   {
     assert_valid_sl(slot_delay);
     slot_point                    sl_tx = last_slot_ind + slot_delay;
-    cell_slot_resource_allocator& r     = *slots[sl_tx.to_uint() % slots.size()];
+    cell_slot_resource_allocator& r     = slots[sl_tx.count()];
     srsran_assert(r.slot == sl_tx, "Bad access to uninitialized cell_resource_grid");
     return r;
   }
@@ -329,7 +347,7 @@ struct cell_resource_allocator {
     if (diff < 0 or diff >= static_cast<int>(RING_MAX_HISTORY_SIZE)) {
       return nullptr;
     }
-    const cell_slot_resource_allocator& r = *slots[slot.to_uint() % slots.size()];
+    const cell_slot_resource_allocator& r = slots[slot.count()];
     srsran_assert(r.slot == slot, "Bad access to uninitialized cell_resource_grid");
     return &r;
   }
@@ -347,7 +365,7 @@ private:
   slot_point last_slot_ind;
 
   /// Circular pool of cell resource grids, where each entry represents a separate slot.
-  std::vector<std::unique_ptr<cell_slot_resource_allocator>> slots;
+  circular_vector<cell_slot_resource_allocator> slots;
 };
 
 } // namespace srsran

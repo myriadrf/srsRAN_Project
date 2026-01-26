@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -20,17 +20,16 @@
  *
  */
 
-#include "lib/e2/e2sm/e2sm_kpm/e2sm_kpm_cu_meas_provider_impl.h"
 #include "lib/e2/e2sm/e2sm_kpm/e2sm_kpm_du_meas_provider_impl.h"
 #include "tests/unittests/e2/common/e2_test_helpers.h"
-#include "srsran/support/srsran_test.h"
+#include "srsran/ran/du_types.h"
 #include <gtest/gtest.h>
 
 using namespace srsran;
 using namespace asn1::e2sm;
 
-span<const e2sm_kpm_metric_t> e2sm_kpm_28_552_metrics = get_e2sm_kpm_28_552_metrics();
-span<const e2sm_kpm_metric_t> e2sm_kpm_oran_metrics   = get_e2sm_kpm_oran_metrics();
+static span<const e2sm_kpm_metric_t> e2sm_kpm_28_552_metrics = get_e2sm_kpm_28_552_metrics();
+static span<const e2sm_kpm_metric_t> e2sm_kpm_oran_metrics   = get_e2sm_kpm_oran_metrics();
 
 bool get_metric_definition(std::string metric_name, e2sm_kpm_metric_t& e2sm_kpm_metric_def)
 {
@@ -38,7 +37,7 @@ bool get_metric_definition(std::string metric_name, e2sm_kpm_metric_t& e2sm_kpm_
     return (x.name == metric_name.c_str() or x.name == metric_name);
   };
 
-  auto it = std::find_if(e2sm_kpm_28_552_metrics.begin(), e2sm_kpm_28_552_metrics.end(), name_matches);
+  const auto* it = std::find_if(e2sm_kpm_28_552_metrics.begin(), e2sm_kpm_28_552_metrics.end(), name_matches);
   if (it != e2sm_kpm_28_552_metrics.end()) {
     e2sm_kpm_metric_def = *it;
     return true;
@@ -53,13 +52,13 @@ bool get_metric_definition(std::string metric_name, e2sm_kpm_metric_t& e2sm_kpm_
   return false;
 }
 
-rlc_metrics generate_non_zero_rlc_metrics(uint32_t ue_idx, uint32_t bearer_id)
+static rlc_metrics generate_non_zero_rlc_metrics(uint32_t ue_idx, uint32_t bearer_id)
 {
   rlc_metrics rlc_metric;
   rlc_metric.metrics_period        = std::chrono::milliseconds(1000);
   rlc_metric.ue_index              = static_cast<du_ue_index_t>(ue_idx);
   rlc_metric.rb_id                 = rb_id_t(drb_id_t(bearer_id));
-  rlc_metric.rx.mode               = rlc_mode::am;
+  rlc_metric.rx.mode_specific      = rlc_am_rx_metrics{};
   rlc_metric.rx.num_pdus           = 5;
   rlc_metric.rx.num_pdu_bytes      = rlc_metric.rx.num_pdus * 1000;
   rlc_metric.rx.num_sdus           = 5;
@@ -86,7 +85,7 @@ rlc_metrics generate_non_zero_rlc_metrics(uint32_t ue_idx, uint32_t bearer_id)
   return rlc_metric;
 }
 
-scheduler_cell_metrics generate_non_zero_sched_metrics()
+static scheduler_cell_metrics generate_non_zero_sched_metrics()
 {
   scheduler_cell_metrics sched_metric;
   sched_metric.nof_prbs            = 52;
@@ -94,13 +93,14 @@ scheduler_cell_metrics generate_non_zero_sched_metrics()
   sched_metric.nof_ul_slots        = 14;
   sched_metric.nof_prach_preambles = 10;
 
-  scheduler_ue_metrics ue_metrics = {0};
-  ue_metrics.pci                  = 1;
-  ue_metrics.rnti                 = static_cast<rnti_t>(0x1000 + 1);
-  ue_metrics.tot_pdsch_prbs_used  = 1200;
-  ue_metrics.tot_pusch_prbs_used  = 1200;
-  ue_metrics.avg_crc_delay_ms     = 100;
-  ue_metrics.pusch_snr_db         = 10;
+  scheduler_ue_metrics ue_metrics;
+  ue_metrics.ue_index            = to_du_ue_index(0);
+  ue_metrics.pci                 = 1;
+  ue_metrics.rnti                = static_cast<rnti_t>(0x1000 + 1);
+  ue_metrics.tot_pdsch_prbs_used = 1200;
+  ue_metrics.tot_pusch_prbs_used = 1200;
+  ue_metrics.avg_crc_delay_ms    = 100;
+  ue_metrics.pusch_snr_db        = 10;
   for (auto i = 0; i < 10; i++) {
     ue_metrics.cqi_stats.update(i);
   }

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,8 +26,8 @@
 #include "apps/services/metrics/metrics_properties.h"
 #include "apps/services/metrics/metrics_set.h"
 #include "srsran/adt/span.h"
-#include "srsran/adt/unique_function.h"
 #include "srsran/pdcp/pdcp_entity.h"
+#include "srsran/support/synchronization/stop_event.h"
 
 namespace srsran {
 
@@ -57,14 +57,15 @@ public:
 inline auto cu_up_pdcp_metrics_callback = [](const app_services::metrics_set&      report,
                                              span<app_services::metrics_consumer*> consumers,
                                              task_executor&                        executor,
-                                             srslog::basic_logger&                 logger) {
+                                             srslog::basic_logger&                 logger,
+                                             stop_event_token                      token) {
   const auto& metric = static_cast<const cu_up_pdcp_metrics_impl&>(report);
 
-  if (!executor.defer(TRACE_TASK([metric, consumers]() {
+  if (!executor.defer([metric, consumers, stop_token = std::move(token)]() {
         for (auto& consumer : consumers) {
           consumer->handle_metric(metric);
         }
-      }))) {
+      })) {
     logger.error("Failed to dispatch the metric '{}'", metric.get_properties().name());
   }
 };

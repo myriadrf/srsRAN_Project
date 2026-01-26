@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -77,7 +77,7 @@ public:
 
   f1ap_ue_task_scheduler& get_ue_handler(du_ue_index_t ue_index) override { return ues[ue_index]; }
 
-  void on_f1c_disconnection() override { return du_mng->handle_du_stop_request(); }
+  void on_f1c_disconnection() override { return du_mng->handle_f1c_connection_loss(); }
 
   async_task<void> request_reset(const std::vector<du_ue_index_t>& ues_to_reset) override
   {
@@ -105,7 +105,7 @@ public:
 
   async_task<void> request_ue_drb_deactivation(du_ue_index_t ue_index) override
   {
-    return du_mng->handle_ue_deactivation_request(ue_index);
+    return du_mng->handle_ue_drb_deactivation_request(ue_index);
   }
 
   async_task<gnbcu_config_update_response>

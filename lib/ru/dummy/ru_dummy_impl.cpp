@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,8 +32,8 @@
 
 using namespace srsran;
 
-static inline uint64_t get_current_system_slot(std::chrono::microseconds slot_duration,
-                                               uint64_t                  nof_slots_per_hyper_system_frame)
+static uint64_t get_current_system_slot(std::chrono::microseconds slot_duration,
+                                        uint64_t                  nof_slots_per_hyper_system_frame)
 {
   // Get the time since the epoch.
   auto time_since_epoch = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -43,7 +43,6 @@ static inline uint64_t get_current_system_slot(std::chrono::microseconds slot_du
 }
 
 ru_dummy_impl::ru_dummy_impl(const ru_dummy_configuration& config, ru_dummy_dependencies dependencies) noexcept :
-  state_stopped(state_wait_stop + 2 * config.max_processing_delay_slots),
   are_metrics_enabled(config.are_metrics_enabled),
   logger(dependencies.logger),
   executor(*dependencies.executor),
@@ -56,18 +55,17 @@ ru_dummy_impl::ru_dummy_impl(const ru_dummy_configuration& config, ru_dummy_depe
   srsran_assert(config.max_processing_delay_slots > 0, "The maximum processing delay must be greater than 0.");
 
   sectors.reserve(config.nof_sectors);
+
+  std::vector<ru_dummy_sector*> sector_ptrs;
+  sector_ptrs.reserve(config.nof_sectors);
+
   for (unsigned i_sector = 0; i_sector != config.nof_sectors; ++i_sector) {
-    sectors.emplace_back(i_sector,
-                         config.rx_rg_nof_prb,
-                         config.rx_rg_nof_ports,
-                         config.rx_prach_nof_ports,
-                         config.dl_processing_delay,
-                         logger,
-                         dependencies.symbol_notifier,
-                         dependencies.error_notifier);
+    auto& sector = sectors.emplace_back(std::make_unique<ru_dummy_sector>(
+        config.dl_processing_delay, logger, dependencies.symbol_notifier, dependencies.error_notifier));
+    sector_ptrs.emplace_back(sector.get());
   }
 
-  metrics_collector = ru_dummy_metrics_collector(sectors);
+  metrics_collector = ru_dummy_metrics_collector(std::move(sector_ptrs));
 }
 
 void ru_dummy_impl::start()
@@ -77,28 +75,40 @@ void ru_dummy_impl::start()
       get_current_system_slot(slot_duration, current_slot.nof_slots_per_hyper_system_frame());
   current_slot = slot_point(current_slot.numerology(), initial_system_slot);
 
-  uint32_t              expected_state = state_idle;
-  [[maybe_unused]] bool success        = internal_state.compare_exchange_strong(expected_state, state_running);
-  srsran_assert(success, "Invalid state 0x{:08x}.", expected_state);
-  report_fatal_error_if_not(executor.execute([this]() { loop(); }), "Failed to execute loop method.");
+  stop_control.reset();
+
+  // Start each of the sectors.
+  for (auto& sector : sectors) {
+    sector->start();
+  }
+
+  // Start the loop execution.
+  defer_loop();
 }
 
 void ru_dummy_impl::stop()
 {
   // Stop each of the sectors.
   for (auto& sector : sectors) {
-    sector.stop();
+    sector->stop();
   }
 
   // Signal stop to asynchronous thread.
-  uint32_t              expected_state = state_running;
-  [[maybe_unused]] bool success        = internal_state.compare_exchange_strong(expected_state, state_wait_stop);
-  srsran_assert(success, "Invalid state 0x{:08x}.", expected_state);
+  // The timing loop must be stopped last as it will clean up all pending requests.
+  stop_control.stop();
+}
 
-  // Wait for the state to transition to stop.
-  while (internal_state.load(std::memory_order_relaxed) < state_stopped) {
-    std::this_thread::sleep_for(std::chrono::microseconds(10));
+void ru_dummy_impl::defer_loop()
+{
+  auto token = stop_control.get_token();
+  if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
+    return;
   }
+
+  report_fatal_error_if_not(
+      executor.defer(unique_function<void(), default_unique_task_buffer_size, true>(
+          [this, defer_token = std::move(token)]() noexcept SRSRAN_RTSAN_NONBLOCKING { loop(); })),
+      "Failed to execute loop method.");
 }
 
 void ru_dummy_impl::loop()
@@ -108,19 +118,12 @@ void ru_dummy_impl::loop()
 
   // Make sure a minimum time between loop executions without crossing boundaries.
   if (slot_count == current_slot.system_slot()) {
+    SRSRAN_RTSAN_SCOPED_DISABLER(scoped_disabler);
     std::this_thread::sleep_for(minimum_loop_time);
   }
 
   // Advance the current slot until it is equal to the slot given by the system time.
   while (slot_count != current_slot.system_slot()) {
-    // Detect stop mask.
-    if ((internal_state.load(std::memory_order_relaxed) & state_wait_stop) != 0) {
-      uint32_t current_state = internal_state.fetch_add(1, std::memory_order_relaxed) + 1;
-      if (current_state >= state_stopped) {
-        return;
-      }
-    }
-
     // Increment current slot.
     ++current_slot;
 
@@ -138,10 +141,10 @@ void ru_dummy_impl::loop()
 
     // Notify the slot boundary in all the sectors.
     for (auto& sector : sectors) {
-      sector.new_slot_boundary(current_slot);
+      sector->new_slot_boundary(current_slot);
     }
   }
 
   // Feed back the execution of this task.
-  report_fatal_error_if_not(executor.defer([this]() { loop(); }), "Failed to execute loop method.");
+  defer_loop();
 }

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -58,7 +58,7 @@ struct o_du_high_sector_dependencies {
   fapi::slot_message_gateway*       gateway           = nullptr;
   fapi::slot_last_message_notifier* last_msg_notifier = nullptr;
   /// FAPI message bufferer executor.
-  std::optional<task_executor*> fapi_executor;
+  task_executor* fapi_executor = nullptr;
 };
 
 /// O-RAN DU high dependencies.

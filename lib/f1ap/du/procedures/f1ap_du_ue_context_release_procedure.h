@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,10 +29,15 @@
 namespace srsran {
 namespace srs_du {
 
+struct f1ap_du_context;
+
 class f1ap_du_ue_context_release_procedure
 {
 public:
-  f1ap_du_ue_context_release_procedure(const asn1::f1ap::ue_context_release_cmd_s& msg_, f1ap_du_ue_manager& ues);
+  f1ap_du_ue_context_release_procedure(const asn1::f1ap::ue_context_release_cmd_s& msg_,
+                                       f1ap_du_ue_manager&                         ues,
+                                       const f1ap_du_context&                      ctxt_,
+                                       timer_factory                               timers_);
 
   void operator()(coro_context<async_task<void>>& ctx);
 
@@ -47,6 +52,11 @@ private:
   f1ap_du_ue&                                ue;
   srslog::basic_logger&                      logger = srslog::fetch_basic_logger("DU-F1");
   f1ap_message_notifier&                     cu_msg_notifier; // used after the UE context as been released.
+  const f1ap_du_context&                     du_ctxt;
+  timer_factory                              timers;
+
+  std::chrono::milliseconds rem_timeout{0};
+  bool                      success = false;
 };
 
 } // namespace srs_du

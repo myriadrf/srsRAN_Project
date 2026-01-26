@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,13 +32,13 @@ public:
   ~f1u_session_manager_impl() override = default;
   explicit f1u_session_manager_impl(const f1u_session_maps& f1u_sessions_);
 
-  gtpu_tnl_pdu_session& get_next_f1u_gateway(five_qi_t five_qi) override;
+  gtpu_tnl_pdu_session& get_next_f1u_gateway(s_nssai_t s_nssai, five_qi_t five_qi) override;
 
 private:
-  srslog::basic_logger&         logger;
-  const f1u_session_maps&       f1u_sessions;
-  uint32_t                      next_gw = 0;
-  std::map<five_qi_t, uint32_t> five_qi_next_gw_map;
+  srslog::basic_logger&                              logger;
+  const f1u_session_maps&                            f1u_sessions;
+  uint32_t                                           next_gw = 0;
+  std::map<s_nssai_t, std::map<five_qi_t, uint32_t>> next_gw_map;
 };
 
 } // namespace srsran

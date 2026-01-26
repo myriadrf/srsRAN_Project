@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -43,21 +43,25 @@ class base_sched_grants_per_slot_test : public scheduler_test_simulator
 {
 protected:
   base_sched_grants_per_slot_test(unsigned max_ul_grants_per_slot = 32) :
-    scheduler_test_simulator(create_custom_sched_cfg(max_ul_grants_per_slot), 4, subcarrier_spacing::kHz30),
+    scheduler_test_simulator(scheduler_test_sim_config{create_custom_sched_cfg(max_ul_grants_per_slot),
+                                                       4,
+                                                       subcarrier_spacing::kHz30,
+                                                       true,
+                                                       true}),
     params(cell_config_builder_profiles::tdd())
   {
     auto sched_cell_cfg_req = sched_config_helper::make_default_sched_cell_configuration_request(params);
+    pucch_builder_params pucch_basic_params{
+        .res_set_0_size = 8, .res_set_1_size = 8, .nof_cell_sr_resources = 8, .nof_cell_csi_resources = 8};
+    auto& f1_params                        = pucch_basic_params.f0_or_f1_params.emplace<pucch_f1_params>();
+    f1_params.nof_cyc_shifts               = pucch_nof_cyclic_shifts::twelve;
+    f1_params.occ_supported                = true;
+    sched_cell_cfg_req.ded_pucch_resources = config_helpers::build_pucch_resource_list(
+        pucch_basic_params, sched_cell_cfg_req.ul_cfg_common.init_ul_bwp.generic_params.crbs.length());
     add_cell(sched_cell_cfg_req);
 
     // Create PUCCH builder that will be used to add UEs.
-    pucch_builder_params pucch_basic_params{.nof_ue_pucch_f0_or_f1_res_harq       = 8,
-                                            .nof_ue_pucch_f2_or_f3_or_f4_res_harq = 8,
-                                            .nof_sr_resources                     = 8,
-                                            .nof_csi_resources                    = 8};
-    auto&                f1_params = pucch_basic_params.f0_or_f1_params.emplace<pucch_f1_params>();
-    f1_params.nof_cyc_shifts       = pucch_nof_cyclic_shifts::twelve;
-    f1_params.occ_supported        = true;
-    pucch_cfg_builder.setup(cell_cfg_list[0], pucch_basic_params);
+    pucch_cfg_builder.setup(cell_cfg(to_du_cell_index(0)), pucch_basic_params);
   }
 
   void add_ue()
@@ -87,47 +91,6 @@ protected:
     this->push_bsr(bsr);
   }
 
-  void run_slot()
-  {
-    scheduler_test_simulator::run_slot();
-
-    // Handle UCI and CRC indications.
-    uci_indication uci_ind;
-    uci_ind.cell_index = to_du_cell_index(0);
-    uci_ind.slot_rx    = this->last_result_slot();
-    ul_crc_indication crc_ind;
-    crc_ind.cell_index = to_du_cell_index(0);
-    crc_ind.sl_rx      = last_result_slot();
-
-    span<const ul_sched_info> ul_grants = this->last_sched_res_list[0]->ul.puschs;
-
-    // Handle PUCCHs.
-    for (const pucch_info& pucch : this->last_sched_res_list[to_du_cell_index(0)]->ul.pucchs) {
-      if (pucch.format() == pucch_format::FORMAT_1 and pucch.uci_bits.sr_bits != sr_nof_bits::no_sr) {
-        // Skip SRs for this test.
-        continue;
-      }
-      du_ue_index_t ue_idx = to_du_ue_index((unsigned)pucch.crnti - 0x4601);
-      uci_ind.ucis.push_back(test_helper::create_uci_indication_pdu(ue_idx, pucch));
-    }
-
-    // Handle CRCs and PUSCH UCIs.
-    for (const ul_sched_info& grant : ul_grants) {
-      crc_ind.crcs.emplace_back(test_helper::create_crc_pdu_indication(grant));
-      if (grant.uci.has_value()) {
-        uci_ind.ucis.push_back(
-            test_helper::create_uci_indication_pdu(grant.pusch_cfg.rnti, grant.context.ue_index, grant.uci.value()));
-      }
-    }
-
-    if (not uci_ind.ucis.empty()) {
-      this->sched->handle_uci_indication(uci_ind);
-    }
-    if (not crc_ind.crcs.empty()) {
-      this->sched->handle_crc_indication(crc_ind);
-    }
-  }
-
   cell_config_builder_params    params;
   pucch_res_builder_test_helper pucch_cfg_builder;
   unsigned                      nof_ues = 0;
@@ -151,8 +114,8 @@ TEST_F(sched_limited_grants_per_slot_test, test_max_ul_grants_per_slot_lower_tha
   for (unsigned i = 0; i != nof_test_slots; ++i) {
     run_slot();
 
-    unsigned ul_grants =
-        this->last_sched_res_list[0]->ul.pucchs.size() + this->last_sched_res_list[0]->ul.puschs.size();
+    unsigned ul_grants = this->last_sched_result(to_du_cell_index(0))->ul.pucchs.size() +
+                         this->last_sched_result(to_du_cell_index(0))->ul.puschs.size();
     EXPECT_LE(ul_grants, sched_cfg.ue.max_ul_grants_per_slot) << "UL grants exceeded the limit of grants per slot";
   }
 }

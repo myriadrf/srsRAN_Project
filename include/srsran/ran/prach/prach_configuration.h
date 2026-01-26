@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -20,6 +20,8 @@
  *
  */
 
+#pragma once
+
 #include "srsran/adt/static_vector.h"
 #include "srsran/ran/duplex_mode.h"
 #include "srsran/ran/frequency_range.h"
@@ -27,9 +29,17 @@
 #include "srsran/ran/slot_point.h"
 #include <cstdint>
 
-#pragma once
-
 namespace srsran {
+
+/// Indicates the number of SSBs per RACH occasion (L1 parameter 'SSB-per-rach-occasion'). See TS 38.331, \c
+/// ssb-perRACH-OccasionAndCB-PreamblesPerSSB. Values {1/8, 1/4, 1/2, 1, 2, 4, 8, 16}.
+/// Value 1/8 corresponds to one SSB associated with 8 RACH occasions and so on so forth.
+enum class ssb_per_rach_occasions : uint8_t { one_eighth = 0, one_forth, one_half, one, two, four, eight, sixteen };
+
+inline float ssb_per_rach_occ_to_float(ssb_per_rach_occasions value)
+{
+  return static_cast<float>(1U << (static_cast<unsigned>(value))) / 8.0f;
+}
 
 /// \brief Contains the PRACH configuration parameters.
 ///
@@ -71,7 +81,7 @@ struct prach_configuration {
 };
 
 /// Reserved PRACH configuration. Indicates the configuration parameters are invalid.
-static const prach_configuration PRACH_CONFIG_RESERVED = {prach_format_type::invalid, UINT32_MAX, {}, {}, 0, 0, 0, 0};
+const prach_configuration PRACH_CONFIG_RESERVED = {prach_format_type::invalid, UINT32_MAX, {}, {}, 0, 0, 0, 0};
 
 /// \brief Gets a PRACH configuration.
 ///

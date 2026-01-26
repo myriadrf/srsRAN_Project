@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -94,7 +94,7 @@ inline const char* to_string(csi_rs_freq_density_type value)
 }
 
 /// Computes the CDM group size.
-static constexpr unsigned get_cdm_group_size(csi_rs_cdm_type cdm)
+constexpr unsigned get_cdm_group_size(csi_rs_cdm_type cdm)
 {
   // Determine the CDM group size.
   unsigned cdm_group_size = 1;

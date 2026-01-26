@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,12 +21,14 @@
  */
 
 #include "split6_o_du_low_unit_cli11_schema.h"
+#include "apps/helpers/logger/logger_appconfig_cli11_utils.h"
 #include "apps/units/flexible_o_du/o_du_low/du_low_config_cli11_schema.h"
 #include "apps/units/flexible_o_du/split_7_2/helpers/ru_ofh_config_cli11_schema.h"
 #include "apps/units/flexible_o_du/split_8/helpers/ru_sdr_config_cli11_schema.h"
 #include "split6_constants.h"
 #include "split6_o_du_low_unit_config.h"
 #include "srsran/ran/band_helper.h"
+#include "srsran/ran/slot_point_extended.h"
 #include "srsran/support/cli11_utils.h"
 
 using namespace srsran;
@@ -40,13 +42,24 @@ void srsran::configure_cli11_with_split6_o_du_low_unit_config_schema(CLI::App& a
   configure_cli11_with_ru_ofh_config_schema(app, ofh_cfg);
   configure_cli11_with_ru_sdr_config_schema(app, sdr_cfg);
 
+  add_option(app,
+             "--start_time_jitter",
+             config.start_time_jitter_ms,
+             "Start time jitter in milliseconds. A value of 0 disables the start time calculation and the session "
+             "starts it as soon as possible")
+      ->capture_default_str()
+      ->check(CLI::Range(0, 600));
+
+  CLI::App* logger_subcmd = add_subcommand(app, "log", "Logger configuration")->configurable();
+  app_helpers::add_log_option(*logger_subcmd, config.fapi_level, "--fapi_level", "FAPI log level");
+
   CLI::App* metrics_subcmd = add_subcommand(app, "metrics", "Metrics configuration")->configurable();
   auto*     periodicity_subcmd =
       add_subcommand(*metrics_subcmd, "periodicity", "Metrics periodicity configuration")->configurable();
   add_option(
       *periodicity_subcmd, "--du_report_period", config.du_report_period, "DU statistics report period in milliseconds")
       ->capture_default_str()
-      ->check(CLI::Range(0, 10240));
+      ->check(CLI::Range(0U, static_cast<unsigned>(NOF_SUBFRAMES_PER_FRAME * NOF_SFNS * NOF_HYPER_SFNS)));
 }
 
 static void manage_ru(const CLI::App& app, split6_o_du_low_unit_config& config)
@@ -92,10 +105,7 @@ void srsran::autoderive_split6_o_du_low_parameters_after_parsing(CLI::App& app, 
   // Set the parsed RU.
   manage_ru(app, config);
 
-  // Auto derive DU low parameters.
-  constexpr bool is_zmq_rf_driver = false;
   // NOTE: TDD is hardcoded because it does not matter as max proc delay parameter is mandatory in this application
   // unit.
-  autoderive_du_low_parameters_after_parsing(
-      app, config.du_low_cfg, duplex_mode::TDD, is_zmq_rf_driver, split6_du_low::NOF_CELLS_SUPPORTED);
+  autoderive_du_low_parameters_after_parsing(app, config.du_low_cfg, duplex_mode::TDD);
 }

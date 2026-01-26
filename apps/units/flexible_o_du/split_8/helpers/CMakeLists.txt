@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -26,5 +26,5 @@ set(SOURCES
         ru_sdr_factories.cpp)
 
 add_library(srsran_split_8_app_unit_helpers STATIC ${SOURCES})
-target_link_libraries(srsran_split_8_app_unit_helpers srsran_ru_generic srsran_lower_phy srsran_app_helpers)
+target_link_libraries(srsran_split_8_app_unit_helpers srsran_ru_sdr srsran_lower_phy srsran_app_helpers)
 target_include_directories(srsran_split_8_app_unit_helpers PRIVATE ${CMAKE_SOURCE_DIR})

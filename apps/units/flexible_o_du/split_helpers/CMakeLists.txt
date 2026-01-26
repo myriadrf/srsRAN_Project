@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -24,6 +24,7 @@ set(SOURCES
         flexible_o_du_factory.cpp
         flexible_o_du_impl.cpp
         flexible_o_du_metrics_aggregator.cpp
+        flexible_o_du_ntn_configuration_manager_factory.cpp
         commands/ntn_config_update_remote_command_factory.cpp)
 
 add_library(srsran_flexible_o_du_helpers STATIC ${SOURCES})

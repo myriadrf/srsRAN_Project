@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -45,7 +45,7 @@ struct amplitude_controller_metrics {
   uint64_t nof_clipped_samples;
   /// Expected probability that an input sample is clipped, calculated as \c nof_clipped_samples /
   /// \c nof_processed_samples.
-  long double clipping_probability;
+  double clipping_probability;
   /// Indicates whether clipping is enabled in the amplitude controller.
   bool clipping_enabled;
 };

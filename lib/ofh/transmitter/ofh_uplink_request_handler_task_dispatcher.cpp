@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,11 +28,31 @@
 using namespace srsran;
 using namespace ofh;
 
-void uplink_request_handler_task_dispatcher::handle_prach_occasion(const prach_buffer_context& context,
-                                                                   prach_buffer&               buffer)
+void uplink_request_handler_task_dispatcher::start()
 {
-  if (!executor.execute([context, &buffer, this]()
-                            SRSRAN_RTSAN_NONBLOCKING { uplink_handler.handle_prach_occasion(context, buffer); })) {
+  stop_manager.reset();
+}
+
+void uplink_request_handler_task_dispatcher::stop()
+{
+  stop_manager.stop();
+}
+
+void uplink_request_handler_task_dispatcher::handle_prach_occasion(const prach_buffer_context& context,
+                                                                   shared_prach_buffer         buffer)
+{
+  // Do not process if stop was requested.
+  auto token = stop_manager.get_token();
+  if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
+    return;
+  }
+
+  if (!executor.defer([context,
+                       prach_buff = std::move(buffer),
+                       this,
+                       tk = std::move(token)]() mutable noexcept SRSRAN_RTSAN_NONBLOCKING {
+        uplink_handler.handle_prach_occasion(context, std::move(prach_buff));
+      })) {
     logger.warning(
         "Sector#{}: failed to handle PRACH in the uplink request handler for slot '{}'", sector_id, context.slot);
   }
@@ -41,8 +61,15 @@ void uplink_request_handler_task_dispatcher::handle_prach_occasion(const prach_b
 void uplink_request_handler_task_dispatcher::handle_new_uplink_slot(const resource_grid_context& context,
                                                                     const shared_resource_grid&  grid)
 {
-  if (!executor.execute([context, rg = grid.copy(), this]()
-                            SRSRAN_RTSAN_NONBLOCKING { uplink_handler.handle_new_uplink_slot(context, rg); })) {
+  // Do not process if stop was requested.
+  auto token = stop_manager.get_token();
+  if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
+    return;
+  }
+
+  if (!executor.defer([context, rg = grid.copy(), this, tk = std::move(token)]() noexcept SRSRAN_RTSAN_NONBLOCKING {
+        uplink_handler.handle_new_uplink_slot(context, rg);
+      })) {
     logger.warning(
         "Sector#{}: failed to handle uplink slot in the uplink request handler for slot '{}'", sector_id, context.slot);
   }

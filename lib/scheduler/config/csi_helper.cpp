@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -41,7 +41,7 @@ static crb_interval get_csi_freq_occupation_rbs(unsigned nof_crbs, unsigned bwp_
   return {0, std::max(nof_rbs_in_multiples_of_4, std::min(24U, bwp_nof_rbs))};
 }
 
-/// \brief Compute default CSI-RS signalling period to use, while constrained by TS38.214, 5.1.6.1.1.
+/// \brief Compute default CSI-RS signalling period to use, while constrained by TS 38.214, 5.1.6.1.1.
 csi_resource_periodicity srsran::csi_helper::get_max_csi_rs_period(subcarrier_spacing pdsch_scs)
 {
   const csi_resource_periodicity max_csi_period =
@@ -58,7 +58,7 @@ bool srsran::csi_helper::is_csi_rs_period_valid(csi_resource_periodicity       c
     return false;
   }
 
-  // According to TS38.214, Section 5.1.6.1.1, a UE expects periods of 10, 20, 40, or 80 milliseconds in CSI-RS for
+  // According to TS 38.214, Section 5.1.6.1.1, a UE expects periods of 10, 20, 40, or 80 milliseconds in CSI-RS for
   // tracking.
   unsigned                      nof_slots_per_subframe = get_nof_slots_per_subframe(tdd_cfg.ref_scs);
   const std::array<unsigned, 4> csi_opt_msec           = {10 * nof_slots_per_subframe,
@@ -344,7 +344,7 @@ static nzp_csi_rs_resource make_channel_measurement_nzp_csi_rs_resource(const cs
 ///
 /// The TRS resource set contains four NZP-CSI-RS resources. The resources are mapped on two consecutive slots.
 ///
-/// The NZP-CSI-RS resources selected for TRS are constrained by TS38.214 Section 5.1.6.1.1 which specifies the number
+/// The NZP-CSI-RS resources selected for TRS are constrained by TS 38.214 Section 5.1.6.1.1 which specifies the number
 /// of ports, multiplexing, OFDM symbols to use within the slot, periodicity, and density.
 static void
 fill_tracking_nzp_csi_rs_resource(span<nzp_csi_rs_resource> tracking_csi_rs,
@@ -524,8 +524,6 @@ static std::vector<csi_report_config> make_csi_report_configs(const csi_builder_
   reps[0].report_cfg_type = report_cfg_type;
 
   reps[0].report_qty_type = csi_report_config::report_quantity_type_t::cri_ri_pmi_cqi;
-  reps[0].non_pmi_port_indication.push_back(csi_report_config::port_index_for_8_ranks{
-      .port_index_type = srsran::csi_report_config::port_index_for_8_ranks::port_index_type_t::port_index_1});
 
   reps[0].report_freq_cfg.emplace();
   reps[0].report_freq_cfg->cqi_format_ind = csi_report_config::cqi_format_indicator::wideband_cqi;

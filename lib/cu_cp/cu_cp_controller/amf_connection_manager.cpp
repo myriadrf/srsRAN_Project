@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -71,7 +71,6 @@ void amf_connection_manager::connect_to_amf(std::promise<bool>* completion_signa
 async_task<void> amf_connection_manager::disconnect_amf()
 {
   if (ngaps.get_ngaps().empty() or amfs_connected.empty()) {
-    logger.error("No NGAP interface available to disconnect from AMF");
     return launch_async([](coro_context<async_task<void>>& ctx) {
       CORO_BEGIN(ctx);
       CORO_RETURN();

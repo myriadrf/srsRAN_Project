@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -219,16 +219,14 @@ static const std::array<pdsch_antenna_ports_mapping, antenna_port_mapping_dmrs_t
         {3, {0, 1, 2, 3, 4, 5}, 1},
         {2, {0, 1, 2, 3, 6}, 2},
         {2, {0, 1, 2, 3, 6, 8}, 2},
-        {2, {0, 1, 2, 3, 6, 7,8}, 2},
-        {2, {0, 1, 2, 3, 6, 7,8, 9}, 2},
+        {2, {0, 1, 2, 3, 6, 7, 8}, 2},
+        {2, {0, 1, 2, 3, 6, 7, 8, 9}, 2},
         // clang-format on
     }};
 
-namespace {
-// Helper function to fetch the PDSCH antenna ports mapping table to use based on input configuration.
-span<const pdsch_antenna_ports_mapping> get_pdsch_antenna_port_mapping_table(dmrs_config_type dmrs_cfg_type,
-                                                                             dmrs_max_length  dmrs_max_len,
-                                                                             bool             are_both_cws_enabled)
+span<const pdsch_antenna_ports_mapping> srsran::get_pdsch_antenna_port_mapping_table(dmrs_config_type dmrs_cfg_type,
+                                                                                     dmrs_max_length  dmrs_max_len,
+                                                                                     bool are_both_cws_enabled)
 {
   if (dmrs_cfg_type == dmrs_config_type::type1 and dmrs_max_len == dmrs_max_length::len1) {
     return antenna_port_mapping_dmrs_type1_max_length1;
@@ -255,11 +253,11 @@ span<const pdsch_antenna_ports_mapping> get_pdsch_antenna_port_mapping_table(dmr
 }
 
 // Helper function to fetch a row from the relevant PDSCH antenna ports mapping table based on input configuration.
-const pdsch_antenna_ports_mapping* get_pdsch_antenna_port_mapping_row(unsigned         nof_layers,
-                                                                      unsigned         nof_dl_antenna_ports,
-                                                                      dmrs_config_type dmrs_cfg_type,
-                                                                      dmrs_max_length  dmrs_max_len,
-                                                                      bool             are_both_cws_enabled)
+static const pdsch_antenna_ports_mapping* get_pdsch_antenna_port_mapping_row(unsigned         nof_layers,
+                                                                             unsigned         nof_dl_antenna_ports,
+                                                                             dmrs_config_type dmrs_cfg_type,
+                                                                             dmrs_max_length  dmrs_max_len,
+                                                                             bool             are_both_cws_enabled)
 {
   srsran_assert(nof_layers <= nof_dl_antenna_ports,
                 "Number of DL layers={} cannot be greater than number of DL antenna ports={} of the cell.",
@@ -278,7 +276,6 @@ const pdsch_antenna_ports_mapping* get_pdsch_antenna_port_mapping_row(unsigned  
   }
   return it;
 }
-} // namespace
 
 const pdsch_antenna_ports_mapping& srsran::get_pdsch_antenna_port_mapping(unsigned         nof_layers,
                                                                           unsigned         nof_dl_antenna_ports,

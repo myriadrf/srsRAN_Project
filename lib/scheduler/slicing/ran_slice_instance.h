@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,9 +22,8 @@
 
 #pragma once
 
-#include "../cell/resource_grid.h"
 #include "../config/cell_configuration.h"
-#include "../ue_scheduling/ue_repository.h"
+#include "../ue_context/ue_repository.h"
 #include "ran_slice_id.h"
 #include "slice_ue_repository.h"
 #include "srsran/scheduler/config/slice_rrm_policy_config.h"
@@ -39,13 +38,18 @@ class ran_slice_instance
   static constexpr unsigned MAX_SLOTS_SINCE_LAST_PXSCH = 256;
 
 public:
-  ran_slice_instance(ran_slice_id_t id_, const cell_configuration& cell_cfg_, const slice_rrm_policy_config& cfg_);
+  ran_slice_instance(ran_slice_id_t                 id_,
+                     const cell_configuration&      cell_cfg_,
+                     const slice_rrm_policy_config& cfg_,
+                     ue_repository&                 ues_);
 
   void slot_indication(slot_point slot_tx);
 
   bool active() const { return not slice_ues.empty(); }
 
   /// Save PDSCH grant.
+  /// \param[in] crbs Number of RBs allocated.
+  /// \param[in] pdsch_slot Slot where the PDSCH is scheduled.
   void store_pdsch_grant(unsigned crbs, slot_point pdsch_slot)
   {
     pdsch_rb_count += crbs;
@@ -55,7 +59,8 @@ public:
   /// Save PUSCH grant.
   void store_pusch_grant(unsigned crbs, slot_point pusch_slot)
   {
-    pusch_rb_count_per_slot[pusch_slot.to_uint() % pusch_rb_count_per_slot.size()] += crbs;
+    auto& pusch_count = pusch_rb_count_per_slot[pusch_slot.count() % pusch_rb_count_per_slot.size()];
+    pusch_count += crbs;
     last_pusch_alloc_slot = pusch_slot;
   }
 
@@ -65,7 +70,7 @@ public:
 
   unsigned nof_pusch_rbs_allocated(slot_point pusch_slot) const
   {
-    return pusch_rb_count_per_slot[pusch_slot.to_uint() % pusch_rb_count_per_slot.size()];
+    return pusch_rb_count_per_slot[pusch_slot.count() % pusch_rb_count_per_slot.size()];
   }
 
   /// Number of slots elapsed between the provided PDSCH slot and the last time this slice was scheduled.

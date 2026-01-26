@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -20,9 +20,9 @@
  *
  */
 
-#include "rlc_am_pdu.h"
-
 #pragma once
+
+#include "rlc_am_pdu.h"
 
 namespace srsran {
 

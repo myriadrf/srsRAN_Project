@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -191,7 +191,7 @@ inline void security_nia2_non_cmac(sec_mac&           mac,
     }
 
     // MAC generation
-    n = (uint32_t)(ceilf((float)(msg_len_block_8 + 8) / (float)(16)));
+    n = (uint32_t)(std::ceil((float)(msg_len_block_8 + 8) / (float)(16)));
     for (i = 0; i < 16; i++) {
       T[i] = 0;
     }

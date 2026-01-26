@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,6 +24,7 @@
 
 #include "srsran/phy/lower/lower_phy_timing_context.h"
 #include "srsran/phy/lower/processors/downlink/downlink_processor_notifier.h"
+#include <vector>
 
 namespace srsran {
 

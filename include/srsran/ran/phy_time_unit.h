@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -289,7 +289,7 @@ public:
 /// \param dft_size DFT size.
 /// \return The sampling rate in hertz from the given SCS and DFT size.
 template <typename U = double>
-inline constexpr U to_sampling_rate_Hz(subcarrier_spacing scs, unsigned dft_size)
+constexpr U to_sampling_rate_Hz(subcarrier_spacing scs, unsigned dft_size)
 {
   static_assert(std::is_convertible<unsigned, U>::value, "Invalid type.");
   return static_cast<U>(scs_to_khz(scs) * 1000 * dft_size);

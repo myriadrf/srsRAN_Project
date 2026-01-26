@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,9 +24,8 @@
 
 #include "../test_helpers.h"
 #include "cu_up_processor_test_helpers.h"
+#include "lib/cu_cp/cu_up_processor/cu_up_processor.h"
 #include "lib/cu_cp/cu_up_processor/cu_up_processor_factory.h"
-#include "lib/cu_cp/cu_up_processor/cu_up_processor_impl_interface.h"
-#include "lib/cu_cp/task_schedulers/cu_up_task_scheduler.h"
 #include "lib/cu_cp/ue_manager/ue_manager_impl.h"
 #include "tests/unittests/e1ap/cu_cp/e1ap_cu_cp_test_helpers.h"
 #include "srsran/cu_cp/cu_cp_types.h"
@@ -52,10 +51,10 @@ protected:
   manual_task_worker          ctrl_worker{128};
   cu_cp_configuration         cu_cp_cfg;
 
-  ue_manager                                      ue_mng{cu_cp_cfg};
-  dummy_e1ap_cu_cp_notifier                       cu_cp_notifier{ue_mng};
-  std::unique_ptr<cu_up_processor_impl_interface> cu_up_processor_obj;
-  cu_up_task_scheduler task_sched{timers, ctrl_worker, cu_cp_cfg.admission.max_nof_cu_ups, test_logger};
+  ue_manager                             ue_mng{cu_cp_cfg};
+  dummy_e1ap_cu_cp_notifier              cu_cp_notifier{ue_mng};
+  std::unique_ptr<common_task_scheduler> common_task_sched;
+  std::unique_ptr<cu_up_processor>       cu_up_processor_obj;
 };
 
 } // namespace srs_cu_cp

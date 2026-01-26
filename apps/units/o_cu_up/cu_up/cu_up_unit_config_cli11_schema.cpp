@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -81,12 +81,6 @@ static void configure_cli11_execution_args(CLI::App& app, cu_up_unit_execution_c
       ->capture_default_str();
   add_option(*queues_subcmd, "--cu_up_strand_batch_size", exec_cfg.strand_batch_size, "CU-UP's strands batch size")
       ->capture_default_str();
-  CLI::App* tracing_subcmd = add_subcommand(app, "tracing", "Task executor tracing parameters")->configurable();
-  add_option(*tracing_subcmd,
-             "--cu_up_executor_tracing_enable",
-             exec_cfg.executor_tracing_enable,
-             "Enable tracing for CU-UP executors")
-      ->capture_default_str();
 }
 
 static void configure_cli11_ngu_args(CLI::App& app, cu_up_unit_ngu_config& ngu_params)
@@ -132,6 +126,11 @@ static void configure_cli11_test_mode_args(CLI::App& app, cu_up_unit_test_mode_c
              test_mode_params.attach_detach_period,
              "Attach/detach period for test mode. 0 means always attached.")
       ->capture_default_str();
+  add_option(app,
+             "--reestablish_period",
+             test_mode_params.reestablish_period,
+             "Reestablish period for test mode. 0 means always attached.")
+      ->capture_default_str();
 }
 
 static void configure_cli11_cu_up_args(CLI::App& app, cu_up_unit_config& cu_up_params)
@@ -159,11 +158,15 @@ static void configure_cli11_log_args(CLI::App& app, cu_up_unit_logger_config& lo
   app_helpers::add_log_option(app, log_params.e1ap_level, "--e1ap_level", "E1AP log level");
   app_helpers::add_log_option(app, log_params.f1u_level, "--f1u_level", "F1-U log level");
   app_helpers::add_log_option(app, log_params.cu_level, "--cu_level", "Log level for the CU");
+  app_helpers::add_log_option(app, log_params.sec_level, "--sec_level", "Security functions log level");
+  app_helpers::add_log_option(app, log_params.rohc_level, "--rohc_level", "ROHC log level");
 
-  add_option(
-      app, "--hex_max_size", log_params.hex_max_size, "Maximum number of bytes to print in hex (zero for no hex dumps)")
+  add_option(app,
+             "--hex_max_size",
+             log_params.hex_max_size,
+             "Maximum number of bytes to print in hex (zero for no hex dumps, -1 for unlimited bytes)")
       ->capture_default_str()
-      ->check(CLI::Range(0, 1024));
+      ->check(CLI::Range(-1, 1024));
   add_option(app, "--e1ap_json_enabled", log_params.e1ap_json_enabled, "Enable JSON logging of E1AP PDUs")
       ->always_capture_default();
 }
@@ -183,8 +186,10 @@ static void configure_cli11_metrics_layers_args(CLI::App& app, cu_up_unit_metric
 {
   add_option(app, "--enable_e1ap", metrics_params.enable_e1ap, "Enable E1AP metrics")->capture_default_str();
   add_option(app, "--enable_pdcp", metrics_params.enable_pdcp, "Enable PDCP metrics")->capture_default_str();
-  add_option(
-      app, "--enable_cu_up_executor", metrics_params.enable_cu_up_executor, "Whether to log CU-UP executor metrics")
+  add_option(app,
+             "--skip_cu_up_executor",
+             metrics_params.skip_cu_up_executor,
+             "Whether to skip logging CU-UP executor metrics when executor logging is enabled application wide")
       ->capture_default_str();
 }
 
@@ -199,6 +204,13 @@ static void configure_cli11_metrics_args(CLI::App& app, cu_up_unit_metrics_confi
 
   auto* layers_subcmd = add_subcommand(app, "layers", "Layer basis metrics configuration")->configurable();
   configure_cli11_metrics_layers_args(*layers_subcmd, metrics_params.layers_cfg);
+}
+
+static void configure_cli11_trace(CLI::App& app, cu_up_unit_trace_config& trace_params)
+{
+  CLI::App* layers_subcmd = add_subcommand(app, "layers", "Metrics configuration")->configurable();
+  add_option(*layers_subcmd, "--cu_up_enable", trace_params.cu_up_enable, "Enable tracing for CU-UP executors")
+      ->capture_default_str();
 }
 
 static void configure_cli11_f1u_cu_up_args(CLI::App& app, cu_cp_unit_f1u_config& f1u_cu_up_params)
@@ -226,7 +238,7 @@ void srsran::configure_cli11_with_cu_up_unit_config_schema(CLI::App& app, cu_up_
       ->check(CLI::Range(22, 32));
   add_option(app, "--gnb_cu_up_id", unit_cfg.gnb_cu_up_id, "gNB-CU-UP Id")
       ->capture_default_str()
-      ->check(CLI::Range(static_cast<uint64_t>(0U), static_cast<uint64_t>(pow(2, 36) - 1)));
+      ->check(CLI::Range(static_cast<uint64_t>(0U), static_cast<uint64_t>((uint64_t(1) << 36) - 1)));
 
   // CU-UP section.
   CLI::App* cu_up_subcmd = add_subcommand(app, "cu_up", "CU-UP parameters")->configurable();
@@ -248,6 +260,10 @@ void srsran::configure_cli11_with_cu_up_unit_config_schema(CLI::App& app, cu_up_
   CLI::App* metrics_subcmd = add_subcommand(app, "metrics", "Metrics configuration")->configurable();
   configure_cli11_metrics_args(*metrics_subcmd, unit_cfg.metrics);
   app_helpers::configure_cli11_with_metrics_appconfig_schema(app, unit_cfg.metrics.common_metrics_cfg);
+
+  // Trace section.
+  CLI::App* tracing_subcmd = add_subcommand(app, "trace", "General tracer configuration")->configurable();
+  configure_cli11_trace(*tracing_subcmd, unit_cfg.trace_cfg);
 
   // QoS section.
   auto qos_lambda = [&unit_cfg](const std::vector<std::string>& values) {

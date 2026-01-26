@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,7 +28,7 @@
 
 namespace srsran {
 
-class baseband_gateway_buffer;
+class baseband_gateway_buffer_reader;
 
 /// \brief Lower physical layer uplink processor - Baseband interface.
 ///

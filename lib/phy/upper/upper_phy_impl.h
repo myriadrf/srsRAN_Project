@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,7 +27,6 @@
 #include "upper_phy_pdu_validators.h"
 #include "upper_phy_rx_results_notifier_wrapper.h"
 #include "upper_phy_rx_symbol_handler_impl.h"
-#include "srsran/phy/support/prach_buffer_pool.h"
 #include "srsran/phy/support/resource_grid_pool.h"
 #include "srsran/phy/upper/downlink_processor.h"
 #include "srsran/phy/upper/rx_buffer_pool.h"
@@ -37,14 +36,11 @@
 #include "srsran/phy/upper/upper_phy_timing_handler.h"
 #include "srsran/phy/upper/upper_phy_timing_notifier.h"
 #include "srsran/srslog/srslog.h"
+#include "srsran/support/memory_pool/bounded_object_pool.h"
 
 namespace srsran {
 /// Upper PHY implementation configuration.
 struct upper_phy_impl_config {
-  /// Uplink bandwidth in resource blocks.
-  unsigned ul_bw_rb;
-  /// Number of receive antenna ports.
-  unsigned nof_rx_ports;
   /// Maximum number of layers for PUSCH transmissions.
   unsigned pusch_max_nof_layers;
   /// Downlink processor pool.
@@ -53,8 +49,8 @@ struct upper_phy_impl_config {
   std::unique_ptr<uplink_processor_pool> ul_processor_pool;
   /// Downlink resource grid pool.
   std::unique_ptr<resource_grid_pool> dl_rg_pool;
-  /// PRACH buffer pool.
-  std::unique_ptr<prach_buffer_pool> prach_pool;
+  /// PRACH buffers.
+  std::vector<std::unique_ptr<prach_buffer>> prach_buffers;
   /// Receive buffer pool.
   std::unique_ptr<rx_buffer_pool_controller> rx_buf_pool;
   /// Upper PHY results notifier.
@@ -63,12 +59,6 @@ struct upper_phy_impl_config {
   upper_phy_rx_symbol_request_notifier* rx_symbol_request_notifier;
   /// Log level.
   srslog::basic_levels log_level;
-  /// Receive symbol printer. Leave empty to disable.
-  std::string rx_symbol_printer_filename;
-  /// Receive port the symbols are dumped from. Leave emtpy for all ports.
-  std::optional<unsigned> rx_symbol_printer_port;
-  /// Boolean flag for dumping PRACH symbols when set to true.
-  bool rx_symbol_printer_prach;
   /// Number of slots supported by the uplink PDU repository.
   size_t nof_slots_ul_pdu_repository;
   /// Downlink PDU validator.
@@ -76,7 +66,9 @@ struct upper_phy_impl_config {
   /// Uplink PDU validator.
   std::unique_ptr<uplink_pdu_validator> ul_pdu_validator;
   /// Metrics collector.
-  std::unique_ptr<upper_phy_metrics_collector> metrics_collector;
+  std::shared_ptr<upper_phy_metrics_collector> metrics_collector;
+  /// RX symbol handler.
+  std::unique_ptr<upper_phy_rx_symbol_handler> rx_symbol_handler;
 };
 
 /// \brief Implementation of the upper PHY interface.
@@ -157,13 +149,11 @@ private:
   /// Upper PHY logger.
   srslog::basic_logger& logger;
   /// Metrics collector.
-  std::unique_ptr<upper_phy_metrics_collector> metrics_collector;
+  std::shared_ptr<upper_phy_metrics_collector> metrics_collector;
   /// Receive buffer pool.
   std::unique_ptr<rx_buffer_pool_controller> rx_buf_pool;
   /// Downlink resource grid pool.
   std::unique_ptr<resource_grid_pool> dl_rg_pool;
-  /// PRACH buffer pool.
-  std::unique_ptr<prach_buffer_pool> prach_pool;
   /// Downlink processor pool.
   std::unique_ptr<downlink_processor_pool> dl_processor_pool;
   /// Uplink processor pool.

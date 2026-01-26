@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -77,6 +77,7 @@ public:
   struct csi_report_event {
     du_ue_index_t   ue_index;
     rnti_t          rnti;
+    slot_point      sl_rx;
     csi_report_data csi;
   };
   struct bsr_event {
@@ -101,6 +102,9 @@ public:
     du_ue_index_t                         ue_index;
     rnti_t                                rnti;
     std::optional<pusch_tpmi_select_info> tpmi_info;
+  };
+  struct slice_reconfiguration_event {
+    du_cell_index_t cell_index;
   };
 
   scheduler_event_logger(du_cell_index_t cell_index_, pci_t pci_);
@@ -150,6 +154,7 @@ private:
   void enqueue_impl(const dl_buffer_state_indication_message& bs);
   void enqueue_impl(const phr_event& phr_ev);
   void enqueue_impl(const srs_indication_event& srs_ev);
+  void enqueue_impl(const slice_reconfiguration_event& slice_reconf_ev);
 
   const du_cell_index_t cell_index;
   const pci_t           pci;

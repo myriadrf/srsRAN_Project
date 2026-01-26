@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 #include "lib/cu_up/ngu_session_manager.h"
 #include "srsran/asn1/e1ap/e1ap_pdu_contents.h"
 #include "srsran/cu_up/cu_up_executor_mapper.h"
+#include "srsran/cu_up/cu_up_manager.h"
 #include "srsran/e1ap/common/e1ap_common.h"
 #include "srsran/e1ap/common/e1ap_message.h"
 #include "srsran/e1ap/cu_up/e1ap_cu_up.h"
@@ -56,14 +57,6 @@ class dummy_cu_up_executor_mapper final : public srs_cu_up::cu_up_executor_mappe
     task_executor& dl_pdu_executor() override { return *exec; }
     task_executor& crypto_executor() override { return *exec; }
 
-    async_task<void> stop() override
-    {
-      return launch_async([](coro_context<async_task<void>>& ctx) {
-        CORO_BEGIN(ctx);
-        CORO_RETURN();
-      });
-    }
-
     task_executor* exec;
   };
 
@@ -76,7 +69,13 @@ public:
 
   task_executor& e2_executor() override { return *test_executor; }
 
-  task_executor& n3_executor() override { return *test_executor; }
+  task_executor& n3_rx_executor() override { return *test_executor; }
+
+  task_executor& e1_rx_executor() override { return *test_executor; }
+
+  task_executor& e2_rx_executor() override { return *test_executor; }
+
+  task_executor& f1u_rx_executor() override { return *test_executor; }
 
   std::unique_ptr<srs_cu_up::ue_executor_mapper> create_ue_executor_mapper() override
   {
@@ -254,6 +253,7 @@ public:
   ~dummy_f1u_gateway() override = default;
 
   std::unique_ptr<f1u_cu_up_gateway_bearer> create_cu_bearer(uint32_t                              ue_index,
+                                                             s_nssai_t                             snssai,
                                                              drb_id_t                              drb_id,
                                                              five_qi_t                             five_qi,
                                                              const srs_cu_up::f1u_config&          config,
@@ -313,7 +313,15 @@ private:
   dummy_gtpu_gateway ngu_gw;
 };
 
-class dummy_e1ap final : public srs_cu_up::e1ap_control_message_handler
+class dummy_cu_up_manager_pdcp_interface final : public srs_cu_up::cu_up_manager_pdcp_interface
+{
+public:
+  void handle_pdcp_protocol_failure(srs_cu_up::ue_index_t ue_index) override {}
+
+  void handle_pdcp_max_count_reached(srs_cu_up::ue_index_t ue_index) override {}
+};
+
+class dummy_e1ap final : public srs_cu_up::e1ap_interface
 {
 public:
   explicit dummy_e1ap()  = default;
@@ -322,6 +330,22 @@ public:
       const srs_cu_up::e1ap_bearer_context_inactivity_notification& msg) override
   {
   }
+  void handle_connection_loss() override {}
+
+  bool connect_to_cu_cp() override { return true; }
+
+  async_task<cu_up_e1_setup_response> handle_cu_up_e1_setup_request(const cu_up_e1_setup_request& request) override
+  {
+    return {};
+  }
+
+  async_task<void> handle_cu_up_e1ap_release_request() override { return {}; }
+
+  size_t get_nof_ues() const override { return 0; }
+
+  void handle_message(const e1ap_message& msg) override {}
+
+  void handle_bearer_context_release_request_required(srs_cu_up::ue_index_t ue_index) override {}
 };
 
 inline e1ap_message generate_bearer_context_setup_request(unsigned cu_cp_ue_e1ap_id)

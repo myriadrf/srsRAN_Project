@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #include "srsran/du/du_update_config_helpers.h"
 #include "srsran/ran/pusch/pusch_constants.h"
 #include "srsran/scheduler/config/pucch_resource_generator.h"
+#include "srsran/scheduler/config/sched_cell_config_helpers.h"
 #include "srsran/scheduler/config/srs_builder_params.h"
 
 using namespace srsran;
@@ -71,16 +72,7 @@ prb_interval config_helpers::find_largest_prb_interval_without_pucch(const pucch
                                                                      unsigned                    bwp_size)
 {
   // Compute the cell PUCCH resource list, depending on which parameter that has been passed.
-  const std::vector<pucch_resource>& res_list = config_helpers::generate_cell_pucch_res_list(
-      user_params.nof_ue_pucch_f0_or_f1_res_harq.to_uint() * user_params.nof_cell_harq_pucch_res_sets +
-          user_params.nof_sr_resources,
-      user_params.nof_ue_pucch_f2_or_f3_or_f4_res_harq.to_uint() * user_params.nof_cell_harq_pucch_res_sets +
-          user_params.nof_csi_resources,
-      user_params.f0_or_f1_params,
-      user_params.f2_or_f3_or_f4_params,
-      bwp_size,
-      user_params.max_nof_symbols);
-  srsran_assert(not res_list.empty(), "The PUCCH resource list cannot be empty");
+  const std::vector<pucch_resource>& res_list = config_helpers::build_pucch_resource_list(user_params, bwp_size);
 
   prb_interval prb_without_pucch = {0, bwp_size};
 
@@ -119,16 +111,16 @@ void config_helpers::compute_nof_sr_csi_pucch_res(pucch_builder_params&   user_p
         std::ceil(static_cast<double>(max_pucch_grants_per_sr_csi * csi_period_msec.value()) /
                   (static_cast<double>(sr_period_msec) + static_cast<double>(csi_period_msec.value())));
 
-    user_params.nof_sr_resources = std::min(required_nof_sr_resources, user_params.nof_sr_resources);
+    user_params.nof_cell_sr_resources = std::min(required_nof_sr_resources, user_params.nof_cell_sr_resources);
 
     const unsigned required_nof_csi_resources =
         std::ceil(static_cast<double>(max_pucch_grants_per_sr_csi * sr_period_msec) /
                   (static_cast<double>(sr_period_msec) + static_cast<double>(csi_period_msec.value())));
 
-    user_params.nof_csi_resources = std::min(required_nof_csi_resources, user_params.nof_csi_resources);
+    user_params.nof_cell_csi_resources = std::min(required_nof_csi_resources, user_params.nof_cell_csi_resources);
   } else {
-    user_params.nof_sr_resources  = std::min(max_pucch_grants_per_sr_csi, user_params.nof_sr_resources);
-    user_params.nof_csi_resources = 0;
+    user_params.nof_cell_sr_resources  = std::min(max_pucch_grants_per_sr_csi, user_params.nof_cell_sr_resources);
+    user_params.nof_cell_csi_resources = 0;
   }
 }
 

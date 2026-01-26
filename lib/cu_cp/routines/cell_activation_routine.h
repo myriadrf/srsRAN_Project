@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -58,6 +58,7 @@ private:
 
   // (Sub-)Routine results.
   f1ap_gnb_cu_configuration_update_response f1ap_cu_cfg_update_response;
+  bool                                      routine_success = true;
 
   std::unordered_set<plmn_identity> plmns_to_activate;
   std::vector<du_index_t>           du_indexes;

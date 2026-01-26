@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -96,5 +96,9 @@ struct e1ap_bearer_context_release_command {
   e1ap_cause_t cause; // Cause of the release.
 };
 
+struct e1ap_reset {
+  enum { full, partial } type = e1ap_reset::full;
+  std::vector<ue_index_t> ues;
+};
 } // namespace srs_cu_up
 } // namespace srsran

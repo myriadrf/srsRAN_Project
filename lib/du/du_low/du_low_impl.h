@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,6 +27,7 @@
 #include "srsran/du/du_operation_controller.h"
 #include "srsran/phy/upper/upper_phy.h"
 #include <memory>
+#include <vector>
 
 namespace srsran {
 namespace srs_du {
@@ -54,7 +55,6 @@ public:
 
 private:
   std::vector<std::unique_ptr<upper_phy>> upper;
-  std::vector<upper_phy*>                 upper_ptrs;
   du_low_metrics_collector_impl           metrics_collector;
 };
 

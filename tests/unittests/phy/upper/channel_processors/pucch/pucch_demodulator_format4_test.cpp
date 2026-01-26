@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -107,7 +107,7 @@ protected:
       ASSERT_NE(dft_factory, nullptr) << "Cannot create DFT processor factory";
 
       std::shared_ptr<transform_precoder_factory> precoding_factory =
-          create_dft_transform_precoder_factory(dft_factory, pucch_constants::FORMAT4_MAX_NPRB + 1);
+          create_dft_transform_precoder_factory(dft_factory, pucch_constants::FORMAT0_1_4_MAX_NPRB + 1);
       ASSERT_NE(precoding_factory, nullptr) << "Cannot create transform precoder factory";
 
       // Create PUCCH demodulator factory.

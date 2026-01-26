@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -326,7 +326,10 @@ INSTANTIATE_TEST_SUITE_P(HARQ_index,
                                                           test_case_data{1, true},
                                                           test_case_data{7, true},
                                                           test_case_data{15, true},
-                                                          test_case_data{16, false})));
+                                                          test_case_data{16, true},
+                                                          test_case_data{24, true},
+                                                          test_case_data{31, true},
+                                                          test_case_data{32, false})));
 
 INSTANTIATE_TEST_SUITE_P(HARQ_ack_bitlen,
                          validate_pusch_pdu_field,

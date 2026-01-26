@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,6 +26,7 @@
 #include "tests/unittests/scheduler/test_utils/config_generators.h"
 #include "srsran/adt/circular_array.h"
 #include "srsran/du/du_cell_config_helpers.h"
+#include "srsran/scheduler/config/sched_cell_config_helpers.h"
 #include "srsran/scheduler/result/sched_result.h"
 #include "srsran/scheduler/scheduler_factory.h"
 #include "srsran/srslog/srslog.h"
@@ -76,7 +77,7 @@ static void parse_args(int argc, char** argv, bench_params& params)
       case 'h':
       default:
         usage(argv[0], params);
-        exit(0);
+        std::exit(0);
     }
   }
 }
@@ -95,15 +96,15 @@ public:
     du_cell_cfgs = {config_helpers::make_default_du_cell_config(builder_params)};
     std::get<pucch_f2_params>(du_cell_cfgs[0].pucch_cfg.f2_or_f3_or_f4_params).max_code_rate =
         max_pucch_code_rate::dot_35;
-    du_cell_cfgs[0].pucch_cfg.nof_csi_resources                    = 4;
-    du_cell_cfgs[0].pucch_cfg.nof_sr_resources                     = 2;
-    du_cell_cfgs[0].pucch_cfg.nof_ue_pucch_f0_or_f1_res_harq       = 3;
-    du_cell_cfgs[0].pucch_cfg.nof_ue_pucch_f2_or_f3_or_f4_res_harq = 6;
+    du_cell_cfgs[0].pucch_cfg.nof_cell_csi_resources = 4;
+    du_cell_cfgs[0].pucch_cfg.nof_cell_sr_resources  = 2;
+    du_cell_cfgs[0].pucch_cfg.res_set_0_size         = 3;
+    du_cell_cfgs[0].pucch_cfg.res_set_1_size         = 6;
 
     sched_cell_configuration_request_message cell_cfg_msg =
         sched_config_helper::make_default_sched_cell_configuration_request(builder_params);
 
-    cell_cfg_msg.pucch_guardbands = config_helpers::build_pucch_guardbands_list(
+    cell_cfg_msg.ded_pucch_resources = config_helpers::build_pucch_resource_list(
         du_cell_cfgs[0].pucch_cfg, cell_cfg_msg.ul_cfg_common.init_ul_bwp.generic_params.crbs.length());
     sch->handle_cell_configuration_request(cell_cfg_msg);
 

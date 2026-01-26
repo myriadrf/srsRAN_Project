@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -68,6 +68,15 @@ bool srsran::test_helpers::is_valid_bearer_context_release_command(const e1ap_me
 {
   TRUE_OR_RETURN(msg.pdu.type() == asn1::e1ap::e1ap_pdu_c::types_opts::init_msg);
   TRUE_OR_RETURN(msg.pdu.init_msg().proc_code == ASN1_E1AP_ID_BEARER_CONTEXT_RELEASE);
+  TRUE_OR_RETURN(is_packable(msg));
+
+  return true;
+}
+
+bool srsran::test_helpers::is_valid_e1_reset(const e1ap_message& msg)
+{
+  TRUE_OR_RETURN(msg.pdu.type() == asn1::e1ap::e1ap_pdu_c::types_opts::init_msg);
+  TRUE_OR_RETURN(msg.pdu.init_msg().proc_code == ASN1_E1AP_ID_RESET);
   TRUE_OR_RETURN(is_packable(msg));
 
   return true;

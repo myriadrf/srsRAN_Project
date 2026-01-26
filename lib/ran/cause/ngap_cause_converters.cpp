@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -192,12 +192,12 @@ static constexpr uint8_t ngap_to_e1ap_cause_radio_network[] = {
     (uint8_t)e1ap_cause_radio_network_t::unspecified  // misaligned_assoc_for_multicast_unicast
 };
 
-const uint8_t ngap_to_e1ap_cause_transport[] = {
+static constexpr uint8_t ngap_to_e1ap_cause_transport[] = {
     (uint8_t)e1ap_cause_transport_t::transport_res_unavailable, // transport_res_unavailable
     (uint8_t)e1ap_cause_transport_t::unspecified                // unspecified
 };
 
-const uint8_t ngap_to_e1ap_cause_misc[] = {
+static constexpr uint8_t ngap_to_e1ap_cause_misc[] = {
     (uint8_t)cause_misc_t::unspecified, // ctrl_processing_overload
     (uint8_t)cause_misc_t::unspecified, // not_enough_user_plane_processing_res
     (uint8_t)cause_misc_t::unspecified, // hardware_fail

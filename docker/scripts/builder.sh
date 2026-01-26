@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -19,7 +19,7 @@
 # and at http://www.gnu.org/licenses/.
 #
 
-set -e # stop executing after error
+set -eo pipefail
 
 # Print help and syntax
 print_help() {
@@ -164,6 +164,10 @@ export CC
 export CXX
 
 cd "$FOLDER" || exit
+
+# Setup ROHC
+export ROHC_DIR="/opt/rohc"
+echo "ROHC_DIR set to $ROHC_DIR"
 
 # Setup UHD
 if [[ -n "$UHD_VERSION" ]]; then

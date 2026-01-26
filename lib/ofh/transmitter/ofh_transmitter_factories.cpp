@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -141,9 +141,15 @@ static std::shared_ptr<ether::eth_frame_pool> create_eth_frame_pool(const transm
   frequency_range freq_range =
       (tx_config.scs > subcarrier_spacing::kHz60) ? frequency_range::FR2 : frequency_range::FR1;
 
-  ether::vlan_frame_params ether_params;
-  auto eth_builder   = (tx_config.tci_up || tx_config.tci_cp) ? ether::create_vlan_frame_builder(ether_params)
-                                                              : ether::create_frame_builder(ether_params);
+  auto eth_builder = [&tx_config]() {
+    if (tx_config.tci_up || tx_config.tci_cp) {
+      ether::vlan_frame_params ether_params{};
+      ether_params.tci.emplace(1);
+      return ether::create_vlan_frame_builder(ether_params);
+    }
+    ether::vlan_frame_params ether_params{};
+    return ether::create_frame_builder(ether_params);
+  }();
   auto ecpri_builder = ecpri::create_ecpri_packet_builder();
 
   std::array<std::unique_ptr<iq_compressor>, NOF_COMPRESSION_TYPES_SUPPORTED> compressors;
@@ -218,16 +224,12 @@ resolve_transmitter_dependencies(const transmitter_config&                      
   dependencies.frame_pool_ul_cp =
       create_eth_frame_pool(tx_config, logger, message_type::control_plane, data_direction::uplink, false);
 
-  dependencies.ul_df_cplane = std::make_unique<data_flow_cplane_downlink_task_dispatcher>(
-      logger,
-      create_data_flow_cplane_sched(tx_config,
-                                    tx_config.is_uplink_static_compr_hdr_enabled,
-                                    logger,
-                                    dependencies.frame_pool_ul_cp,
-                                    ul_cp_context_repo,
-                                    prach_cp_context_repo),
-      downlink_executor,
-      tx_config.sector);
+  dependencies.ul_df_cplane = create_data_flow_cplane_sched(tx_config,
+                                                            tx_config.is_uplink_static_compr_hdr_enabled,
+                                                            logger,
+                                                            dependencies.frame_pool_ul_cp,
+                                                            ul_cp_context_repo,
+                                                            prach_cp_context_repo);
 
   dependencies.ul_slot_repo         = std::move(ul_slot_context_repo);
   dependencies.ul_prach_repo        = std::move(prach_context_repo);

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,12 +22,11 @@
 
 #pragma once
 
-#include "dl_logical_channel_manager.h"
+#include "logical_channel_system.h"
 #include "srsran/ran/slot_point.h"
 #include "srsran/ran/time_alignment_config.h"
 #include "srsran/scheduler/config/scheduler_expert_config.h"
 #include "srsran/srslog/srslog.h"
-#include <cstdint>
 
 namespace srsran {
 
@@ -35,10 +34,10 @@ namespace srsran {
 class ta_manager
 {
 public:
-  explicit ta_manager(const scheduler_ue_expert_config& expert_cfg_,
-                      subcarrier_spacing                ul_scs_,
-                      time_alignment_group::id_t        pcell_tag_id,
-                      dl_logical_channel_manager*       dl_lc_ch_mgr_);
+  explicit ta_manager(const scheduler_ta_control_config& ta_cfg_,
+                      subcarrier_spacing                 ul_scs_,
+                      time_alignment_group::id_t         pcell_tag_id,
+                      ue_logical_channel_repository*     dl_lc_ch_mgr_);
 
   void update_tags(span<const time_alignment_group::id_t> tag_ids);
 
@@ -82,10 +81,10 @@ private:
   /// Subcarrier spacing of UL BWP for which Timing Advance Command is applicable.
   const subcarrier_spacing ul_scs;
   /// DL logical channel manager to push Timing Advance Command to UE.
-  dl_logical_channel_manager* dl_lc_ch_mgr = nullptr;
-  /// Expert config parameters used for UE scheduler.
-  const scheduler_ue_expert_config& expert_cfg;
-  srslog::basic_logger&             logger;
+  ue_logical_channel_repository* dl_lc_ch_mgr = nullptr;
+  /// TA control config parameters.
+  const scheduler_ta_control_config& ta_cfg;
+  srslog::basic_logger&              logger;
 
   /// Starting point of the measurement interval.
   slot_point meas_start_time;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,18 +33,18 @@
 
 using namespace srsran;
 
-static_assert(std::is_same<static_vector<int, 5>::value_type, int>::value, "Invalid traits");
-static_assert(std::is_trivially_destructible<static_vector<int, 5>>::value, "Invalid traits");
-static_assert(std::is_default_constructible<static_vector<int, 5>>::value, "Invalid traits");
-static_assert(not std::is_trivially_destructible<static_vector<moveonly_test_object, 5>>::value, "Invalid traits");
-static_assert(std::is_default_constructible<static_vector<moveonly_test_object, 5>>::value, "Invalid traits");
-static_assert(std::is_default_constructible<static_vector<nondefault_ctor_test_object, 5>>::value, "Invalid traits");
+static_assert(std::is_same_v<static_vector<int, 5>::value_type, int>, "Invalid traits");
+static_assert(std::is_trivially_destructible_v<static_vector<int, 5>>, "Invalid traits");
+static_assert(std::is_default_constructible_v<static_vector<int, 5>>, "Invalid traits");
+static_assert(not std::is_trivially_destructible_v<static_vector<moveonly_test_object, 5>>, "Invalid traits");
+static_assert(std::is_default_constructible_v<static_vector<moveonly_test_object, 5>>, "Invalid traits");
+static_assert(std::is_default_constructible_v<static_vector<nondefault_ctor_test_object, 5>>, "Invalid traits");
 
 std::vector<int> create_test_vector(size_t sz)
 {
   std::vector<int> v(sz);
-  for (unsigned i = 0; i != v.size(); ++i) {
-    v[i] = test_rgen::uniform_int<int>();
+  for (int& i : v) {
+    i = test_rgen::uniform_int<int>();
   }
   return v;
 }
@@ -177,8 +177,8 @@ TYPED_TEST(static_vector_tester, push_back_creates_new_element_at_the_back)
   std::vector<int>     expected = create_test_vector(test_rgen::uniform_int<size_t>(0, 10));
   static_vector<T, 10> vec;
 
-  for (unsigned i = 0; i != expected.size(); ++i) {
-    vec.push_back(T(expected[i]));
+  for (int i : expected) {
+    vec.push_back(T(i));
   }
 
   ASSERT_EQ(vec.size(), expected.size());
@@ -273,6 +273,20 @@ TYPED_TEST(static_vector_tester, swap_keeps_values)
   ASSERT_FALSE(std::equal(vec.begin(), vec.end(), expected.begin(), expected.end()));
   ASSERT_TRUE(std::equal(vec2.begin(), vec2.end(), expected.begin(), expected.end()));
   ASSERT_TRUE(std::equal(vec.begin(), vec.end(), expected2.begin(), expected2.end()));
+}
+
+TYPED_TEST(static_vector_tester, emplace_with_hint)
+{
+  using T                       = typename TestFixture::value_type;
+  size_t               first_sz = test_rgen::uniform_int<size_t>(0, 10);
+  std::vector<int>     expected = create_test_vector(first_sz);
+  static_vector<T, 11> vec(expected.begin(), expected.end());
+
+  size_t pos = test_rgen::uniform_int<size_t>(0, first_sz);
+  vec.emplace(vec.begin() + pos, 42);
+  expected.insert(expected.begin() + pos, 42);
+
+  ASSERT_TRUE(std::equal(vec.begin(), vec.end(), expected.begin(), expected.end()));
 }
 
 int main(int argc, char** argv)

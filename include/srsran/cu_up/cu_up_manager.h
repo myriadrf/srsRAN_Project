@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,8 +22,10 @@
 
 #pragma once
 
+#include "srsran/cu_up/cu_up_state.h"
 #include "srsran/e1ap/cu_up/e1ap_cu_up_bearer_context_update.h"
 #include "srsran/support/async/async_task.h"
+#include <map>
 
 namespace srsran::srs_cu_up {
 
@@ -40,6 +42,8 @@ public:
   virtual void on_e1ap_connection_drop() = 0;
 };
 
+/// Interface for the E1AP to notify the CU-UP manger
+/// of events and messages that require handling.
 class cu_up_manager_e1ap_interface
 {
 public:
@@ -61,14 +65,38 @@ public:
   /// \param[in] msg The original bearer release command.
   virtual async_task<void> handle_bearer_context_release_command(const e1ap_bearer_context_release_command& msg) = 0;
 
+  /// \brief Handle E1 reset message. It will release bearer contexts as indicated by the reset message.
+  /// \param[in] msg The reset message.
+  virtual async_task<void> handle_e1_reset(const e1ap_reset& msg) = 0;
+
   /// \brief Get the state of the E1AP connection.
   /// \return True if E1AP is connected, false otherwise.
   virtual bool e1ap_is_connected() = 0;
 
+  virtual void handle_e1ap_connection_drop() = 0;
+
+  virtual void schedule_cu_up_async_task(async_task<void> task) = 0;
+
   virtual void schedule_ue_async_task(srs_cu_up::ue_index_t ue_index, async_task<void> task) = 0;
 };
 
-class cu_up_manager : public cu_up_manager_e1ap_connection_notifier, public cu_up_manager_e1ap_interface
+/// Interface for the PDCP to notify the CU-UP manger
+/// of events that require handling. This includes running out
+/// of PDCP COUNTs, protocol errors and the need for resuming
+/// an inactive bearer context.
+class cu_up_manager_pdcp_interface
+{
+public:
+  virtual ~cu_up_manager_pdcp_interface() = default;
+
+  virtual void handle_pdcp_protocol_failure(ue_index_t ue_index) = 0;
+
+  virtual void handle_pdcp_max_count_reached(ue_index_t ue_index) = 0;
+};
+
+class cu_up_manager : public cu_up_manager_e1ap_connection_notifier,
+                      public cu_up_manager_e1ap_interface,
+                      public cu_up_manager_pdcp_interface
 {
 public:
   ~cu_up_manager() override = default;

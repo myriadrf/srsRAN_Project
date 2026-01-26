@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -51,10 +51,10 @@ public:
   /// \return The measured time alignment.
   /// \remark An assertion is triggered if the number of symbols is not equal to the number of active elements in the
   /// mask, or if the mask size is larger than the maximum supported number of subcarriers.
-  virtual time_alignment_measurement estimate(span<const cf_t>                symbols,
-                                              bounded_bitset<max_nof_symbols> mask,
-                                              subcarrier_spacing              scs,
-                                              double                          max_ta = 0.0) = 0;
+  virtual time_alignment_measurement estimate(span<const cf_t>                       symbols,
+                                              const bounded_bitset<max_nof_symbols>& mask,
+                                              subcarrier_spacing                     scs,
+                                              double                                 max_ta = 0.0) = 0;
 
   /// \brief Estimates the time alignment from frequency domain symbols from one or more antenna ports.
   /// \param[in] symbols Complex frequency domain symbols (one slice for each antenna port).
@@ -64,10 +64,10 @@ public:
   /// \return The measured time alignment.
   /// \remark An assertion is triggered if the number of symbols is not equal to the number of active elements in the
   /// mask, or if the mask size is larger than the maximum supported number of subcarriers.
-  virtual time_alignment_measurement estimate(const re_buffer_reader<cf_t>&   symbols,
-                                              bounded_bitset<max_nof_symbols> mask,
-                                              subcarrier_spacing              scs,
-                                              double                          max_ta = 0.0) = 0;
+  virtual time_alignment_measurement estimate(const re_buffer_reader<cf_t>&          symbols,
+                                              const bounded_bitset<max_nof_symbols>& mask,
+                                              subcarrier_spacing                     scs,
+                                              double                                 max_ta = 0.0) = 0;
 
   /// \brief Estimates the time alignment from frequency domain symbols from a single antenna port.
   /// \param[in] symbols Complex frequency domain symbols.

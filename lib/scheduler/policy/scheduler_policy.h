@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -81,7 +81,7 @@ public:
   virtual void save_dl_newtx_grants(span<const dl_msg_alloc> dl_grants) = 0;
 
   /// Save UE UL newtx grants.
-  virtual void save_ul_newtx_grants(span<const ul_sched_info> dl_grants) = 0;
+  virtual void save_ul_newtx_grants(span<const ul_sched_info> ul_grants) = 0;
 };
 
 } // namespace srsran

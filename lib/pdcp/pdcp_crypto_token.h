@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -36,10 +36,10 @@ public:
 
   void start()
   {
-    was_set = false;
     pending_crypto.reset();
     increment_token();
   }
+
   void stop() { return_token(); }
 
 private:
@@ -58,15 +58,8 @@ private:
     }
   }
 
-  void set_once()
-  {
-    if (not was_set) {
-      pending_crypto.set();
-      was_set = true;
-    }
-  }
+  void set_once() { pending_crypto.set(); }
 
-  bool              was_set = false;
   manual_event_flag pending_crypto;
 
   std::atomic<uint32_t> tokens = 0;

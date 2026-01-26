@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -21,9 +21,9 @@
 ########################################################################
 # Prevent in-tree builds
 ########################################################################
-if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
+if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
     message(FATAL_ERROR "Prevented in-tree build. This is bad practice.")
-endif(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
+endif (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
 
 ########################################################################
 # Project setup
@@ -68,32 +68,40 @@ configure_file(
 # Options
 ########################################################################
 
-option(STOP_ON_WARNING       "Interrupt application on warning"           OFF)
-option(ENABLE_WERROR         "Stop compilation on errors"                 ON)
-option(ENABLE_TSAN           "Enable clang thread sanitizer"              OFF)
-option(ENABLE_ASAN           "Enable clang address sanitizer"             OFF)
-option(ENABLE_UBSAN          "Enable clang undefined behaviour sanitizer" OFF)
-option(ENABLE_UBSAN_MIN      "Enable clang sanitizer minimal runtime"     OFF)
-option(ENABLE_RTSAN          "Enable clang real-time sanitizer"           OFF)
-option(ENABLE_GCOV           "Enable code coverage"                       OFF)
-option(ENABLE_BACKWARD       "Enable backward"                            ON)
-option(ENABLE_UHD            "Enable UHD"                                 ON)
-option(ENABLE_ZEROMQ         "Enable ZeroMQ"                              OFF)
-option(ENABLE_LIMESUITENG    "Enable LimeSuiteNG"                         ON)
-option(ENABLE_FFTW           "Enable FFTW"                                ON)
-option(ENABLE_MKL            "Enable Intel MKL"                           ON)
-option(ENABLE_ARMPL          "Enable ARM performance library"             ON)
-option(ENABLE_DPDK           "Enable DPDK"                                OFF)
-option(ENABLE_LIBNUMA        "Enable LibNUMA"                             OFF)
-option(ENABLE_EXPORT         "Enable PIC and export libraries"            OFF)
-option(ENABLE_TRX_DRIVER     "Enable Amarisoft TRX driver library"        OFF)
-option(ENABLE_PLUGINS        "Compile plugins in the plugin folder"       ON)
-option(BUILD_TESTING         "Compile tests"                              OFF)
-option(ENABLE_GPROF          "Enable gprof"                               OFF)
-option(FORCE_DEBUG_INFO      "Add debug information to Release build"     OFF)
+option(STOP_ON_WARNING       "Interrupt application on warning"             OFF)
+option(ENABLE_WERROR         "Stop compilation on errors"                   ON)
+option(ENABLE_TSAN           "Enable clang thread sanitizer"                OFF)
+option(ENABLE_ASAN           "Enable clang address sanitizer"               OFF)
+option(ENABLE_UBSAN          "Enable clang undefined behaviour sanitizer"   OFF)
+option(ENABLE_UBSAN_MIN      "Enable clang sanitizer minimal runtime"       OFF)
+option(ENABLE_RTSAN          "Enable clang real-time sanitizer"             OFF)
+option(ENABLE_GCOV           "Enable code coverage"                         OFF)
+option(ENABLE_BACKWARD       "Enable backward"                              ON)
+option(ENABLE_UHD            "Enable UHD"                                   ON)
+option(ENABLE_ZEROMQ         "Enable ZeroMQ"                                ON)
+option(ENABLE_LIMESUITENG    "Enable LimeSuiteNG"                           ON)
+option(ENABLE_FFTW           "Enable FFTW"                                  ON)
+option(ENABLE_MKL            "Enable Intel MKL"                             ON)
+option(ENABLE_ARMPL          "Enable ARM performance library"               ON)
+option(ENABLE_DPDK           "Enable DPDK"                                  OFF)
+option(ENABLE_LIBNUMA        "Enable LibNUMA"                               OFF)
+option(ENABLE_EXPORT         "Enable PIC and export libraries"              OFF)
+option(ENABLE_TRX_DRIVER     "Enable Amarisoft TRX driver library"          OFF)
+option(ENABLE_PLUGINS        "Compile plugins in the plugin folder"         ON)
+option(BUILD_TESTING         "Compile tests"                                OFF)
+option(ENABLE_GPROF          "Enable gprof"                                 OFF)
+option(FORCE_DEBUG_INFO      "Add debug information to Release build"       OFF)
+option(ENABLE_SRSRAN_TRACY   "Enable using the tracy profiler if available" OFF)
 if (BUILD_TESTING)
 option(USE_PHY_TESTVECTORS   "Enable testvector PHY tests"                OFF)
+    if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+        option(TEST_GDB_PRINTERS  "Enable tests for GDB pretty printers"  OFF)
+    endif(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 endif(BUILD_TESTING)
+
+# Set linker options and default value.
+set(LINKER "default" CACHE STRING "Which linker to use")
+set_property(CACHE LINKER PROPERTY STRINGS default bfd lld mold)
 
 # Set assertion level options and default value.
 set(ASSERT_LEVEL "AUTO" CACHE STRING "Assertion paranoia level")
@@ -107,10 +115,6 @@ if (ENABLE_WERROR)
     # Disable gcc's maybe uninitialized analysis as it raises false positives
     if (CMAKE_COMPILER_IS_GNUCXX)
         include(CheckCXXCompilerFlag)
-        check_cxx_compiler_flag("-Wmaybe-uninitialized" HAS_MAYBE_UNINITIALIZED)
-        if (HAS_MAYBE_UNINITIALIZED)
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=maybe-uninitialized")
-        endif()
         check_cxx_compiler_flag("-Wstringop-overflow" HAS_STRINGOP_OVERFLOW)
         if (HAS_STRINGOP_OVERFLOW)
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=stringop-overflow")
@@ -195,6 +199,9 @@ ADD_CXX_COMPILER_FLAG_IF_AVAILABLE(-Wextra-semi HAVE_EXTRA_SEMI)
 # Disable RTTI
 ADD_CXX_COMPILER_FLAG_IF_AVAILABLE(-fno-rtti HAVE_NO_RTTI)
 
+# Disable maybe-uninitialized warnings as it mainly raises false alarms
+ADD_CXX_COMPILER_FLAG_IF_AVAILABLE(-Wno-maybe-uninitialized HAVE_NO_MAYBE_UNINITIALIZED)
+
 # Set compiler flags for different build types.
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb -O0 -DDEBUG_MODE -DBUILD_TYPE_DEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ggdb -DBUILD_TYPE_RELWITHDEBINFO")
@@ -235,9 +242,13 @@ if (ENABLE_UBSAN_MIN)
 endif ()
 
 if (ENABLE_RTSAN)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=realtime")
-    ADD_CXX_COMPILER_FLAG_IF_AVAILABLE("-fsanitize=realtime" HAVE_RPATH_FORCE)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=realtime")
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-fsanitize=realtime" HAVE_RTSAN)
+    if (HAVE_RTSAN)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=realtime")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=realtime")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=realtime")
+    endif ()
 endif ()
 
 if (FORCE_DEBUG_INFO)
@@ -248,6 +259,25 @@ if (ENABLE_GCOV)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
 endif (ENABLE_GCOV)
+
+if(ENABLE_SRSRAN_TRACY)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTRACY_ENABLE")
+endif()
+
+if(NOT LINKER STREQUAL "default")
+    if (LINKER STREQUAL "bfd")
+        add_link_options(-fuse-ld=bfd)
+        message(STATUS "Linker set to BFD")
+    elseif (LINKER STREQUAL "lld")
+        add_link_options(-fuse-ld=lld)
+        message(STATUS "Linker set to LLD")
+    elseif (LINKER STREQUAL "mold")
+        add_link_options(-fuse-ld=mold)
+        message(STATUS "Linker set to Mold")
+    else ()
+        message(FATAL_ERROR "Unsupported linker ${LINKER} for compiler ${CMAKE_CXX_COMPILER_ID}")
+    endif ()
+endif ()
 
 if(NOT ASSERT_LEVEL STREQUAL "MINIMAL")
     # asserts are enabled.
@@ -271,6 +301,7 @@ endif()
 ########################################################################
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cmake-sbom")
 include(sbom)
+include(copyright)
 include(GNUInstallDirs)
 
 sbom_generate(
@@ -332,6 +363,18 @@ else ()
     macro(add_backward)
     endmacro()
 endif ()
+
+# ROHC
+find_package(ROHC)
+if(ROHC_FOUND)
+    sbom_add(
+        PACKAGE            "ROHC library"
+        DOWNLOAD_LOCATION  "https://rohc-lib.org"
+        SUPPLIER           "ROHC library project"
+        LICENSE            "LGPL-2.1-or-later"
+        VERSION            ${PC_ROHC_VERSION}
+    )
+endif()
 
 # Crypto
 find_package(MbedTLS REQUIRED)
@@ -400,7 +443,11 @@ if (BUILD_TESTING)
     find_package(GTest REQUIRED)
     # Alias gtest_discover_tests increase discovery the timeout.
     function(gtest_discover_tests)
-        _gtest_discover_tests(${ARGV} DISCOVERY_TIMEOUT 15)
+        _gtest_discover_tests(
+            ${ARGV}
+            DISCOVERY_MODE PRE_TEST
+            DISCOVERY_TIMEOUT 15
+        )
     endfunction()
 else()
     message(STATUS "Skipping Tests. Set BUILD_TESTING to On to compile tests.")
@@ -428,20 +475,20 @@ else (ENABLE_UHD)
 endif (ENABLE_UHD)
 
 # Yaml-cpp
-find_package(YAMLCPP)
-if (YAMLCPP_FOUND)
-    include_directories(${YAMLCPP_INCLUDE_DIR})
-    link_directories(${YAMLCPP_LIBRARY})
+find_package(YAMLCPP REQUIRED)
+if (YAML_CPP_FOUND)
+    include_directories(${YAML_CPP_INCLUDE_DIR})
+    link_directories(${YAML_CPP_LIBRARY_DIR})
     sbom_add(
         PACKAGE            "yaml-cpp"
         DOWNLOAD_LOCATION  "https://github.com/jbeder/yaml-cpp"
         SUPPLIER           "yaml-cpp project"
         LICENSE            "MIT"
-        VERSION            ${PC_YAMLCPP_VERSION}
+        VERSION            ${YAML_CPP_VERSION}
     )
-else (YAMLCPP_FOUND)
+else (YAML_CPP_FOUND)
     message(FATAL_ERROR "yaml-cpp is required to build ${CMAKE_PROJECT_NAME}")
-endif (YAMLCPP_FOUND)
+endif (YAML_CPP_FOUND)
 
 # ZeroMQ
 if (ENABLE_ZEROMQ)
@@ -616,6 +663,9 @@ if (BUILD_TESTING)
     add_subdirectory(tests/unittests)
     add_subdirectory(tests/integrationtests)
     add_subdirectory(tests/benchmarks)
+    if (TEST_GDB_PRINTERS)
+        add_subdirectory(tests/utils/gdb/pretty_printers)
+    endif (TEST_GDB_PRINTERS)
 endif (BUILD_TESTING)
 
 if (ENABLE_PLUGINS)
@@ -647,6 +697,7 @@ message(STATUS "Building srsRAN version ${SRSRAN_VERSION_STRING}")
 ########################################################################
 # Generate SBOM
 ########################################################################
+parse_copyright_file("${CMAKE_SOURCE_DIR}/COPYRIGHT")
 sbom_add(
     LICENSE "LicenseRef-srsRAN"
     NAME    "AGPL-3.0-only"

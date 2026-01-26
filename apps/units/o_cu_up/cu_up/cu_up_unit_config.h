@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,9 +34,9 @@ namespace srsran {
 
 /// Configuration to enable/disable metrics per layer.
 struct cu_up_unit_metrics_layer_config {
-  bool enable_pdcp           = false;
-  bool enable_e1ap           = false;
-  bool enable_cu_up_executor = false;
+  bool enable_pdcp         = false;
+  bool enable_e1ap         = false;
+  bool skip_cu_up_executor = true;
 
   /// Returns true if one or more layers are enabled, false otherwise.
   bool are_metrics_enabled() const { return enable_pdcp || enable_e1ap; }
@@ -48,6 +48,10 @@ struct cu_up_unit_metrics_config {
   unsigned                        cu_up_report_period = 1000;
   app_helpers::metrics_config     common_metrics_cfg;
   cu_up_unit_metrics_layer_config layers_cfg;
+};
+
+struct cu_up_unit_trace_config {
+  bool cu_up_enable = false;
 };
 
 struct cu_up_unit_ngu_socket_config {
@@ -94,6 +98,7 @@ struct cu_up_unit_test_mode_config {
   uint16_t                  nia_algo          = 2;
   uint64_t                  ue_ambr           = 40000000000; // 40 gbps
   std::chrono::milliseconds attach_detach_period{0}; // Period for attaching detaching tests. 0 means always attached.
+  std::chrono::milliseconds reestablish_period{0};   // Period for reestablishment tests. 0 means no re-establishments.
 };
 
 struct cu_up_unit_execution_config {
@@ -101,7 +106,6 @@ struct cu_up_unit_execution_config {
   uint32_t ul_ue_executor_queue_size   = 8192;
   uint32_t ctrl_ue_executor_queue_size = 8192;
   unsigned strand_batch_size           = 256;
-  bool     executor_tracing_enable     = false;
 };
 
 /// CU-UP application unit configuration.
@@ -120,6 +124,8 @@ struct cu_up_unit_config {
   cu_up_unit_metrics_config metrics;
   /// Loggers.
   cu_up_unit_logger_config loggers;
+  /// Trace.
+  cu_up_unit_trace_config trace_cfg;
   /// PCAPs.
   cu_up_unit_pcap_config pcap_cfg;
   /// QoS configuration.

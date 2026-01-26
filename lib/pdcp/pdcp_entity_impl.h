@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -63,6 +63,7 @@ public:
                                           ue_ctrl_timer_factory,
                                           ue_dl_executor,
                                           crypto_executor,
+                                          max_nof_crypto_workers,
                                           metrics_agg);
     rx = std::make_unique<pdcp_entity_rx>(ue_index,
                                           rb_id,
@@ -96,6 +97,7 @@ public:
     }
   }
 
+  manual_event_flag& tx_crypto_awaitable() override { return tx->crypto_awaitable(); }
   manual_event_flag& rx_crypto_awaitable() override { return rx->crypto_awaitable(); }
 
 private:

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -31,6 +31,9 @@ void ru_ofh_metrics_collector_impl::collect_metrics(ru_metrics& metrics)
 
   // Add timestamp to the metric.
   ofh_metrics.timestamp = std::chrono::system_clock::now();
+
+  // Timing metrics.
+  timing_collector->collect_metrics(ofh_metrics.timing);
 
   // Resize with the number of sectors.
   ofh_metrics.sectors.resize(sector_metrics_collectors.size());

@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -40,7 +40,6 @@ add_executable(mac_test
         mac_metrics_test.cpp
         mac_config_helpers_test.cpp
         slot_point_time_mapper_test.cpp
-        du_timer_controller_test.cpp
 )
 target_link_libraries(mac_test
         srsran_pcap

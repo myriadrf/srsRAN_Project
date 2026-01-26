@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -38,7 +38,6 @@
 #include "srsran/ran/tdd/tdd_ul_dl_config.h"
 #include "srsran/ran/time_alignment_config.h"
 #include "srsran/scheduler/config/bwp_configuration.h"
-#include "srsran/scheduler/config/dmrs.h"
 #include "srsran/scheduler/config/logical_channel_config.h"
 #include "srsran/scheduler/config/serving_cell_config.h"
 #include "srsran/scheduler/config/si_scheduling_config.h"
@@ -48,23 +47,10 @@ namespace srsran {
 
 class scheduler_cell_metrics_notifier;
 
-/// Basic scheduler resource grid element for resource reservation.
-struct sched_grid_resource {
-  prb_interval      prbs;
-  ofdm_symbol_range symbols;
-
-  bool operator==(const sched_grid_resource& rhs) const { return prbs == rhs.prbs and symbols == rhs.symbols; }
-
-  bool operator!=(const sched_grid_resource& rhs) const { return !(rhs == *this); }
-
-  bool is_empty() const { return prbs.empty() and symbols.empty(); }
-};
-
 /// Cell Configuration Request.
 /// \remark See O-RAN WG8, Section 9.2.3.2.1, Table 9.18.
 struct sched_cell_configuration_request_message {
   struct metrics_config {
-    std::chrono::milliseconds        report_period{0};
     scheduler_cell_metrics_notifier* notifier = nullptr;
     /// Maximum number of UE events per report.
     unsigned max_ue_events_per_report = 64;
@@ -98,8 +84,8 @@ struct sched_cell_configuration_request_message {
   /// Scheduling of SI messages.
   std::optional<si_scheduling_config> si_scheduling;
 
-  /// List of PUCCH guardbands.
-  std::vector<sched_grid_resource> pucch_guardbands;
+  /// List of dedicated PUCCH resources.
+  std::vector<pucch_resource> ded_pucch_resources;
 
   /// List of zp-CSI-RS resources common to all UEs.
   std::vector<zp_csi_rs_resource> zp_csi_rs_list;
@@ -113,7 +99,13 @@ struct sched_cell_configuration_request_message {
   /// List of RAN slices to support in the scheduler.
   std::vector<slice_rrm_policy_config> rrm_policy_members;
 
+  /// NTN parameters.
+  /// Cell-Specific K-offset.
   unsigned ntn_cs_koffset = 0;
+  /// DL HARQ Mode B.
+  bool dl_harq_mode_b = false;
+  /// UL HARQ Mode B.
+  bool ul_harq_mode_b = false;
 
   bool cfra_enabled = false;
 
@@ -121,16 +113,17 @@ struct sched_cell_configuration_request_message {
   metrics_config metrics;
 };
 
+/// Cell Reconfiguration Request.
+struct sched_cell_reconfiguration_request_message {
+  std::optional<du_cell_slice_reconfig_request> slice_reconf_req;
+};
+
 /// Parameters provided to the scheduler to configure the resource allocation of a specific UE.
 struct sched_ue_resource_alloc_config {
   /// Minimum and maximum PDSCH grant sizes for the given UE.
   prb_interval pdsch_grant_size_limits{0, MAX_NOF_PRBS};
-  /// Boundaries within which PDSCH needs to be allocated.
-  crb_interval pdsch_crb_limits{0, MAX_NOF_PRBS};
   /// Minimum and maximum PUSCH grant sizes for the given UE.
   prb_interval pusch_grant_size_limits{0, MAX_NOF_PRBS};
-  /// Boundaries within which PUSCH needs to be allocated.
-  crb_interval pusch_crb_limits{0, MAX_NOF_PRBS};
   /// Maximum PDSCH HARQ retransmissions.
   unsigned max_pdsch_harq_retxs = 4;
   /// Maximum PUSCH HARQ retransmissions.
@@ -176,7 +169,6 @@ struct sched_ue_reconfiguration_message {
   du_ue_index_t           ue_index;
   rnti_t                  crnti;
   sched_ue_config_request cfg;
-  bool                    reestablished;
 };
 
 /// UE Delete Request.
@@ -225,10 +217,15 @@ public:
   virtual void handle_rach_indication(const rach_indication_message& msg) = 0;
 
   /// \brief Activate a configured cell. This method has no effect if the cell is already active.
+  /// \remark This method needs to be called in the same thread as the slot_indication() method.
   virtual void handle_cell_activation_request(du_cell_index_t cell_index) = 0;
 
   /// \brief Deactivate a configured cell. This method has no effect if the cell is already deactivated.
+  /// \remark This method needs to be called after the last slot_indication() call.
   virtual void handle_cell_deactivation_request(du_cell_index_t cell_index) = 0;
+
+  /// \brief Handle slice reconfiguration request of a cell.
+  virtual void handle_slice_reconfiguration_request(const du_cell_slice_reconfig_request& msg) = 0;
 };
 
 class scheduler_ue_configurator

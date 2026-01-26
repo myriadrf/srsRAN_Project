@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,7 +32,7 @@ namespace srsran {
 namespace ofh {
 
 /// Maximum number of supported sections.
-static constexpr unsigned MAX_NOF_SUPPORTED_SECTIONS = 1U;
+constexpr unsigned MAX_NOF_SUPPORTED_SECTIONS = 1U;
 
 /// Open Fronthaul User-Plane section parameters.
 struct uplane_section_params {

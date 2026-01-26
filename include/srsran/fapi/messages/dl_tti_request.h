@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -127,6 +127,22 @@ inline power_control_offset_ss to_power_control_offset_ss(int value)
       break;
   }
   return power_control_offset_ss::dB0;
+}
+
+/// Converts power control offset SS value to an integer.
+inline int to_int(power_control_offset_ss value)
+{
+  switch (value) {
+    case power_control_offset_ss::dB_minus_3:
+      return -3;
+    case power_control_offset_ss::dB0:
+      return 0;
+    case power_control_offset_ss::dB3:
+      return 3;
+    case power_control_offset_ss::dB6:
+      break;
+  }
+  return 6;
 }
 
 /// Downlink PDSCH PDU information.

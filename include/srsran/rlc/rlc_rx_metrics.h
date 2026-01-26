@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,10 +22,10 @@
 
 #pragma once
 
-#include "srsran/rlc/rlc_config.h"
 #include "srsran/support/engineering_notation.h"
-#include "srsran/support/format/fmt_to_c_str.h"
+#include "srsran/support/timers.h"
 #include "fmt/format.h"
+#include <variant>
 
 namespace srsran {
 
@@ -69,21 +69,14 @@ struct rlc_rx_metrics {
   uint32_t num_malformed_pdus; ///< Number of malformed PDUs
   uint32_t sdu_latency_us;     ///< total SDU latency (in us)>
 
-  /// RLC mode of the entity
-  rlc_mode mode;
-
   /// Mode-specific metrics
   ///
-  /// The associated union member is indicated by \c mode.
-  /// Contents of the other fields are undefined.
-  union {
-    rlc_tm_rx_metrics tm;
-    rlc_um_rx_metrics um;
-    rlc_am_rx_metrics am;
-  } mode_specific;
+  /// Variant that holds mode-specific metrics for TM, UM, or AM.
+  std::variant<rlc_tm_rx_metrics, rlc_um_rx_metrics, rlc_am_rx_metrics> mode_specific;
 
-  uint32_t counter = 0; ///< Counter of amount of times we collected metrics.
-                        ///  Useful to aggregate high and low metrics.
+  /// Counter of amount of times we collected metrics.
+  /// Useful to aggregate high and low metrics.
+  uint32_t counter = 0;
 
   rlc_rx_metrics get()
   {
@@ -104,21 +97,14 @@ struct rlc_rx_metrics {
     sdu_latency_us     = {};
 
     // reset mode-specific values
-    switch (mode) {
-      case rlc_mode::tm:
-        mode_specific.tm.reset();
-        break;
-      case rlc_mode::um_bidir:
-      case rlc_mode::um_unidir_dl:
-        mode_specific.um.reset();
-        break;
-      case rlc_mode::am:
-        mode_specific.am.reset();
-        break;
-      default:
-        // nothing to do here
-        break;
+    if (std::holds_alternative<rlc_tm_rx_metrics>(mode_specific)) {
+      std::get<rlc_tm_rx_metrics>(mode_specific).reset();
+    } else if (std::holds_alternative<rlc_um_rx_metrics>(mode_specific)) {
+      std::get<rlc_um_rx_metrics>(mode_specific).reset();
+    } else if (std::holds_alternative<rlc_am_rx_metrics>(mode_specific)) {
+      std::get<rlc_am_rx_metrics>(mode_specific).reset();
     }
+
     // do not reset mode or counter
   }
 };
@@ -138,9 +124,9 @@ public:
   virtual void           reset_metrics()         = 0;
 };
 
-inline std::string format_rlc_rx_metrics(timer_duration metrics_period, const rlc_rx_metrics& m)
+inline void format_rlc_rx_metrics(fmt::memory_buffer& buffer, timer_duration metrics_period, const rlc_rx_metrics& m)
 {
-  fmt::memory_buffer buffer;
+  // Common metrics
   fmt::format_to(
       std::back_inserter(buffer),
       "num_sdus={} sdu_rate={}bps num_pdus={} pdu_rate={}bps",
@@ -149,30 +135,27 @@ inline std::string format_rlc_rx_metrics(timer_duration metrics_period, const rl
       scaled_fmt_integer(m.num_pdus, false),
       float_to_eng_string(static_cast<double>(m.num_pdu_bytes) * 8 * 1000 / metrics_period.count(), 1, false));
 
-  // No TM specific metrics for RX
-  if ((m.mode == rlc_mode::um_bidir || m.mode == rlc_mode::um_unidir_ul)) {
-    // Format UM specific metrics for RX
+  // Mode specific metrics
+  if (std::holds_alternative<rlc_um_rx_metrics>(m.mode_specific)) {
+    // UM metrics
+    auto& um = std::get<rlc_um_rx_metrics>(m.mode_specific);
     fmt::format_to(std::back_inserter(buffer),
                    " num_sdu_segments={} sdu_segmments_rate={}bps",
-                   scaled_fmt_integer(m.mode_specific.um.num_sdu_segments, false),
-                   float_to_eng_string(static_cast<float>(m.mode_specific.um.num_sdu_segment_bytes) * 8 * 1000 /
-                                           metrics_period.count(),
-                                       1,
-                                       false));
-  } else if (m.mode == rlc_mode::am) {
+                   scaled_fmt_integer(um.num_sdu_segments, false),
+                   float_to_eng_string(
+                       static_cast<float>(um.num_sdu_segment_bytes) * 8 * 1000 / metrics_period.count(), 1, false));
+  } else if (std::holds_alternative<rlc_am_rx_metrics>(m.mode_specific)) {
+    // AM metrics
+    auto& am = std::get<rlc_am_rx_metrics>(m.mode_specific);
     fmt::format_to(
         std::back_inserter(buffer),
         " num_sdu_segments={} sdu_segmments_rate={}bps ctrl_pdus={} ctrl_rate={}bps",
-        scaled_fmt_integer(m.mode_specific.am.num_sdu_segments, false),
-        float_to_eng_string(
-            static_cast<float>(m.mode_specific.am.num_sdu_segment_bytes) * 8 * 1000 / metrics_period.count(), 1, false),
-        scaled_fmt_integer(m.mode_specific.am.num_ctrl_pdus, false),
-        float_to_eng_string(
-            static_cast<float>(m.mode_specific.am.num_ctrl_pdu_bytes) * 8 * 1000 / metrics_period.count(), 1, false));
+        scaled_fmt_integer(am.num_sdu_segments, false),
+        float_to_eng_string(static_cast<float>(am.num_sdu_segment_bytes) * 8 * 1000 / metrics_period.count(), 1, false),
+        scaled_fmt_integer(am.num_ctrl_pdus, false),
+        float_to_eng_string(static_cast<float>(am.num_ctrl_pdu_bytes) * 8 * 1000 / metrics_period.count(), 1, false));
   }
-  return to_c_str(buffer);
 }
-
 } // namespace srsran
 
 namespace fmt {
@@ -188,7 +171,7 @@ struct formatter<srsran::rlc_rx_metrics> {
   }
 
   template <typename FormatContext>
-  auto format(srsran::rlc_rx_metrics m, FormatContext& ctx) const
+  auto format(const srsran::rlc_rx_metrics& m, FormatContext& ctx) const
   {
     return format_to(ctx.out(),
                      "num_pdus={} num_pdu_bytes={} num_lost_pdus={} num_malformed_pdus={} num_sdus={} num_sdu_bytes={}",

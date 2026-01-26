@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -18,7 +18,7 @@
 # and at http://www.gnu.org/licenses/.
 #
 
-set_directory_properties(PROPERTIES LABELS "du_manager")
+set_directory_properties(PROPERTIES LABELS "du_manager;du_high")
 
 include_directories(../../..)
 
@@ -83,7 +83,10 @@ target_include_directories(du_manager_procedure_test PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(du_manager_procedure_test du_manager_test_helpers gtest gtest_main)
 gtest_discover_tests(du_manager_procedure_test)
 
-add_executable(du_ran_resource_manager_test du_ran_resource_manager_test.cpp du_drx_resource_manager_test.cpp)
+add_executable(du_ran_resource_manager_test
+        du_ran_resource_manager_test.cpp
+        du_drx_resource_manager_test.cpp
+        decode_ue_nr_cap_container_test.cpp)
 target_include_directories(du_ran_resource_manager_test PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(du_ran_resource_manager_test du_manager_test_helpers gtest gtest_main)
 gtest_discover_tests(du_ran_resource_manager_test)

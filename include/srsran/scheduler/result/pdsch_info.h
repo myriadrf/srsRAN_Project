@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -116,7 +116,7 @@ struct ta_cmd_ce_payload {
 struct dl_msg_lc_info {
   /// Values of LCID for DL-SCH. See TS 38.321, Table 6.2.1-1.
   lcid_dl_sch_t lcid;
-  /// Number of scheduled bytes for this specific logical channel. {0..65535}.
+  /// Number of bytes available to fill in this SDU for the specified logical channel. {0..65535}.
   unsigned sched_bytes;
   /// Holds payload of CE except UE Contention Resolution Identity.
   std::variant<ta_cmd_ce_payload, dummy_ce_payload> ce_payload;

@@ -15,8 +15,8 @@ RUN TZ=Europe/Madrid && \
     echo $TZ > /etc/timezone && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-    git git-lfs \
-    clang llvm \
+    git git-lfs gdb \
+    clang llvm lld mold \
     ccache gcovr valgrind \
     python3-dev python3-venv && \
     (apt-get install -y --no-install-recommends libclang-rt-dev || true) && \
@@ -31,6 +31,7 @@ RUN chmod +x /usr/local/bin/install_dependencies.sh /usr/local/bin/builder.sh /u
     /usr/local/builder_tools/bin/pip install "pandas<3" "psutil"
 
 ADD lib /opt/lib
+ADD rohc /opt/rohc
 ADD uhd /opt/uhd
 ADD dpdk /opt/dpdk
 

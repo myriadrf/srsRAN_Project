@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -38,6 +38,7 @@ e2ap_configuration srsran::generate_e2_config(const o_du_high_e2_config& config,
   out_cfg.gnb_du_id          = gnb_du_id;
   out_cfg.e2sm_kpm_enabled   = config.base_cfg.e2sm_kpm_enabled;
   out_cfg.e2sm_rc_enabled    = config.base_cfg.e2sm_rc_enabled;
+  out_cfg.e2sm_ccc_enabled   = config.base_cfg.e2sm_ccc_enabled;
 
   return out_cfg;
 }

@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -20,7 +20,10 @@
 
 set_directory_properties(PROPERTIES LABELS "du_high;integrationtest")
 
-add_library(du_high_worker_manager test_utils/du_high_worker_manager.cpp test_utils/du_high_env_simulator.cpp)
+add_library(du_high_worker_manager
+        test_utils/du_high_worker_manager.cpp
+        test_utils/du_high_env_simulator.cpp
+        test_utils/du_high_sim_dependencies.cpp)
 target_include_directories(du_high_worker_manager PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(du_high_worker_manager
         srsran_du_high
@@ -33,16 +36,19 @@ target_link_libraries(du_high_worker_manager
 add_executable(du_high_test du_high_test.cpp
         du_high_many_ues_test.cpp
         du_high_many_cells_test.cpp
+        du_high_connectivity_test.cpp
         paging_test.cpp)
 target_link_libraries(du_high_test
         srsran_du_high
         du_high_worker_manager
+        srsran_du_high_unit_helpers
         srsran_gateway
         gtest
         gtest_main)
 target_include_directories(du_high_test PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(du_high_test du_high_test)
 set_tests_properties(du_high_test PROPERTIES LABELS "tsan")
+gtest_discover_tests(du_high_test)
 
 add_executable(mac_test_mode_adapter_test mac_test_mode_adapter_test.cpp)
 target_link_libraries(mac_test_mode_adapter_test srsran_du_high gtest gtest_main)

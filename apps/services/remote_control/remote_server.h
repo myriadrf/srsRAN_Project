@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -48,6 +48,9 @@ public:
 /// Creates a Remote Server instance with a give list of commands.
 std::unique_ptr<remote_server> create_remote_server(const remote_control_appconfig&       cfg,
                                                     span<std::unique_ptr<remote_command>> commands);
+
+/// Initializes the JSON log channel.
+void initialize_json_channel();
 
 } // namespace app_services
 } // namespace srsran

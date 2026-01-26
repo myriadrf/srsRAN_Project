@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,14 +29,19 @@
 #include "apps/units/flexible_o_du/o_du_low/o_du_low_unit_factory.h"
 #include "commands/ntn_config_update_remote_command_factory.h"
 #include "flexible_o_du_impl.h"
+#include "flexible_o_du_ntn_configuration_manager_factory.h"
 #include "metrics/flexible_o_du_metrics_builder.h"
 #include "srsran/du/du_high/du_high.h"
+#include "srsran/du/du_high/du_high_clock_controller.h"
 #include "srsran/du/o_du_factory.h"
 #include "srsran/e2/e2_du_metrics_connector.h"
-#include "srsran/fapi_adaptor/mac/mac_fapi_adaptor.h"
-#include "srsran/fapi_adaptor/mac/mac_fapi_sector_adaptor.h"
-#include "srsran/fapi_adaptor/phy/phy_fapi_adaptor.h"
-#include "srsran/fapi_adaptor/phy/phy_fapi_sector_adaptor.h"
+#include "srsran/fapi_adaptor/mac/mac_fapi_fastpath_adaptor.h"
+#include "srsran/fapi_adaptor/mac/mac_fapi_sector_fastpath_adaptor.h"
+#include "srsran/fapi_adaptor/mac/p7/mac_fapi_p7_sector_fastpath_adaptor.h"
+#include "srsran/fapi_adaptor/phy/p7/phy_fapi_p7_sector_fastpath_adaptor.h"
+#include "srsran/fapi_adaptor/phy/phy_fapi_fastpath_adaptor.h"
+#include "srsran/fapi_adaptor/phy/phy_fapi_sector_fastpath_adaptor.h"
+#include "srsran/ntn/ntn_configuration_manager_config.h"
 
 using namespace srsran;
 
@@ -93,24 +98,26 @@ static fapi::carrier_config generate_carrier_config_tlv(const srs_du::du_cell_co
 }
 
 static o_du_low_unit_config generate_o_du_low_config(const du_low_unit_config&            du_low_unit_cfg,
+                                                     float                                dBFS_calibration_value,
                                                      span<const srs_du::du_cell_config>   cells,
                                                      span<const du_high_unit_cell_config> du_hi_cells)
 {
   o_du_low_unit_config odu_low_cfg = {du_low_unit_cfg, {}, {}};
 
   for (unsigned i = 0, e = cells.size(); i != e; ++i) {
-    const auto& cell        = cells[i];
-    const auto& du_hi_cell  = du_hi_cells[i];
-    auto&       fapi_sector = odu_low_cfg.fapi_cfg.sectors.emplace_back();
+    const auto& cell           = cells[i];
+    const auto& du_hi_cell     = du_hi_cells[i];
+    auto&       p7_fapi_sector = odu_low_cfg.fapi_cfg.sectors.emplace_back().p7_config;
 
-    fapi_sector.carrier_cfg                   = generate_carrier_config_tlv(cell);
-    fapi_sector.prach_cfg                     = generate_prach_config_tlv(cell);
-    fapi_sector.allow_request_on_empty_ul_tti = du_low_unit_cfg.expert_phy_cfg.allow_request_on_empty_uplink_slot;
-    fapi_sector.nof_slots_request_headroom    = du_low_unit_cfg.expert_phy_cfg.nof_slots_request_headroom;
-    fapi_sector.prach_ports                   = du_hi_cell.cell.prach_cfg.ports;
-    fapi_sector.scs                           = cell.scs_common;
-    fapi_sector.scs_common                    = cell.scs_common;
-    fapi_sector.sector_id                     = i;
+    p7_fapi_sector.carrier_cfg                   = generate_carrier_config_tlv(cell);
+    p7_fapi_sector.prach_cfg                     = generate_prach_config_tlv(cell);
+    p7_fapi_sector.allow_request_on_empty_ul_tti = du_low_unit_cfg.expert_phy_cfg.allow_request_on_empty_uplink_slot;
+    p7_fapi_sector.nof_slots_request_headroom    = du_low_unit_cfg.expert_phy_cfg.nof_slots_request_headroom;
+    p7_fapi_sector.prach_ports                   = du_hi_cell.cell.prach_cfg.ports;
+    p7_fapi_sector.scs                           = cell.scs_common;
+    p7_fapi_sector.scs_common                    = cell.scs_common;
+    p7_fapi_sector.dBFS_calibration_value        = dBFS_calibration_value;
+    p7_fapi_sector.sector_id                     = i;
 
     auto&   du_low_cell    = odu_low_cfg.cells.emplace_back();
     nr_band band           = cell.dl_carrier.band;
@@ -149,10 +156,49 @@ static flexible_o_du_ru_config generate_o_du_ru_config(span<const srs_du::du_cel
     out_cell.ul_arfcn        = cell.ul_carrier.arfcn_f_ref;
     out_cell.tdd_config      = cell.tdd_ul_dl_cfg_common;
     out_cell.bw              = MHz_to_bs_channel_bandwidth(cell.dl_carrier.carrier_bw_mhz);
-    out_cell.band            = cell.dl_carrier.band;
+    out_cell.freq_range      = band_helper::get_freq_range(cell.dl_carrier.band);
     out_cell.cp              = cell.dl_cfg_common.init_dl_bwp.generic_params.cp;
   }
 
+  return out_cfg;
+}
+
+static srs_ntn::ntn_configuration_manager_config
+generate_ntn_configuration_manager_config(const gnb_id_t& gnb_id, span<const du_high_unit_cell_config> du_hi_cells)
+{
+  srs_ntn::ntn_configuration_manager_config out_cfg = {};
+  for (const auto& cell : du_hi_cells) {
+    const auto& cell_cfg = cell.cell;
+    if (cell_cfg.ntn_cfg.has_value()) {
+      auto&                      out_cell = out_cfg.cells.emplace_back();
+      expected<plmn_identity>    plmn     = plmn_identity::parse(cell_cfg.plmn);
+      expected<nr_cell_identity> nci      = nr_cell_identity::create(gnb_id, cell_cfg.sector_id.value());
+      if (not plmn.has_value()) {
+        report_error("Invalid PLMN: {}", cell_cfg.plmn);
+      }
+      if (not nci.has_value()) {
+        report_error("Invalid NR-NCI");
+      }
+      out_cell.sector_id      = cell_cfg.sector_id;
+      out_cell.nr_cgi.plmn_id = plmn.value();
+      out_cell.nr_cgi.nci     = nci.value();
+      out_cell.ntn_cfg        = *cell_cfg.ntn_cfg;
+
+      // SIB19 Scheduling info.
+      const auto& sib_cfg = cell_cfg.sib_cfg;
+      for (unsigned i = 0, ie = sib_cfg.si_sched_info.size(); i != ie; ++i) {
+        const auto& si_msg = sib_cfg.si_sched_info[i];
+        for (unsigned j = 0, je = si_msg.sib_mapping_info.size(); j != je; ++j) {
+          if (si_msg.sib_mapping_info[j] == 19) {
+            out_cell.si_msg_idx          = i;
+            out_cell.si_period_rf        = si_msg.si_period_rf;
+            out_cell.si_window_len_slots = sib_cfg.si_window_len_slots;
+            out_cell.si_window_position  = si_msg.si_window_position.value();
+          }
+        }
+      }
+    }
+  }
   return out_cfg;
 }
 
@@ -174,6 +220,10 @@ o_du_unit flexible_o_du_factory::create_flexible_o_du(const o_du_unit_dependenci
     pci_cell_mapper.push_back(cell.pci);
   }
 
+  std::chrono::nanoseconds symbol_duration(
+      static_cast<int64_t>(1e6 / (get_nsymb_per_slot(cyclic_prefix::NORMAL) *
+                                  get_nof_slots_per_subframe(du_hi.cells_cfg.front().cell.common_scs))));
+
   std::vector<std::unique_ptr<app_services::toggle_stdout_metrics_app_command::metrics_subcommand>>
       ru_metrics_subcommands;
   // Create flexible O-DU metrics configuration.
@@ -182,17 +232,19 @@ o_du_unit flexible_o_du_factory::create_flexible_o_du(const o_du_unit_dependenci
                                          ru_metrics_subcommands,
                                          *dependencies.metrics_notifier,
                                          config.ru_cfg.config,
-                                         std::move(pci_cell_mapper));
+                                         std::move(pci_cell_mapper),
+                                         symbol_duration);
 
   // Create flexible O-DU implementation.
   auto du_impl = std::make_unique<flexible_o_du_impl>(nof_cells, flexible_odu_metrics_notifier);
 
-  o_du_low_unit_config       odu_low_cfg          = generate_o_du_low_config(du_lo, du_cells, du_hi.cells_cfg);
+  o_du_low_unit_config odu_low_cfg =
+      generate_o_du_low_config(du_lo, config.ru_cfg.dBFS_calibration_value, du_cells, du_hi.cells_cfg);
   o_du_low_unit_dependencies odu_low_dependencies = {.rg_gateway = du_impl->get_upper_ru_dl_rg_adapter(),
                                                      .rx_symbol_request_notifier =
                                                          du_impl->get_upper_ru_ul_request_adapter(),
                                                      .workers = dependencies.workers->get_du_low_executor_mapper()};
-  o_du_low_unit_factory      odu_low_factory(du_lo.hal_config, nof_cells);
+  o_du_low_unit_factory      odu_low_factory(du_lo.hal_config);
   auto                       odu_lo_unit = odu_low_factory.create(odu_low_cfg, odu_low_dependencies);
 
   std::for_each(odu_lo_unit.metrics.begin(), odu_lo_unit.metrics.end(), [&](auto& e) {
@@ -202,7 +254,7 @@ o_du_unit flexible_o_du_factory::create_flexible_o_du(const o_du_unit_dependenci
   o_du_high_unit_dependencies odu_hi_unit_dependencies = {dependencies.workers->get_du_high_executor_mapper(),
                                                           *dependencies.f1c_client_handler,
                                                           *dependencies.f1u_gw,
-                                                          *dependencies.timer_mng,
+                                                          *dependencies.timer_ctrl,
                                                           *dependencies.mac_p,
                                                           *dependencies.rlc_p,
                                                           *dependencies.e2_client_handler,
@@ -212,22 +264,25 @@ o_du_unit flexible_o_du_factory::create_flexible_o_du(const o_du_unit_dependenci
 
   // Adjust the dependencies.
   for (unsigned i = 0, e = du_cells.size(); i != e; ++i) {
-    auto& sector_dependencies = odu_hi_unit_dependencies.o_du_hi_dependencies.sectors.emplace_back();
-    sector_dependencies.gateway =
-        &odu_lo_unit.o_du_lo->get_phy_fapi_adaptor().get_sector_adaptor(i).get_slot_message_gateway();
-    sector_dependencies.last_msg_notifier =
-        &odu_lo_unit.o_du_lo->get_phy_fapi_adaptor().get_sector_adaptor(i).get_slot_last_message_notifier();
-    sector_dependencies.fapi_executor = config.odu_high_cfg.fapi_cfg.l2_nof_slots_ahead != 0
-                                            ? std::optional(dependencies.workers->fapi_exec[i])
-                                            : std::make_optional<task_executor*>();
+    auto& sector_dependencies   = odu_hi_unit_dependencies.o_du_hi_dependencies.sectors.emplace_back();
+    sector_dependencies.gateway = &odu_lo_unit.o_du_lo->get_phy_fapi_fastpath_adaptor()
+                                       .get_sector_adaptor(i)
+                                       .get_p7_sector_adaptor()
+                                       .get_slot_message_gateway();
+    sector_dependencies.last_msg_notifier = &odu_lo_unit.o_du_lo->get_phy_fapi_fastpath_adaptor()
+                                                 .get_sector_adaptor(i)
+                                                 .get_p7_sector_adaptor()
+                                                 .get_slot_last_message_notifier();
+    sector_dependencies.fapi_executor =
+        config.odu_high_cfg.fapi_cfg.l2_nof_slots_ahead != 0 ? dependencies.workers->fapi_exec[i] : nullptr;
   }
 
   o_du_high_unit odu_hi_unit = make_o_du_high_unit(config.odu_high_cfg, std::move(odu_hi_unit_dependencies));
 
   // Connect the adaptors.
   for (unsigned i = 0, e = du_cells.size(); i != e; ++i) {
-    fapi_adaptor::phy_fapi_sector_adaptor& odu_lo = odu_lo_unit.o_du_lo->get_phy_fapi_adaptor().get_sector_adaptor(i);
-    fapi_adaptor::mac_fapi_sector_adaptor& odu_hi = odu_hi_unit.o_du_hi->get_mac_fapi_adaptor().get_sector_adaptor(i);
+    auto& odu_lo = odu_lo_unit.o_du_lo->get_phy_fapi_fastpath_adaptor().get_sector_adaptor(i).get_p7_sector_adaptor();
+    auto& odu_hi = odu_hi_unit.o_du_hi->get_mac_fapi_fastpath_adaptor().get_sector_adaptor(i).get_p7_sector_adaptor();
 
     // Connect O-DU low with O-DU high.
     odu_lo.set_slot_time_message_notifier(odu_hi.get_slot_time_message_notifier());
@@ -285,17 +340,22 @@ o_du_unit flexible_o_du_factory::create_flexible_o_du(const o_du_unit_dependenci
     o_du.commands.cmdline.commands.push_back(std::make_unique<tx_time_offset_app_command>(*controller));
   }
 
-  // Add NTN-Config update remote command.
-  auto& ntn_cfg = config.odu_high_cfg.du_high_cfg.config.cells_cfg.front().cell.ntn_cfg;
-  if (ntn_cfg.has_value()) {
-    add_ntn_config_update_remote_command(
-        o_du.commands,
-        ntn_cfg.value(),
+  // Create the NTN Configuration Manager if at least one NTN cell is present.
+  srs_ntn::ntn_configuration_manager_config ntn_manager_config =
+      generate_ntn_configuration_manager_config(du_hi.gnb_id, du_hi.cells_cfg);
+
+  if (not ntn_manager_config.cells.empty()) {
+    o_du.ntn_configurator_manager = create_ntn_configuration_manager(
+        ntn_manager_config,
         odu_instance->get_o_du_high().get_du_high().get_du_configurator(),
         odu_instance->get_o_du_high().get_du_high().get_du_manager_time_mapper_accessor(),
         ru->get_controller(),
-        *dependencies.timer_mng,
+        dependencies.timer_ctrl->get_timer_manager(),
         dependencies.workers->get_du_high_executor_mapper().du_control_executor());
+
+    if (o_du.ntn_configurator_manager) {
+      add_ntn_config_update_remote_command(o_du.commands, *o_du.ntn_configurator_manager);
+    }
   }
 
   // Configure the RU and DU in the dynamic DU.

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -80,6 +80,8 @@ drb_id_t allocate_drb_id(const up_pdu_session_context_update& new_session_contex
 // \brief Returns valid RRC PDCP config for a given FiveQI
 pdcp_config   set_rrc_pdcp_config(five_qi_t five_qi, const up_resource_manager_cfg& cfg);
 sdap_config_t set_rrc_sdap_config(const up_drb_context& context);
+
+unsigned get_dirty_drb_index(drb_id_t drb_id);
 
 } // namespace srs_cu_cp
 } // namespace srsran

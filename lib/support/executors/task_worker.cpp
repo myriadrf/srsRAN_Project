@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,8 +47,10 @@ unique_function<void()> general_task_worker<QueuePolicy, WaitPolicy>::make_block
     auto& logger = srslog::fetch_basic_logger("ALL");
     logger.info("Task worker \"{}\" started...", this_thread_name());
 
+    auto consumer = pending_tasks.create_consumer();
+
     unique_task t;
-    while (pending_tasks.pop_blocking(t)) {
+    while (consumer.pop_blocking(t)) {
       // Call task.
       t();
 

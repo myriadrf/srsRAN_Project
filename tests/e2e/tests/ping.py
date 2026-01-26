@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -27,6 +27,7 @@ from typing import Optional, Sequence, Tuple, Union
 
 import grpc
 from _pytest.outcomes import Failed
+from google.protobuf.wrappers_pb2 import UInt32Value
 from pytest import mark
 from retina.client.manager import RetinaTestManager
 from retina.launcher.artifacts import RetinaTestData
@@ -219,6 +220,7 @@ def test_android_hp(
         warning_as_errors=False,
         always_download_artifacts=True,
         reattach_count=reattach_count,
+        post_command=("ru_sdr expert_cfg --low_phy_dl_throttling=0.5",),
     )
 
 
@@ -343,6 +345,8 @@ def test_android_no_drx(
         "Some packages got lost",
         "socket is already closed",
         "5GC crashed",
+        "License unavailable",
+        "Timeout reached while reserving",
     ],
 )
 # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -464,6 +468,8 @@ def test_example_srsue(
         "Some packages got lost",
         "socket is already closed",
         "5GC crashed",
+        "License unavailable",
+        "Timeout reached while reserving",
     ],
 )
 # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -544,10 +550,10 @@ def test_zmq_valgrind(
             gnb_stop_timeout=gnb_stop_timeout,
         )
     stop(
-        ue_4,
-        gnb,
-        fivegc,
-        retina_data,
+        ue_array=ue_4,
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        retina_data=retina_data,
         gnb_stop_timeout=gnb_stop_timeout,
         log_search=False,
     )
@@ -555,17 +561,27 @@ def test_zmq_valgrind(
 
 @mark.parametrize(
     "band, common_scs, bandwidth",
-    (
-        param(3, 15, 10, id="band:%s-scs:%s-bandwidth:%s"),
-        param(41, 30, 10, id="band:%s-scs:%s-bandwidth:%s"),
-    ),
+    (param(261, 120, 100, id="band:%s-scs:%s-bandwidth:%s"),),
 )
-@mark.rf
+@mark.zmq
+@mark.fr2
+@mark.flaky(
+    reruns=2,
+    only_rerun=[
+        "failed to start",
+        "Attach timeout reached",
+        "Some packages got lost",
+        "socket is already closed",
+        "5GC crashed",
+        "License unavailable",
+        "Timeout reached while reserving",
+    ],
+)
 # pylint: disable=too-many-arguments,too-many-positional-arguments
-def test_rf(
+def test_zmq_fr2(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
-    ue_4: Tuple[UEStub, ...],
+    ue: UEStub,
     fivegc: FiveGCStub,
     gnb: GNBStub,
     band: int,
@@ -573,23 +589,81 @@ def test_rf(
     bandwidth: int,
 ):
     """
-    RF Pings
+    ZMQ FR2 Ping test
     """
 
     _ping(
         retina_manager=retina_manager,
         retina_data=retina_data,
-        ue_array=ue_4,
+        ue_array=[ue],
         gnb=gnb,
         fivegc=fivegc,
         band=band,
         common_scs=common_scs,
         bandwidth=bandwidth,
-        sample_rate=None,  # default from testbed
+        sample_rate=122880000,
+        ul_noise_spd=-210,
+        rx_to_tx_latency=4,
         global_timing_advance=-1,
-        time_alignment_calibration="264",
-        warning_as_errors=False,
+        time_alignment_calibration=0,
+        ue_stop_timeout=3,
+        pdcch_log=True,
         always_download_artifacts=True,
+        post_command=("expert_phy --max_proc_delay=6", ""),
+    )
+
+
+@mark.parametrize(
+    "band, common_scs, bandwidth",
+    (param(261, 120, 100, id="band:%s-scs:%s-bandwidth:%s"),),
+)
+@mark.s72
+@mark.fr2
+@mark.flaky(
+    reruns=1,
+    only_rerun=[
+        "failed to start",
+        "Attach timeout reached",
+        "Some packages got lost",
+        "socket is already closed",
+        "5GC crashed",
+        "License unavailable",
+        "Timeout reached while reserving",
+    ],
+)
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+def test_ping_s72_fr2(
+    retina_manager: RetinaTestManager,
+    retina_data: RetinaTestData,
+    ue: UEStub,
+    fivegc: FiveGCStub,
+    gnb: GNBStub,
+    band: int,
+    common_scs: int,
+    bandwidth: int,
+):
+    """
+    Amariue Split 7.2x FR2 Ping test
+    """
+
+    _ping(
+        retina_manager=retina_manager,
+        retina_data=retina_data,
+        ue_array=[ue],
+        gnb=gnb,
+        fivegc=fivegc,
+        band=band,
+        common_scs=common_scs,
+        bandwidth=bandwidth,
+        sample_rate=122880000,
+        ul_noise_spd=-210,
+        rx_to_tx_latency=4,
+        global_timing_advance=-1,
+        time_alignment_calibration=0,
+        ue_stop_timeout=3,
+        pdcch_log=True,
+        always_download_artifacts=True,
+        warning_as_errors=False,
     )
 
 
@@ -638,7 +712,7 @@ def test_rf_does_not_crash(
             log_search=False,
             always_download_artifacts=True,
         )
-    stop(ue_4, gnb, fivegc, retina_data, log_search=False)
+    stop(ue_array=ue_4, gnb_array=[gnb], fivegc=fivegc, retina_data=retina_data, log_search=False)
 
 
 @mark.parametrize(
@@ -700,6 +774,7 @@ def test_ntn(
 
 # pylint: disable=too-many-arguments,too-many-positional-arguments, too-many-locals
 def _ping(
+    *,  # This enforces keyword-only arguments
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_array: Sequence[UEStub],
@@ -731,6 +806,9 @@ def _ping(
     ping_interval: float = 1.0,
     channel_emulator: Optional[ChannelEmulatorStub] = None,
     ntn_scenario_def: Optional[NtnScenarioDefinition] = None,
+    ul_noise_spd: int = 0,
+    rx_to_tx_latency: int = -1,
+    pdcch_log: bool = False,
 ):
     logging.info("Ping Test")
 
@@ -739,7 +817,9 @@ def _ping(
         if not is_ntn_channel_emulator(channel_emulator):
             logging.info("The channel emulator is not a NTN emulator.")
             return
-        start_ntn_channel_emulator(ue_array, gnb, channel_emulator, ntn_scenario_def)
+        start_ntn_channel_emulator(
+            ue_array=ue_array, gnb=gnb, channel_emulator=channel_emulator, ntn_scenario_def=ntn_scenario_def
+        )
         ntn_config = get_ntn_configs(channel_emulator)
 
     configure_test_parameters(
@@ -761,6 +841,9 @@ def _ping(
         pdsch_mcs_table=pdsch_mcs_table,
         pusch_mcs_table=pusch_mcs_table,
         ntn_config=ntn_config,
+        ul_noise_spd=ul_noise_spd,
+        rx_to_tx_latency=rx_to_tx_latency,
+        pdcch_log=pdcch_log,
     )
     configure_artifacts(
         retina_data=retina_data,
@@ -768,37 +851,49 @@ def _ping(
     )
 
     start_network(
-        ue_array,
-        gnb,
-        fivegc,
+        ue_array=ue_array,
+        gnb_array=[gnb],
+        fivegc=fivegc,
         gnb_pre_cmd=pre_command,
         gnb_post_cmd=post_command,
         plmn=plmn,
         channel_emulator=channel_emulator,
     )
-    ue_attach_info_dict = ue_start_and_attach(ue_array, gnb, fivegc, channel_emulator=channel_emulator)
+    ue_attach_info_dict = ue_start_and_attach(
+        ue_array=ue_array,
+        du_definition=[gnb.GetDefinition(UInt32Value(value=0))],
+        fivegc=fivegc,
+        channel_emulator=channel_emulator,
+    )
 
     try:
-        ping(ue_attach_info_dict, fivegc, ping_count, ping_interval=ping_interval)
+        ping(ue_attach_info_dict=ue_attach_info_dict, fivegc=fivegc, ping_count=ping_count, ping_interval=ping_interval)
 
         # reattach and repeat if requested
         for _ in range(reattach_count):
-            ue_stop(ue_array, retina_data)
-            ue_attach_info_dict = ue_start_and_attach(ue_array, gnb, fivegc)
-            ping(ue_attach_info_dict, fivegc, ping_count, ping_interval=ping_interval)
+            ue_stop(ue_array=ue_array, retina_data=retina_data)
+            ue_attach_info_dict = ue_start_and_attach(
+                ue_array=ue_array, du_definition=[gnb.GetDefinition(UInt32Value(value=0))], fivegc=fivegc
+            )
+            ping(
+                ue_attach_info_dict=ue_attach_info_dict,
+                fivegc=fivegc,
+                ping_count=ping_count,
+                ping_interval=ping_interval,
+            )
     except Failed as err:
         if not ims_mode or ims_mode == "enabled":
             raise err from None
 
     if ims_mode:
-        validate_ue_registered_via_ims(ue_array if ims_mode == "enabled" else tuple(), fivegc)
+        validate_ue_registered_via_ims(ue_stub_array=ue_array if ims_mode == "enabled" else tuple(), core=fivegc)
 
     # final stop
     stop(
-        ue_array,
-        gnb,
-        fivegc,
-        retina_data,
+        ue_array=ue_array,
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        retina_data=retina_data,
         gnb_stop_timeout=gnb_stop_timeout,
         log_search=log_search,
         ue_stop_timeout=ue_stop_timeout,

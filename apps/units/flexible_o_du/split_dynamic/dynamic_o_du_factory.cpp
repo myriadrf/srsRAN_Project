@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -48,7 +48,9 @@ generate_ru_config(const std::variant<ru_sdr_unit_config, ru_ofh_unit_parsed_con
 }
 
 dynamic_o_du_factory::dynamic_o_du_factory(const dynamic_o_du_unit_config& config_) :
-  flexible_o_du_factory({config_.odu_high_cfg, config_.du_low_cfg, generate_ru_config(config_.ru_cfg)}),
+  flexible_o_du_factory(flexible_o_du_unit_config{.odu_high_cfg = config_.odu_high_cfg,
+                                                  .du_low_cfg   = config_.du_low_cfg,
+                                                  .ru_cfg       = generate_ru_config(config_.ru_cfg)}),
   unit_config(config_)
 {
 }
@@ -65,9 +67,8 @@ static std::unique_ptr<radio_unit> create_dummy_radio_unit(const ru_dummy_unit_c
       .error_notifier  = ru_dependencies.error_notifier,
   };
 
-  return create_dummy_ru(
-      generate_ru_dummy_config(ru_cfg, ru_config.cells, ru_config.max_processing_delay, ru_config.prach_nof_ports),
-      dependencies);
+  return create_dummy_ru(generate_ru_dummy_config(ru_cfg, ru_config.cells, ru_config.max_processing_delay),
+                         dependencies);
 }
 
 std::unique_ptr<radio_unit>

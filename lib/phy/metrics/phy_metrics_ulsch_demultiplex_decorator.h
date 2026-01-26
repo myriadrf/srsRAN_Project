@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -41,9 +41,8 @@ public:
   }
 
   // See ulsch_demultiplex interface for documentation.
-  void set_csi_part2(pusch_decoder_buffer& csi_part2,
-                     unsigned int          nof_csi_part2_bits,
-                     unsigned int          nof_csi_part2_enc_bits) override
+  void
+  set_csi_part2(pusch_decoder_buffer& csi_part2, unsigned nof_csi_part2_bits, unsigned nof_csi_part2_enc_bits) override
   {
     base->set_csi_part2(csi_part2, nof_csi_part2_bits, nof_csi_part2_enc_bits);
   }

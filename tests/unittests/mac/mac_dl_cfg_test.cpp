@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,7 +26,7 @@
 #include "mac_ctrl_test_dummies.h"
 #include "mac_test_helpers.h"
 #include "tests/test_doubles/mac/dummy_mac_metrics_notifier.h"
-#include "tests/test_doubles/mac/dummy_scheduler_ue_metric_notifier.h"
+#include "tests/test_doubles/scheduler/dummy_scheduler_ue_metric_notifier.h"
 #include "tests/test_doubles/scheduler/scheduler_config_helper.h"
 #include "srsran/support/async/eager_async_task.h"
 #include "srsran/support/executors/blocking_task_worker.h"
@@ -97,45 +97,37 @@ struct add_reconf_delete_ue_test_task {
   }
 };
 
-/// In this test, we verify the correct executors are called during creation, reconfiguration and deletion of a UE.
-TEST(test_mac_dl_cfg, test_dl_ue_procedure_execution_contexts)
+class mac_dl_cfg_test : public ::testing::Test
 {
-  test_delimit_logger delimiter{"Test UE procedures execution contexts"};
-
-  auto&                                 logger = srslog::fetch_basic_logger("TEST");
-  manual_task_worker                    ctrl_worker{128};
-  manual_task_worker                    dl_worker{128};
-  std::vector<task_executor*>           dl_execs = {&dl_worker};
-  dummy_ue_executor_mapper              ul_exec_mapper{ctrl_worker};
-  dummy_dl_executor_mapper              dl_exec_mapper{dl_execs[0]};
+protected:
+  srslog::basic_logger&                 logger = srslog::fetch_basic_logger("TEST");
   dummy_mac_event_indicator             du_mng_notifier;
   dummy_mac_result_notifier             phy_notifier;
-  dummy_scheduler_cell_metrics_notifier scheduler_cell_metrics_notif;
+  dummy_scheduler_cell_metrics_notifier scheduler_cell_metrics_notif{};
   dummy_mac_metrics_notifier            mac_metrics_notif;
   null_mac_pcap                         pcap;
   timer_manager                         timers;
-  mac_dl_config mac_dl_cfg{ul_exec_mapper, dl_exec_mapper, ctrl_worker, phy_notifier, pcap, timers};
+  mac_expert_config                     macfg{.configs = {{10000, 10000, 10000}}};
+  scheduler_expert_config               schedcfg{};
+  rnti_manager                          rnti_mng;
+};
 
-  mac_config   maccfg{du_mng_notifier,
-                    ul_exec_mapper,
-                    dl_exec_mapper,
-                    ctrl_worker,
-                    ctrl_worker,
-                    phy_notifier,
-                    mac_expert_config{.configs = {{10000, 10000, 10000}}},
-                    pcap,
-                    timers,
-                    mac_config::metrics_config{.notifier = mac_metrics_notif},
-                    scheduler_expert_config{}};
-  rnti_manager rnti_mng;
+/// In this test, we verify the correct executors are called during creation, reconfiguration and deletion of a UE.
+TEST_F(mac_dl_cfg_test, test_dl_ue_procedure_execution_contexts)
+{
+  manual_task_worker          ctrl_worker{128};
+  manual_task_worker          dl_worker{128};
+  std::vector<task_executor*> dl_execs = {&dl_worker};
+  dummy_ue_executor_mapper    ul_exec_mapper{ctrl_worker};
+  dummy_dl_executor_mapper    dl_exec_mapper{dl_execs[0]};
+  mac_dl_config               mac_dl_cfg{ul_exec_mapper, dl_exec_mapper, ctrl_worker, phy_notifier, pcap, timers};
 
-  srsran_scheduler_adapter sched_cfg_adapter{maccfg, rnti_mng};
+  srsran_scheduler_adapter sched_cfg_adapter{srsran_mac_sched_config{macfg, ctrl_worker, timers, schedcfg}, rnti_mng};
   mac_dl_processor         mac_dl(mac_dl_cfg, sched_cfg_adapter, rnti_mng);
 
   auto mac_cell_req      = test_helpers::make_default_mac_cell_config();
   mac_cell_req.sched_req = sched_config_helper::make_default_sched_cell_configuration_request();
-  sched_cfg_adapter.add_cell(mac_scheduler_cell_creation_request{
-      mac_cell_req, std::chrono::milliseconds{1000}, &scheduler_cell_metrics_notif});
+  sched_cfg_adapter.add_cell(mac_scheduler_cell_creation_request{mac_cell_req, &scheduler_cell_metrics_notif});
 
   // Set this to a valid ARFCN value (band 3, in this case, but it doesn't matter) - Required for SSB.
   mac_dl.add_cell(mac_cell_req, {});
@@ -162,7 +154,7 @@ TEST(test_mac_dl_cfg, test_dl_ue_procedure_execution_contexts)
   TESTASSERT(not t.empty() and t.ready());
 }
 
-TEST(test_mac_dl_cfg, test_dl_ue_procedure_tsan)
+TEST_F(mac_dl_cfg_test, test_dl_ue_procedure_tsan)
 {
   test_delimit_logger delimiter{"Test UE procedures TSAN"};
 
@@ -171,45 +163,25 @@ TEST(test_mac_dl_cfg, test_dl_ue_procedure_tsan)
   task_worker_executor                  dl_execs[]   = {{dl_workers[0]}, {dl_workers[1]}};
   dummy_ue_executor_mapper              ul_exec_mapper{ctrl_worker};
   dummy_dl_executor_mapper              dl_exec_mapper{&dl_execs[0], &dl_execs[1]};
-  dummy_mac_event_indicator             du_mng_notifier;
-  dummy_mac_result_notifier             phy_notifier;
-  null_mac_pcap                         pcap;
-  timer_manager                         timers;
   dummy_scheduler_ue_metrics_notifier   sched_metrics_notif;
   dummy_scheduler_cell_metrics_notifier sched_cell_metrics_notif;
-  dummy_mac_metrics_notifier            mac_metrics_notif;
   mac_dl_config mac_dl_cfg{ul_exec_mapper, dl_exec_mapper, ctrl_worker, phy_notifier, pcap, timers};
 
-  mac_config   maccfg{du_mng_notifier,
-                    ul_exec_mapper,
-                    dl_exec_mapper,
-                    ctrl_worker,
-                    ctrl_worker,
-                    phy_notifier,
-                    mac_expert_config{.configs = {{10000, 10000, 10000}}},
-                    pcap,
-                    timers,
-                    mac_config::metrics_config{.notifier = mac_metrics_notif},
-                    scheduler_expert_config{}};
-  rnti_manager rnti_mng;
-
-  srsran_scheduler_adapter sched_cfg_adapter{maccfg, rnti_mng};
+  srsran_scheduler_adapter sched_cfg_adapter{srsran_mac_sched_config{macfg, ctrl_worker, timers, schedcfg}, rnti_mng};
   mac_dl_processor         mac_dl(mac_dl_cfg, sched_cfg_adapter, rnti_mng);
 
   // Action: Add Cells.
   mac_cell_creation_request cell_cfg1 = test_helpers::make_default_mac_cell_config();
   cell_cfg1.sched_req                 = sched_config_helper::make_default_sched_cell_configuration_request();
   // Set this to a valid ARFCN value (band 3, in this case, but it doesn't matter) - Required for SSB.
-  sched_cfg_adapter.add_cell(
-      mac_scheduler_cell_creation_request{cell_cfg1, std::chrono::milliseconds{1000}, &sched_cell_metrics_notif});
+  sched_cfg_adapter.add_cell(mac_scheduler_cell_creation_request{cell_cfg1, &sched_cell_metrics_notif});
   mac_dl.add_cell(cell_cfg1, {});
   mac_cell_creation_request cell_cfg2  = test_helpers::make_default_mac_cell_config();
   cell_cfg2.cell_index                 = to_du_cell_index(1);
   cell_cfg2.sched_req                  = sched_config_helper::make_default_sched_cell_configuration_request();
   cell_cfg2.sched_req.cell_index       = to_du_cell_index(1);
   cell_cfg2.sched_req.cell_group_index = (du_cell_group_index_t)1;
-  sched_cfg_adapter.add_cell(
-      mac_scheduler_cell_creation_request{cell_cfg2, std::chrono::milliseconds{1000}, &sched_cell_metrics_notif});
+  sched_cfg_adapter.add_cell(mac_scheduler_cell_creation_request{cell_cfg2, &sched_cell_metrics_notif});
   mac_dl.add_cell(cell_cfg2, {});
 
   // TEST: Thread used for resumption does not change

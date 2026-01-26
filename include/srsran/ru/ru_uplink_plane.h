@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,11 +22,11 @@
 
 #pragma once
 
+#include "srsran/phy/support/shared_prach_buffer.h"
 #include "srsran/ran/slot_point.h"
 
 namespace srsran {
 
-class prach_buffer;
 struct prach_buffer_context;
 struct resource_grid_context;
 class shared_resource_grid;
@@ -53,9 +53,12 @@ public:
 
   /// \brief Notifies the completion of an OFDM symbol for a given context.
   ///
-  /// \param[in] context Notification context.
-  /// \param[in] grid    Resource grid that belongs to the context.
-  virtual void on_new_uplink_symbol(const ru_uplink_rx_symbol_context& context, const shared_resource_grid& grid) = 0;
+  /// \param[in] context  Notification context.
+  /// \param[in] grid     Resource grid that belongs to the context.
+  /// \param[in] is_valid Set it to true if the resource grid data contains valid information. Otherwise, set it to
+  /// false.
+  virtual void
+  on_new_uplink_symbol(const ru_uplink_rx_symbol_context& context, const shared_resource_grid& grid, bool is_valid) = 0;
 
   /// \brief Notifies the completion of a PRACH window.
   ///
@@ -64,7 +67,7 @@ public:
   ///
   /// \param[in] context PRACH context.
   /// \param[in] buffer  Read-only PRACH buffer.
-  virtual void on_new_prach_window_data(const prach_buffer_context& context, const prach_buffer& buffer) = 0;
+  virtual void on_new_prach_window_data(const prach_buffer_context& context, shared_prach_buffer buffer) = 0;
 };
 
 /// \brief Radio Unit uplink plane handler.
@@ -84,7 +87,7 @@ public:
   ///
   /// \param[in] context PRACH window context.
   /// \param[in] buffer  PRACH buffer used to write the PRACH window.
-  virtual void handle_prach_occasion(const prach_buffer_context& context, prach_buffer& buffer) = 0;
+  virtual void handle_prach_occasion(const prach_buffer_context& context, shared_prach_buffer buffer) = 0;
 
   /// \brief Requests the Radio Unit to provide an uplink slot.
   ///

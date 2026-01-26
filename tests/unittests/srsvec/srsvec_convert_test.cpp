@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,6 +29,11 @@
 static std::mt19937 rgen(0);
 static const float  ASSERT_CF_MAX_ERROR    = 1e-5;
 static const float  ASSERT_FLOAT_MAX_ERROR = 1e-5;
+/// Note: SIMD and non-SIMD float-to-integer conversions may produce different results.
+/// For instance, Intel’s intrinsics round to the nearest integer with ties to even (2.5 -> 2), while std::round rounds
+/// halfway cases away from zero (2.5 -> 3). A +/-1 tolerance is applied to account for these differing rounding
+/// behaviors.
+static const float ASSERT_ROUNDING_MAX_ERROR = 1;
 
 using namespace srsran;
 
@@ -74,13 +79,13 @@ TEST_P(SrsvecConvertFixture, SrsvecConvertTestComplexInt16)
 
   float scale = 1000.0F;
 
-  srsvec::convert(x, scale, z);
+  srsvec::convert(z, x, scale);
 
   for (size_t i = 0; i != size; ++i) {
     int16_t gold_re = static_cast<int16_t>(std::round(x[i].real() * scale));
     int16_t gold_im = static_cast<int16_t>(std::round(x[i].imag() * scale));
-    ASSERT_EQ(gold_re, z[2 * i + 0]);
-    ASSERT_EQ(gold_im, z[2 * i + 1]);
+    ASSERT_NEAR(gold_re, z[2 * i + 0], ASSERT_ROUNDING_MAX_ERROR);
+    ASSERT_NEAR(gold_im, z[2 * i + 1], ASSERT_ROUNDING_MAX_ERROR);
   }
 }
 
@@ -97,7 +102,7 @@ TEST_P(SrsvecConvertFixture, SrsvecConvertTestInt16Complex)
 
   float scale = 1000.0F;
 
-  srsvec::convert(x, scale, z);
+  srsvec::convert(z, x, scale);
 
   for (size_t i = 0; i != size; ++i) {
     cf_t  gold = {static_cast<float>(x[2 * i]) / scale, static_cast<float>(x[2 * i + 1]) / scale};
@@ -119,11 +124,11 @@ TEST_P(SrsvecConvertFixture, SrsvecConvertTestFloatInt16)
 
   float scale = 1000.0F;
 
-  srsvec::convert(x, scale, z);
+  srsvec::convert(z, x, scale);
 
   for (size_t i = 0; i != size; ++i) {
     int16_t gold = static_cast<int16_t>(std::round(x[i] * scale));
-    TESTASSERT(gold == z[i]);
+    ASSERT_NEAR(gold, z[i], ASSERT_ROUNDING_MAX_ERROR);
   }
 }
 
@@ -140,7 +145,7 @@ TEST_P(SrsvecConvertFixture, SrsvecConvertTestInt16Float)
 
   float scale = 1000.0F;
 
-  srsvec::convert(x, scale, z);
+  srsvec::convert(z, x, scale);
 
   for (size_t i = 0; i != size; ++i) {
     float gold = static_cast<float>(x[i]) / scale;
@@ -248,7 +253,7 @@ TEST_P(SrsvecConvertFixture, SrsvecConvertTestInt16Float16Random)
 
   // Convert from single precision to int16.
   std::vector<int16_t> in_int16(size);
-  srsvec::convert(in, int16_scale, in_int16);
+  srsvec::convert(in_int16, in, int16_scale);
 
   // Convert from int16 to brain float.
   std::vector<bf16_t> data_bf16(size);
@@ -270,7 +275,7 @@ TEST_P(SrsvecConvertFixture, SrsvecConvertTestInt16Float16Random)
 
   // Convert int16 to float and compare with original data.
   std::vector<float> out(size);
-  srsvec::convert(out_int16, int16_scale, out);
+  srsvec::convert(out, out_int16, int16_scale);
 
   for (size_t i = 0; i != size; ++i) {
     float tolerance = std::abs(in[i]) / 256.0F + 1 / int16_scale;

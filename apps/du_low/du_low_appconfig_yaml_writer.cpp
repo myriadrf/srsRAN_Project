@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,6 +22,8 @@
 
 #include "du_low_appconfig_yaml_writer.h"
 #include "apps/helpers/logger/logger_appconfig_yaml_writer.h"
+#include "apps/helpers/tracing/tracer_appconfig_yaml_writer.h"
+#include "apps/services/app_execution_metrics/executor_metrics_config_yaml_writer.h"
 #include "apps/services/app_resource_usage/app_resource_usage_config_yaml_writer.h"
 #include "apps/services/metrics/metrics_config_yaml_writer.h"
 #include "du_low_appconfig.h"
@@ -33,23 +35,23 @@ static void fill_du_appconfig_expert_execution_section(YAML::Node node, const ex
   {
     YAML::Node affinities_node = node["affinities"];
 
-    if (config.affinities.isolated_cpus.has_value()) {
-      affinities_node["isolated_cpus"] =
-          fmt::format("{:,}", span<const size_t>(config.affinities.isolated_cpus.value().get_cpu_ids()));
+    if (config.affinities.main_pool_cpu_cfg.mask.any()) {
+      affinities_node["main_pool_cpus"] =
+          fmt::format("{:,}", span<const size_t>(config.affinities.main_pool_cpu_cfg.mask.get_cpu_ids()));
     }
-
-    if (config.affinities.low_priority_cpu_cfg.mask.any()) {
-      affinities_node["low_priority_cpus"] =
-          fmt::format("{:,}", span<const size_t>(config.affinities.low_priority_cpu_cfg.mask.get_cpu_ids()));
-    }
-    affinities_node["low_priority_pinning"] = to_string(config.affinities.low_priority_cpu_cfg.pinning_policy);
+    affinities_node["main_pool_pinning"] = to_string(config.affinities.main_pool_cpu_cfg.pinning_policy);
   }
 
   {
-    YAML::Node threads_node               = node["threads"];
-    YAML::Node non_rt_node                = threads_node["non_rt"];
-    non_rt_node["nof_non_rt_threads"]     = config.threads.non_rt_threads.nof_non_rt_threads;
-    non_rt_node["non_rt_task_queue_size"] = config.threads.non_rt_threads.non_rt_task_queue_size;
+    YAML::Node threads_node   = node["threads"];
+    YAML::Node main_pool_node = threads_node["main_pool"];
+    if (config.threads.main_pool.nof_threads.has_value()) {
+      main_pool_node["nof_threads"] = config.threads.main_pool.nof_threads.value();
+    } else {
+      main_pool_node["nof_threads"] = "auto";
+    }
+    main_pool_node["task_queue_size"] = config.threads.main_pool.task_queue_size;
+    main_pool_node["backoff_period"]  = config.threads.main_pool.backoff_period;
   }
 }
 
@@ -64,7 +66,9 @@ void srsran::fill_du_low_appconfig_in_yaml_schema(YAML::Node& node, const du_low
 {
   app_services::fill_app_resource_usage_config_in_yaml_schema(node, config.metrics_cfg.rusage_config);
   app_services::fill_metrics_appconfig_in_yaml_schema(node, config.metrics_cfg.metrics_service_cfg);
+  app_services::fill_app_exec_metrics_config_in_yaml_schema(node, config.metrics_cfg.executors_metrics_cfg);
   fill_logger_appconfig_in_yaml_schema(node, config.log_cfg);
+  fill_tracer_appconfig_in_yaml_schema(node, config.trace_cfg);
   fill_du_appconfig_expert_execution_section(node["expert_execution"], config.expert_execution_cfg);
   fill_du_appconfig_remote_control_section(node["remote_control"], config.remote_control_config);
 }

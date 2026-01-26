@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,9 +24,9 @@
 
 namespace srsran {
 
+class prach_processor_baseband;
 class prach_processor_notifier;
 class prach_processor_request_handler;
-class prach_processor_baseband;
 
 /// \brief PRACH processor main interface.
 ///

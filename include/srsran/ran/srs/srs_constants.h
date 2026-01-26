@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,10 +27,10 @@ namespace srsran {
 namespace srs_constants {
 
 /// Maximum number of transmit ports that can transmit Sounding Reference Signals (SRS).
-static constexpr unsigned max_nof_tx_ports = 4;
+constexpr unsigned max_nof_tx_ports = 4;
 
 /// Maximum number of receive ports that can be used to receive Sounding Reference Signals (SRS).
-static constexpr unsigned max_nof_rx_ports = 4;
+constexpr unsigned max_nof_rx_ports = 4;
 
 } // namespace srs_constants
 

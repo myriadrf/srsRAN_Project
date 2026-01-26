@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -259,6 +259,14 @@ bool pdcch_resource_allocator_impl::cancel_last_pdcch(cell_slot_resource_allocat
 {
   pdcch_slot_allocator& pdcch_alloc = get_pdcch_slot_alloc(slot_alloc.slot);
   return pdcch_alloc.cancel_last_pdcch(slot_alloc);
+}
+
+void pdcch_resource_allocator_impl::stop()
+{
+  for (auto& sl_record : slot_records) {
+    sl_record->clear();
+  }
+  last_sl_ind = {};
 }
 
 pdcch_slot_allocator& pdcch_resource_allocator_impl::get_pdcch_slot_alloc(slot_point sl)

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -60,7 +60,7 @@ struct supported_tracking_area {
 struct ran_node_configuration {
   /// The gNodeB identifier.
   gnb_id_t    gnb_id{411, 22};
-  std::string ran_node_name = "srsgnb01";
+  std::string ran_node_name = "gnb01";
 };
 
 struct mobility_configuration {
@@ -80,6 +80,7 @@ struct cu_cp_configuration {
     /// Maximum number of DRBs per UE that the CU-CP will configure.
     uint8_t max_nof_drbs_per_ue = 8;
   };
+
   struct service_params {
     task_executor* cu_cp_executor = nullptr;
     task_executor* cu_cp_e2_exec  = nullptr;
@@ -104,11 +105,12 @@ struct cu_cp_configuration {
   struct rrc_params {
     /// Force re-establishment fallback.
     bool force_reestablishment_fallback = false;
-    /// Timeout for RRC procedures.
-    std::chrono::milliseconds rrc_procedure_timeout_ms{360};
+    /// Guard time for RRC procedures.
+    std::chrono::milliseconds rrc_procedure_guard_time_ms{1000};
     /// Version of the RRC.
     unsigned rrc_version = 2;
   };
+
   struct security_params {
     /// Integrity protection algorithms preference list
     security::preferred_integrity_algorithms int_algo_pref_list{security::integrity_algorithm::nia0};
@@ -123,10 +125,19 @@ struct cu_cp_configuration {
     /// Configuration for available 5QI.
     std::map<five_qi_t, cu_cp_qos_config> drb_config;
   };
+
+  struct metrics_layers_config {
+    /// Enable NGAP metrics.
+    bool enable_ngap = false;
+    /// Enable RRC metrics.
+    bool enable_rrc = false;
+  };
+
   struct metrics_params {
     /// CU-CP statistics report period.
     std::chrono::seconds      statistics_report_period{1};
     std::chrono::milliseconds metrics_report_period{0};
+    metrics_layers_config     layers_cfg = {};
   };
 
   /// NG-RAN node parameters.
@@ -154,7 +165,7 @@ struct cu_cp_configuration {
   /// Timers, executors, and other services used by the CU-CP.
   service_params services;
   /// CU-CP metrics notifier.
-  metrics_report_notifier* metrics_notifier = nullptr;
+  cu_cp_metrics_report_notifier* metrics_notifier = nullptr;
 };
 
 } // namespace srs_cu_cp

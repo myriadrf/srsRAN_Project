@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,6 +26,8 @@
 #include <cmath>
 
 using namespace srsran;
+
+namespace {
 
 // Implements a DFT of any arbitrary size.
 template <unsigned N, typename Enable = void>
@@ -476,6 +478,8 @@ public:
     }
   }
 };
+
+} // namespace
 
 #define CREATE_GENERIC_DFT_DIT(SIZE)                                                                                   \
   do {                                                                                                                 \

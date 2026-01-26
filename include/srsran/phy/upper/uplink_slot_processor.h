@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "srsran/phy/support/shared_prach_buffer.h"
 #include "srsran/phy/upper/channel_processors/prach_detector.h"
 #include "srsran/phy/upper/channel_processors/pucch/pucch_processor.h"
 #include "srsran/phy/upper/channel_processors/pusch/pusch_processor.h"
@@ -33,7 +34,6 @@
 
 namespace srsran {
 
-class prach_buffer;
 struct prach_buffer_context;
 class slot_point;
 class upper_phy_rx_results_notifier;
@@ -54,7 +54,14 @@ public:
   /// \brief Notify the reception of an OFDM symbol.
   ///
   /// \param[in] end_symbol_index Last received symbol in the slot.
-  virtual void handle_rx_symbol(unsigned end_symbol_index) = 0;
+  /// \param[in] is_valid         Indicates if the given OFDM symbol index has been received successfully.
+  ///
+  /// \remark An OFDM symbol might be invalid if a processing error occurred in the radio unit (e.g., losing an IQ
+  ///         packet for a certain OFDM symbol).
+  ///
+  /// \remark The uplink slot processor discards all the receive requests that are allocated on the given slot and
+  ///         afterward.
+  virtual void handle_rx_symbol(unsigned end_symbol_index, bool is_valid) = 0;
 
   /// \brief Processes the PRACH using the given configuration and context.
   ///
@@ -63,7 +70,7 @@ public:
   ///
   /// \param[in] buffer   Channel symbols the PRACH detection is performed on.
   /// \param[in] context  Context used by the underlying PRACH detector.
-  virtual void process_prach(const prach_buffer& buffer, const prach_buffer_context& context) = 0;
+  virtual void process_prach(shared_prach_buffer buffer, const prach_buffer_context& context) = 0;
 
   /// Discards the slot processing due to an error.
   virtual void discard_slot() = 0;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -51,7 +51,7 @@ cell_configuration::cell_configuration(const scheduler_expert_config&           
   ul_carrier(msg.ul_carrier),
   coreset0(msg.coreset0),
   searchspace0(msg.searchspace0),
-  pucch_guardbands(msg.pucch_guardbands),
+  ded_pucch_resources(msg.ded_pucch_resources),
   zp_csi_rs_list(msg.zp_csi_rs_list),
   nzp_csi_rs_list(msg.nzp_csi_rs_res_list),
   dl_data_to_ul_ack(msg.dl_data_to_ul_ack),
@@ -62,7 +62,9 @@ cell_configuration::cell_configuration(const scheduler_expert_config&           
   paired_spectrum(band_helper::is_paired_spectrum(msg.dl_carrier.band)),
   band(msg.dl_carrier.band),
   L_max(ssb_get_L_max(msg.ssb_config.scs, msg.dl_carrier.arfcn_f_ref, msg.dl_carrier.band)),
-  ntn_cs_koffset(msg.ntn_cs_koffset)
+  ntn_cs_koffset(msg.ntn_cs_koffset),
+  dl_harq_mode_b(msg.dl_harq_mode_b),
+  ul_harq_mode_b(msg.ul_harq_mode_b)
 {
   if (tdd_cfg_common.has_value()) {
     // Cache list of DL and UL slots in case of TDD

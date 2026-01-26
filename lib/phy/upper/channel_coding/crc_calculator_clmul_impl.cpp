@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,7 +29,7 @@ using namespace srsran;
 
 namespace {
 
-// Collects algorithm parameters.
+/// Collects algorithm parameters.
 struct crc_pclmulqdq_parameters {
   // K1 = remainder X^128 / P(X)
   int64_t k1;

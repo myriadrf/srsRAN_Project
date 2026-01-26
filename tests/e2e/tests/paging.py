@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -24,6 +24,7 @@ Paging Tests
 import logging
 from time import sleep
 
+from google.protobuf.wrappers_pb2 import UInt32Value
 from pytest import mark
 from retina.client.manager import RetinaTestManager
 from retina.launcher.artifacts import RetinaTestData
@@ -76,15 +77,17 @@ def test_cots_paging(
     )
 
     logging.info("Paging Test")
-    start_network([ue], gnb, fivegc)
-    ue_attach_info_dict = ue_start_and_attach([ue], gnb, fivegc)
-    ping(ue_attach_info_dict, fivegc, 10)
+    start_network(ue_array=[ue], gnb_array=[gnb], fivegc=fivegc)
+    ue_attach_info_dict = ue_start_and_attach(
+        ue_array=[ue], du_definition=[gnb.GetDefinition(UInt32Value(value=0))], fivegc=fivegc
+    )
+    ping(ue_attach_info_dict=ue_attach_info_dict, fivegc=fivegc, ping_count=10)
     sleep(5)
-    ping_from_5gc(ue_attach_info_dict, fivegc, 10)
+    ping_from_5gc(ue_attach_info_dict=ue_attach_info_dict, fivegc=fivegc, ping_count=10)
     stop(
-        [ue],
-        gnb,
-        fivegc,
-        retina_data,
+        ue_array=[ue],
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        retina_data=retina_data,
         warning_as_errors=False,
     )

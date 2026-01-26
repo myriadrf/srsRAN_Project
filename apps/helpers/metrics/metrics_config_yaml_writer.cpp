@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -30,10 +30,6 @@ void srsran::app_helpers::fill_metrics_appconfig_in_yaml_schema(YAML::Node& node
 {
   YAML::Node log_node        = node["metrics"];
   log_node["enable_log"]     = config.enable_log_metrics;
+  log_node["enable_json"]    = config.enable_json_metrics;
   log_node["enable_verbose"] = config.enable_verbose;
-
-  // JSON configuration.
-  log_node["enable_json"] = config.json_config.enable_json_metrics;
-  log_node["addr"]        = config.json_config.addr;
-  log_node["port"]        = config.json_config.port;
 }

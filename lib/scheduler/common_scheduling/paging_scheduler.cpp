@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -252,6 +252,14 @@ void paging_scheduler::handle_paging_information(const sched_paging_information&
     logger.warning("Discarding paging information for ue ID={}. Cause: Event queue is full",
                    paging_info.ue_identity_index_value);
   }
+}
+
+void paging_scheduler::stop()
+{
+  sched_paging_information paging_info;
+  while (new_paging_notifications.try_pop(paging_info)) {
+  }
+  paging_pending_ues.clear();
 }
 
 bool paging_scheduler::is_there_space_available_for_paging(cell_resource_allocator& res_grid,

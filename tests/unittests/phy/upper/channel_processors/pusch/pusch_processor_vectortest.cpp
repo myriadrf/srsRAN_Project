@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,6 +26,7 @@
 #include "srsran/phy/upper/channel_processors/pusch/factories.h"
 #include "srsran/phy/upper/channel_processors/pusch/formatters.h"
 #include "srsran/phy/upper/equalization/equalization_factories.h"
+#include "srsran/support/executors/inline_task_executor.h"
 #include "srsran/support/math/math_utils.h"
 #ifdef HWACC_PUSCH_ENABLED
 #include "srsran/hal/dpdk/bbdev/bbdev_acc.h"
@@ -102,10 +103,13 @@ using PuschProcessorParams = std::tuple<std::string, test_case_t>;
 class PuschProcessorFixture : public ::testing::TestWithParam<PuschProcessorParams>
 {
 private:
+  inline_task_executor ch_est_executor;
+
   static std::shared_ptr<pusch_decoder_factory>
   create_generic_pusch_decoder_factory(std::shared_ptr<crc_calculator_factory> crc_calculator_factory)
   {
-    std::shared_ptr<ldpc_decoder_factory> ldpc_decoder_factory = create_ldpc_decoder_factory_sw("auto");
+    std::shared_ptr<ldpc_decoder_factory> ldpc_decoder_factory =
+        create_ldpc_decoder_factory_sw("auto", {.force_decoding = false});
     if (!ldpc_decoder_factory) {
       return nullptr;
     }
@@ -304,9 +308,11 @@ private:
         create_dmrs_pusch_estimator_factory_sw(prg_factory,
                                                low_papr_sequence_gen_factory,
                                                port_chan_estimator_factory,
+                                               ch_est_executor,
+                                               pusch_constants::MAX_NOF_RX_PORTS,
                                                port_channel_estimator_fd_smoothing_strategy::filter,
                                                port_channel_estimator_td_interpolation_strategy::average,
-                                               true);
+                                               /*compensate_cfo=*/true);
     if (!dmrs_pusch_chan_estimator_factory) {
       return nullptr;
     }

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -60,12 +60,6 @@ static interval<unsigned, true> parse_cpu_range(const std::string& value)
 
 cpu_architecture_info::cpu_description cpu_architecture_info::discover_cpu_architecture()
 {
-  // Check if custom cgroups exist in the system (possibly left from a previous run).
-  auto detected_cgroups = check_cgroups();
-  if (detected_cgroups.has_value()) {
-    fmt::print("Possible performance impairment by custom cgroups in: {}.", detected_cgroups.value());
-  }
-
   cpu_description cpuinfo;
   ::cpu_set_t&    cpuset = cpuinfo.cpuset;
 

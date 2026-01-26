@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -21,6 +21,7 @@
 add_executable(srscuup
         cu_up.cpp
         cu_up_appconfig_cli11_schema.cpp
+        cu_up_appconfig_validator.cpp
 )
 
 install(TARGETS srscuup

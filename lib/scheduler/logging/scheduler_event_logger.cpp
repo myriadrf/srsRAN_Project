@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -164,7 +164,15 @@ void scheduler_event_logger::enqueue_impl(const sr_event& sr)
 void scheduler_event_logger::enqueue_impl(const csi_report_event& csi)
 {
   if (mode == debug) {
-    fmt::format_to(std::back_inserter(fmtbuf), "\n- CSI: ue={} rnti={}:", fmt::underlying(csi.ue_index), csi.rnti);
+    fmt::format_to(std::back_inserter(fmtbuf),
+                   "\n- CSI: ue={} rnti={}: slot_rx={}",
+                   fmt::underlying(csi.ue_index),
+                   csi.rnti,
+                   csi.sl_rx);
+    if (not csi.csi.first_tb_wideband_cqi.has_value() and not csi.csi.ri.has_value() and not csi.csi.pmi.has_value()) {
+      fmt::format_to(std::back_inserter(fmtbuf), " invalid");
+      return;
+    }
     if (csi.csi.first_tb_wideband_cqi.has_value()) {
       fmt::format_to(std::back_inserter(fmtbuf), " cqi={}", *csi.csi.first_tb_wideband_cqi);
     }
@@ -235,7 +243,7 @@ void scheduler_event_logger::enqueue_impl(const crc_event& crc_ev)
   if (mode == debug) {
     if (crc_ev.ul_sinr_db.has_value()) {
       fmt::format_to(std::back_inserter(fmtbuf),
-                     "\n- CRC: ue={} rnti={} pci={} rx_slot={} h_id={} crc={} sinr={:.2}dB",
+                     "\n- CRC: ue={} rnti={} pci={} rx_slot={} h_id={} crc={} sinr={:.3}dB",
                      fmt::underlying(crc_ev.ue_index),
                      crc_ev.rnti,
                      pci,
@@ -299,6 +307,14 @@ void scheduler_event_logger::enqueue_impl(const srs_indication_event& srs_ev)
     if (srs_ev.tpmi_info.has_value()) {
       fmt::format_to(std::back_inserter(fmtbuf), " tpmi_info=[{:;}]", srs_ev.tpmi_info.value());
     }
+  }
+}
+
+void scheduler_event_logger::enqueue_impl(const slice_reconfiguration_event& slice_reconf_ev)
+{
+  if (mode == debug) {
+    fmt::format_to(
+        std::back_inserter(fmtbuf), "\n- SLICE RECONF: cell={}", fmt::underlying(slice_reconf_ev.cell_index));
   }
 }
 

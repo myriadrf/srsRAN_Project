@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -23,3 +23,4 @@ include_directories(../../..)
 add_executable(worker_pool_benchmark worker_pool_benchmark.cpp)
 target_link_libraries(worker_pool_benchmark srsran_support srslog)
 add_test(worker_pool_benchmark worker_pool_benchmark)
+set_tests_properties(worker_pool_benchmark PROPERTIES LABELS "tsan")

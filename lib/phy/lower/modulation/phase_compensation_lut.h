@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -35,7 +35,6 @@ namespace srsran {
 /// phase compensation is implemented as a look-up table populated at construction time.
 class phase_compensation_lut
 {
-private:
   /// Stores the coefficients for every symbol in a subframe.
   static_vector<cf_t, MAX_NSYMB_PER_SLOT * get_nof_slots_per_subframe(subcarrier_spacing::kHz240)> coefficients;
 

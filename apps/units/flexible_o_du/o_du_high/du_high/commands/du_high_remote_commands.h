@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -40,6 +40,24 @@ public:
 
   // See interface for documentation.
   std::string_view get_description() const override { return "Modifies the SSB parameters"; }
+
+  // See interface for documentation.
+  error_type<std::string> execute(const nlohmann::json& json) override;
+};
+
+/// Remote command that modifies the RRM policy ratio.
+class rrm_policy_ratio_remote_command : public app_services::remote_command
+{
+  srs_du::du_configurator& configurator;
+
+public:
+  explicit rrm_policy_ratio_remote_command(srs_du::du_configurator& configurator_) : configurator(configurator_) {}
+
+  // See interface for documentation.
+  std::string_view get_name() const override { return "rrm_policy_ratio_set"; }
+
+  // See interface for documentation.
+  std::string_view get_description() const override { return "Modifies the RRM policy ratio"; }
 
   // See interface for documentation.
   error_type<std::string> execute(const nlohmann::json& json) override;

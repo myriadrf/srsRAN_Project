@@ -3,15 +3,21 @@ variables:
     description: Retina Testbed Description
     options:
       - "zmq"
-      - "zmq_uesim"
       - "zmq_deb"
-      - "zmq_srsue"
       - "zmq_cudu"
+      - "zmq_1cu2du"
+      - "zmq_2gnb"
+      - "zmq_srsue"
+      - "zmq_ric"
+      - "zmq_ntn"
+      - "s72"
       - "rf_b200"
-      - "rf_hp"
       - "android_b200"
       - "android_x300"
+      - "android_callbox"
       - "viavi"
+      - "test_mode"
+      - "test_mode_acc100"
       - "none"
     value: "zmq"
   E2E_FILE_OR_DIR:
@@ -37,9 +43,16 @@ variables:
       - warning
       - error
     value: "info"
+  CLUSTER:
+    description: Kubernetes cluster to use
+    options:
+      - "retina-e2e-amd64"
+      - "new-retina-e2e-amd64"
+    value: "retina-e2e-amd64"
 
 .load retina variables:
   stage: ci
+  image: ubuntu:24.04
   variables:
     GIT_LFS_SKIP_SMUDGE: 1
   retry: 2
@@ -51,10 +64,16 @@ variables:
 
 .prepare_test:
   variables: &setup_kube_variables
-    KUBECONFIG_VAR_NAME: "RETINA_NAMESPACE_KUBECONFIG"
-    KUBECONFIG_VAR_NAME_EXTRA: "RETINA_NAMESPACE_KUBECONFIG_EXTRA"
     GIT_LFS_SKIP_SMUDGE: 1
   before_script: &setup_kube_config
+    - |
+      if [ "$CLUSTER" = "new-retina-e2e-amd64" ]; then
+        export KUBECONFIG_VAR_NAME="RETINA_NAMESPACE_KUBECONFIG_LAB_BCN"
+        export KUBECONFIG_VAR_NAME_EXTRA=""
+      else
+        export KUBECONFIG_VAR_NAME="RETINA_NAMESPACE_KUBECONFIG"
+        export KUBECONFIG_VAR_NAME_EXTRA="RETINA_NAMESPACE_KUBECONFIG_EXTRA"
+      fi
     - |
       export FORCE_COLOR=1
       eval K_PATH="\$$KUBECONFIG_VAR_NAME"
@@ -82,7 +101,7 @@ variables:
     <<: *setup_kube_variables
     GROUP: zmq
   tags:
-    - retina-e2e-amd64
+    - ${CLUSTER}
   artifacts:
     paths:
       - ${SRSRANDIR}/tests/e2e/log
@@ -94,6 +113,7 @@ variables:
     - *setup_kube_config
     - |
       # Print E2E parameters
+      echo "CLUSTER=${CLUSTER}"
       echo "GROUP=${GROUP}"
       echo "TESTBED=${TESTBED}"
       echo "E2E_FILE_OR_DIR=${E2E_FILE_OR_DIR}"
@@ -110,7 +130,7 @@ variables:
       done < <(git lfs ls-files | sed -r 's/^.{13}//')
       echo "srsGNB sources+build size is" $(du -hs .)
     # Remove any existing retina resource for this group
-    - retina-delete-orchestration-network --user-name ci_${GROUP}
+    - retina release --username ci_${GROUP}
     # Add extra config env variables to the .env file
     - |
       echo "" >> .gitlab/ci/e2e/.env
@@ -128,13 +148,13 @@ variables:
       export LOGNAME=ci_${GROUP}
     # Run Retina
     - |
-      E2E_CMD="retina-launcher ${E2E_FILE_OR_DIR} ${RETINA_LAUNCHER_ARGS} --retina-request=${SRSRANDIR}/.gitlab/ci/e2e/${TESTBED}.yml -k '${KEYWORDS}' -m '${MARKERS}' --register-parameter ue.all.log_level=$E2E_LOG_LEVEL gnb.all.log_level=$E2E_LOG_LEVEL 5gc.all.log_level=$E2E_LOG_LEVEL ${RETINA_PARAM_ARGS}"
+      E2E_CMD="retina-launcher '${E2E_FILE_OR_DIR}' ${RETINA_LAUNCHER_ARGS} --retina-request=${SRSRANDIR}/.gitlab/ci/e2e/${TESTBED}.yml -k '${KEYWORDS}' -m '${MARKERS}' --register-parameter ue.all.log_level=$E2E_LOG_LEVEL gnb.all.log_level=$E2E_LOG_LEVEL 5gc.all.log_level=$E2E_LOG_LEVEL ${RETINA_PARAM_ARGS}"
       echo "${E2E_CMD}"
       eval $E2E_CMD
   after_script:
     # Remove any existing retina resource for this group
     - *setup_kube_config
-    - retina-delete-orchestration-network --user-name ci_${GROUP}
+    - retina release --username ci_${GROUP}
     # Push test metrics
     - |
       find . -iname "test_metrics.csv" -exec sh -c \
@@ -175,17 +195,19 @@ variables:
       echo "*******************************************************************************************************************************"
     # Artifact transfer
     - |
-      # Saving artifacts to the FTP server
-      # Verify if SSH connection is active
-      if ! nc -z -v "$FTP_SERVER_IP" 22 >/dev/null 2>&1; then
-          echo "Error: SSH server ${FTP_SERVER_IP}:22 is not active or is not reachable."
-          exit 1
+      if [ "$CLUSTER" = "new-retina-e2e-amd64" ]; then
+        # Saving artifacts to the FTP server
+        # Verify if SSH connection is active
+        if ! nc -z -v "$FTP_SERVER_IP" 22 >/dev/null 2>&1; then
+            echo "Error: SSH server ${FTP_SERVER_IP}:22 is not active or is not reachable."
+            exit 1
+        fi
+        artifacts_dir="${SRSRANDIR}/tests/e2e/log"
+        compressed_artifact="artifacts_${CI_JOB_NAME_SLUG}_${CI_JOB_ID}.zip"
+        remote_path="E:/artifacts/"
+        # Compress the artifacts
+        zip -q -r "${compressed_artifact}" "${artifacts_dir}"
+        # Send the artifacts to the server
+        sshpass -p "${SSH_PASS}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P 22 "${compressed_artifact}" "${SSH_USER}@${FTP_SERVER_IP}:${remote_path}"  >/dev/null 2>&1
+        echo "Artifacts saved at ${FTP_SERVER_IP}:${remote_path}/${compressed_artifact}"
       fi
-      artifacts_dir="${SRSRANDIR}/tests/e2e/log"
-      compressed_artifact="artifacts_${CI_JOB_NAME_SLUG}_${CI_JOB_ID}.zip"
-      remote_path="E:/artifacts/"
-      # Compress the artifacts
-      zip -q -r "${compressed_artifact}" "${artifacts_dir}"
-      # Send the artifacts to the server
-      sshpass -p "${SSH_PASS}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P 22 "${compressed_artifact}" "${SSH_USER}@${FTP_SERVER_IP}:${remote_path}"  >/dev/null 2>&1
-      echo "Artifacts saved at ${FTP_SERVER_IP}:${remote_path}/${compressed_artifact}"

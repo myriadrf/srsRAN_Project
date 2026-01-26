@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,10 +22,10 @@
 
 #pragma once
 
+#include "srsran/phy/support/shared_prach_buffer.h"
 #include "srsran/ran/slot_point.h"
 
 namespace srsran {
-class prach_buffer;
 struct prach_buffer_context;
 class shared_resource_grid;
 
@@ -51,12 +51,13 @@ public:
   ///
   /// \param[in] context Notification context.
   /// \param[in] grid    Resource grid that belongs to the context.
-  virtual void on_new_uplink_symbol(const uplane_rx_symbol_context& context, shared_resource_grid grid) = 0;
+  virtual void
+  on_new_uplink_symbol(const uplane_rx_symbol_context& context, shared_resource_grid grid, bool is_valid) = 0;
 
   /// \brief Notifies the completion of a PRACH window.
   /// \param[in] context PRACH context.
-  /// \param[in] buffer  Read-only PRACH buffer.
-  virtual void on_new_prach_window_data(const prach_buffer_context& context, const prach_buffer& buffer) = 0;
+  /// \param[in] buffer  PRACH buffer.
+  virtual void on_new_prach_window_data(const prach_buffer_context& context, shared_prach_buffer buffer) = 0;
 };
 
 } // namespace ofh

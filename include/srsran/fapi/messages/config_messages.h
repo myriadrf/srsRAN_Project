@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,7 +25,7 @@
 #include "srsran/fapi/messages/base_message.h"
 #include "srsran/fapi/messages/config_request_tlvs.h"
 #include "srsran/fapi/messages/error_code.h"
-#include <array>
+#include <any>
 
 namespace srsran {
 namespace fapi {
@@ -49,6 +49,8 @@ struct config_request : public base_message {
   prach_config   prach_cfg;
   ssb_config     ssb_cfg;
   tdd_phy_config tdd_cfg;
+  /// Vendor specific parameters.
+  std::any vendor_cfg;
 };
 
 /// Config response message.

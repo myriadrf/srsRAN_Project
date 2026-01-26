@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -50,6 +50,14 @@ void uci_scheduler_impl::run_slot(cell_resource_allocator& cell_alloc)
   // Only allocate in the farthest slot in the grid, as the previous part of the allocation grid has been completed
   // at the first this function was called.
   schedule_slot_ucis(cell_alloc[cell_alloc.max_ul_slot_alloc_delay]);
+}
+
+void uci_scheduler_impl::stop()
+{
+  updated_ues.clear();
+  for (auto& sl : periodic_uci_slot_wheel) {
+    sl.clear();
+  }
 }
 
 void uci_scheduler_impl::add_resource(rnti_t crnti, unsigned res_offset, unsigned res_period, bool is_sr)
@@ -243,12 +251,12 @@ void uci_scheduler_impl::schedule_slot_ucis(cell_slot_resource_allocator& slot_a
     // NOTE: Allocating the CSI after the SR helps the PUCCH allocation to compute the number of allocated UCI bits and
     // the corresponding number of PRBs for the PUCCH Format 2 over a PUCCH F2 grant is within PUCCH capacity.
     if (uci_info.sr_counter > 0) {
-      uci_alloc.uci_allocate_sr_opportunity(slot_alloc, uci_info.rnti, *ue_cfg);
+      uci_alloc.alloc_sr_opportunity(slot_alloc, uci_info.rnti, *ue_cfg);
     }
 
     // Schedule CSI PUCCH.
     if (uci_info.csi_counter > 0) {
-      uci_alloc.uci_allocate_csi_opportunity(slot_alloc, uci_info.rnti, *ue_cfg);
+      uci_alloc.alloc_csi_opportunity(slot_alloc, uci_info.rnti, *ue_cfg);
     }
 
     ++it;
@@ -270,9 +278,9 @@ void uci_scheduler_impl::schedule_updated_ues_ucis(cell_resource_allocator& cell
 
     // Schedule UCI up to the farthest slot.
     for (unsigned n = 0; n != cell_alloc.max_ul_slot_alloc_delay; ++n) {
-      auto& slot_ucis = periodic_uci_slot_wheel[(cell_alloc.slot_tx() + n).to_uint() % periodic_uci_slot_wheel.size()];
+      auto& slot_ucis = periodic_uci_slot_wheel[(cell_alloc.slot_tx() + n).count() % periodic_uci_slot_wheel.size()];
 
-      // Skip UCI scheduling for this UE and slot, if the maximum number of PUCCHs has been reached.
+      // Skip UCI scheduling for this UE and slot, if they collide with other resources.
       if (not has_space_for_uci_pdu(cell_alloc[n].result, rnti, cell_cfg.expert_cfg.ue)) {
         if (logger.debug.enabled()) {
           // If we want more detailed logs on the skipped allocations.
@@ -295,12 +303,12 @@ void uci_scheduler_impl::schedule_updated_ues_ucis(cell_resource_allocator& cell
           // bits and the corresponding number of PRBs for the PUCCH Format 2 over a PUCCH F2 grant is within PUCCH
           // capacity.
           if (uci_info.sr_counter > 0) {
-            uci_alloc.uci_allocate_sr_opportunity(cell_alloc[n], rnti, *ue_cfg);
+            uci_alloc.alloc_sr_opportunity(cell_alloc[n], rnti, *ue_cfg);
           }
 
           // Schedule CSI
           if (uci_info.csi_counter > 0) {
-            uci_alloc.uci_allocate_csi_opportunity(cell_alloc[n], rnti, *ue_cfg);
+            uci_alloc.alloc_csi_opportunity(cell_alloc[n], rnti, *ue_cfg);
           }
         }
       }

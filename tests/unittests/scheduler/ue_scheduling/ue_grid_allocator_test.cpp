@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,7 +32,7 @@
 #include "lib/scheduler/ue_context/ue.h"
 #include "lib/scheduler/ue_scheduling/ue_cell_grid_allocator.h"
 #include "tests/test_doubles/scheduler/scheduler_config_helper.h"
-#include "tests/test_doubles/scheduler/scheduler_result_test.h"
+#include "tests/test_doubles/scheduler/scheduler_result_finder.h"
 #include "srsran/adt/unique_function.h"
 #include "srsran/ran/du_types.h"
 #include "srsran/ran/duplex_mode.h"
@@ -60,7 +60,8 @@ protected:
       srsran_assert(cfg != nullptr, "Cell configuration failed");
       return cfg;
     }()),
-    slice_ues(ran_slice_id_t{0}, to_du_cell_index(0)),
+    cell_ues(ues.add_cell(to_du_cell_index(0))),
+    slice_ues(ran_slice_id_t{0}, to_du_cell_index(0), ues),
     alloc(expert_cfg, ues, pdcch_alloc, uci_alloc, res_grid, logger),
     current_slot(cfg_builder_params.scs_common, 0)
   {
@@ -145,7 +146,8 @@ protected:
   {
     auto ev = cfg_mng.add_ue(ue_creation_req);
     ues.add_ue(
-        std::make_unique<ue>(ue_creation_command{ev.next_config(), ue_creation_req.starts_in_fallback, cell_harqs}));
+        std::make_unique<ue>(ue_creation_command{ev.next_config(), ue_creation_req.starts_in_fallback, cell_harqs}),
+        ev.next_config().logical_channels());
     for (const auto& lc_cfg : *ue_creation_req.cfg.lc_config_list) {
       slice_ues.add_logical_channel(ues[ue_creation_req.ue_index], lc_cfg.lcid, lc_cfg.lc_group);
     }
@@ -203,7 +205,8 @@ protected:
                                        std::optional<unsigned> max_nof_rbs = std::nullopt)
   {
     const auto& init_ul_bwp = cell_cfg.ul_cfg_common.init_ul_bwp;
-    auto        result      = alloc.allocate_ul_grant(ue_newtx_ul_grant_request{user, pusch_slot, pending_bytes});
+    auto        result      = alloc.allocate_ul_grant(ue_newtx_ul_grant_request{
+        user, pusch_slot, pending_bytes, ofdm_symbol_range{0, NOF_OFDM_SYM_PER_SLOT_NORMAL_CP}});
     if (not result.has_value()) {
       return result.error();
     }
@@ -246,9 +249,10 @@ protected:
   scheduler_result_logger res_logger{false, cell_cfg.pci};
 
   ue_repository           ues;
+  ue_cell_repository&     cell_ues;
   slice_ue_repository     slice_ues;
   slice_rrm_policy_config rrm_policy;
-  ran_slice_instance      slice_inst{ran_slice_id_t{0}, cell_cfg, rrm_policy};
+  ran_slice_instance      slice_inst{ran_slice_id_t{0}, cell_cfg, rrm_policy, ues};
   ue_cell_grid_allocator  alloc;
 
   slot_point current_slot;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,8 +47,17 @@ class processor_pool_repository
   /// Each entry corresponds to a different numerology.
   std::array<processor_pool, NOF_NUMEROLOGIES> numerologies;
 
+  /// Assignation counter.
+  std::array<unsigned, NOF_NUMEROLOGIES> counters = {};
+
 public:
-  /// \brief Returns a reference to a processor using the given slot.
+  /// \brief Returns a reference to a processor.
+  ///
+  /// Selects a different processor every time in a sequential way. The same processor is selected after all processors
+  /// for the same numerology have been selected.
+  ///
+  /// \param slot Slot ID, used for deriving the numerology of the processor.
+  /// \return A reference to the selected processor.
   T& get_processor(slot_point slot)
   {
     unsigned numerology = slot.numerology();
@@ -57,7 +66,10 @@ public:
     processor_pool& pool = numerologies[numerology];
     srsran_assert(!pool.empty(), "Numerology ({}) has no processors.", numerology);
 
-    unsigned index = slot.system_slot() % pool.size();
+    // Select index for the processor.
+    unsigned index       = counters[numerology];
+    counters[numerology] = (index + 1) % pool.size();
+
     return *pool[index];
   }
 

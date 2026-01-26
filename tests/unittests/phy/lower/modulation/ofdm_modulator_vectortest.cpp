@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -62,6 +62,9 @@ protected:
     ofdm_factory_generic_configuration factory_config = {.dft_factory = dft_factory};
 
     std::shared_ptr<ofdm_modulator_factory> ofdm_factory = create_ofdm_modulator_factory_generic(factory_config);
+    ASSERT_TRUE(ofdm_factory);
+
+    ofdm_factory = create_ofdm_modulator_pool_factory(std::move(ofdm_factory), 2);
     ASSERT_TRUE(ofdm_factory);
 
     modulator = ofdm_factory->create_ofdm_slot_modulator(test_case.test_config.config);

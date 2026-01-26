@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #include "srsran/phy/upper/channel_processors/pusch/factories.h"
 #include "srsran/phy/upper/channel_processors/pusch/formatters.h"
 #include "srsran/phy/upper/equalization/equalization_factories.h"
+#include "srsran/support/executors/inline_task_executor.h"
 #include "fmt/ostream.h"
 #include "gtest/gtest.h"
 #include <regex>
@@ -207,6 +208,7 @@ class PuschProcessorFixture : public ::testing::TestWithParam<test_case_t>
 protected:
   static std::unique_ptr<pusch_processor>     pusch_proc;
   static std::unique_ptr<pusch_pdu_validator> pdu_validator;
+  static inline_task_executor                 ch_est_executor;
 
   static void SetUpTestSuite()
   {
@@ -232,7 +234,8 @@ protected:
     ASSERT_NE(crc_calc_factory, nullptr) << "Cannot create CRC calculator factory.";
 
     // Create LDPC decoder factory.
-    std::shared_ptr<ldpc_decoder_factory> ldpc_dec_factory = create_ldpc_decoder_factory_sw("generic");
+    std::shared_ptr<ldpc_decoder_factory> ldpc_dec_factory =
+        create_ldpc_decoder_factory_sw("generic", {.force_decoding = false});
     ASSERT_NE(ldpc_dec_factory, nullptr);
 
     // Create LDPC rate dematcher factory.
@@ -267,9 +270,11 @@ protected:
         create_dmrs_pusch_estimator_factory_sw(prg_factory,
                                                low_papr_sequence_gen_factory,
                                                port_chan_estimator_factory,
+                                               ch_est_executor,
+                                               pusch_constants::MAX_NOF_RX_PORTS,
                                                port_channel_estimator_fd_smoothing_strategy::filter,
                                                port_channel_estimator_td_interpolation_strategy::average,
-                                               true);
+                                               /*compensate_cfo=*/true);
     ASSERT_NE(dmrs_pusch_chan_estimator_factory, nullptr);
 
     // Create channel equalizer factory.
@@ -343,6 +348,7 @@ protected:
 
 std::unique_ptr<pusch_processor>     PuschProcessorFixture::pusch_proc;
 std::unique_ptr<pusch_pdu_validator> PuschProcessorFixture::pdu_validator;
+inline_task_executor                 PuschProcessorFixture::ch_est_executor;
 
 TEST_P(PuschProcessorFixture, PuschProcessorValidatortest)
 {

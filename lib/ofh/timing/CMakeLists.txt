@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -20,6 +20,7 @@
 
 set(SOURCES
         ofh_timing_manager_impl.cpp
+        ofh_timing_metrics_collector_impl.cpp
         realtime_timing_worker.cpp)
 
 add_library(srsran_ofh_timing STATIC ${SOURCES})

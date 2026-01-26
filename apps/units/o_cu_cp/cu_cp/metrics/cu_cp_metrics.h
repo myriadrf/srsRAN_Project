@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,6 +28,7 @@
 #include "srsran/adt/span.h"
 #include "srsran/adt/unique_function.h"
 #include "srsran/cu_cp/cu_cp_metrics_notifier.h"
+#include "srsran/support/synchronization/stop_event.h"
 
 namespace srsran {
 
@@ -42,29 +43,30 @@ public:
 class cu_cp_metrics_impl : public app_services::metrics_set
 {
   cu_cp_metrics_properties_impl properties;
-  srs_cu_cp::metrics_report     metrics;
+  cu_cp_metrics_report          metrics;
 
 public:
-  explicit cu_cp_metrics_impl(const srs_cu_cp::metrics_report& metrics_) : metrics(metrics_) {}
+  explicit cu_cp_metrics_impl(const cu_cp_metrics_report& metrics_) : metrics(metrics_) {}
 
   // See interface for documentation.
   const app_services::metrics_properties& get_properties() const override { return properties; }
 
-  const srs_cu_cp::metrics_report& get_metrics() const { return metrics; }
+  const cu_cp_metrics_report& get_metrics() const { return metrics; }
 };
 
 /// Callback for the CU-CP PDCP metrics.
 inline auto cu_cp_metrics_callback = [](const app_services::metrics_set&      report,
                                         span<app_services::metrics_consumer*> consumers,
                                         task_executor&                        executor,
-                                        srslog::basic_logger&                 logger) {
+                                        srslog::basic_logger&                 logger,
+                                        stop_event_token                      token) {
   const auto& metric = static_cast<const cu_cp_metrics_impl&>(report);
 
-  if (!executor.defer(TRACE_TASK([metric, consumers]() {
+  if (!executor.defer([metric, consumers, stop_token = std::move(token)]() {
         for (auto& consumer : consumers) {
           consumer->handle_metric(metric);
         }
-      }))) {
+      })) {
     logger.error("Failed to dispatch the metric '{}'", metric.get_properties().name());
   }
 };

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,7 +32,6 @@ namespace srsran {
 ///
 /// Performs OFDM demodulation for all the PRACH frequency- and time-domain occasions within a PRACH slot as per
 /// TS38.211 Section 5.3.2.
-///
 class ofdm_prach_demodulator
 {
 public:

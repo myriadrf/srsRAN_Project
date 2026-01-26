@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,6 +33,7 @@
 #include "srsran/support/srsran_assert.h"
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace srsran {

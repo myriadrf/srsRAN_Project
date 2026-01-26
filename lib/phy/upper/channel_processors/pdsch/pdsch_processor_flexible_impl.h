@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,7 +25,7 @@
 #include "srsran/phy/upper/channel_coding/ldpc/ldpc_segmenter_buffer.h"
 #include "srsran/phy/upper/channel_coding/ldpc/ldpc_segmenter_tx.h"
 #include "srsran/phy/upper/channel_processors/pdsch/pdsch_block_processor.h"
-#include "srsran/phy/upper/signal_processors/dmrs_pdsch_processor.h"
+#include "srsran/phy/upper/signal_processors/pdsch/dmrs_pdsch_processor.h"
 #include "srsran/phy/upper/signal_processors/ptrs/ptrs_pdsch_generator.h"
 #include "srsran/srslog/srslog.h"
 #include "srsran/support/executors/task_executor.h"
@@ -55,7 +55,6 @@ public:
   /// \param[in] dmrs_generator_pool_          DM-RS for PDSCH generator.
   /// \param[in] ptrs_generator_pool_          PT-RS for PDSCH generator.
   /// \param[in] executor_                     Asynchronous task executor.
-  /// \param[in] max_nof_concurrent_tasks_     Maximum number of concurrent tasks.
   /// \param[in] max_nof_codeblocks_per_batch_ Maximum number of codeblocks per processing batch.
   pdsch_processor_flexible_impl(std::unique_ptr<ldpc_segmenter_tx>          segmenter_,
                                 std::unique_ptr<resource_grid_mapper>       mapper_,
@@ -63,7 +62,6 @@ public:
                                 std::shared_ptr<pdsch_dmrs_generator_pool>  dmrs_generator_pool_,
                                 std::shared_ptr<pdsch_ptrs_generator_pool>  ptrs_generator_pool_,
                                 task_executor&                              executor_,
-                                unsigned                                    max_nof_concurrent_tasks_,
                                 unsigned                                    max_nof_codeblocks_per_batch_) :
     logger(srslog::fetch_basic_logger("PHY")),
     segmenter(std::move(segmenter_)),
@@ -72,7 +70,6 @@ public:
     dmrs_generator_pool(std::move(dmrs_generator_pool_)),
     ptrs_generator_pool(std::move(ptrs_generator_pool_)),
     executor(executor_),
-    max_nof_concurrent_tasks(max_nof_concurrent_tasks_),
     max_nof_codeblocks_per_batch(max_nof_codeblocks_per_batch_)
   {
     srsran_assert(segmenter, "Invalid LDPC segmenter pointer.");
@@ -124,8 +121,6 @@ private:
 
   /// Number of codeblocks of the current transmission.
   unsigned nof_cb = 0;
-  /// Maximum number of concurrent batches.
-  unsigned max_nof_concurrent_tasks;
   /// Maximum number of codeblocks per batch.
   unsigned max_nof_codeblocks_per_batch;
   /// Indicates whether the current transmission is concurrent (true) or not.
@@ -138,8 +133,6 @@ private:
   precoding_configuration precoding;
   /// Codeblock resource block offset.
   static_vector<unsigned, MAX_NOF_SEGMENTS> re_offset;
-  /// Codeblock counter.
-  std::atomic<unsigned> cb_batch_counter;
   /// Pending code block batch counter.
   std::atomic<unsigned> cb_task_counter;
   /// Pending asynchronous task counter (DM-RS and CB processing).

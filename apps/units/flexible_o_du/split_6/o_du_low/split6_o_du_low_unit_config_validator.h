@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,7 +27,6 @@
 namespace srsran {
 
 /// Validates the given O-RAN DU low Split 6 unit configuration. Returns true on success, false otherwise.
-bool validate_split6_o_du_low_unit_config(const split6_o_du_low_unit_config& config,
-                                          const os_sched_affinity_bitmask&   available_cpus);
+bool validate_split6_o_du_low_unit_config(const split6_o_du_low_unit_config& config);
 
 } // namespace srsran

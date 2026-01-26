@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -39,7 +39,8 @@ public:
 
   void on_puxch_request_late(const resource_grid_context& context) override { request_late.emplace_back(context); }
 
-  void on_rx_symbol(const shared_resource_grid& grid, const lower_phy_rx_symbol_context& context) override
+  void
+  on_rx_symbol(const shared_resource_grid& grid, const lower_phy_rx_symbol_context& context, bool is_valid) override
   {
     rx_symbol_entry entry = rx_symbol_entry{&grid.get_reader(), context};
     rx_symbol.emplace_back(entry);

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -63,7 +63,7 @@ private:
 /// \param callable function that is called at scope exit
 /// \return object that has to be stored in a local variable
 template <typename Callable>
-detail::scope_exit<std::decay_t<Callable>> make_scope_exit(Callable&& callable)
+[[nodiscard]] detail::scope_exit<std::decay_t<Callable>> make_scope_exit(Callable&& callable)
 {
   return detail::scope_exit<std::decay_t<Callable>>{std::forward<Callable>(callable)};
 }

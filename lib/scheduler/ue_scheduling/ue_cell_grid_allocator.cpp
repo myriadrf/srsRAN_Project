@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -46,12 +46,13 @@ ue_cell_grid_allocator::ue_cell_grid_allocator(const scheduler_ue_expert_config&
   ul_grants.reserve(MAX_PUSCH_PDUS_PER_SLOT);
 }
 
-std::optional<sch_mcs_tbs> ue_cell_grid_allocator::calculate_dl_mcs_tbs(cell_slot_resource_allocator& pdsch_alloc,
-                                                                        const search_space_info&      ss_info,
-                                                                        uint8_t pdsch_td_res_index,
-                                                                        std::pair<crb_interval, crb_interval> crbs,
-                                                                        sch_mcs_index                         mcs,
-                                                                        unsigned nof_layers)
+std::optional<sch_mcs_tbs>
+ue_cell_grid_allocator::calculate_dl_mcs_tbs(const cell_slot_resource_allocator&          pdsch_alloc,
+                                             const search_space_info&                     ss_info,
+                                             uint8_t                                      pdsch_td_res_index,
+                                             const std::pair<crb_interval, crb_interval>& crbs,
+                                             sch_mcs_index                                mcs,
+                                             unsigned                                     nof_layers) const
 {
   // Reduce estimated MCS by 1 whenever CSI-RS is sent over a particular slot to account for the overhead of CSI-RS
   // REs.
@@ -87,8 +88,8 @@ std::optional<sch_mcs_tbs> ue_cell_grid_allocator::calculate_dl_mcs_tbs(cell_slo
   return mcs_tbs_info;
 }
 
-expected<pdcch_dl_information*, alloc_status> ue_cell_grid_allocator::alloc_dl_pdcch(const ue_cell&           ue_cc,
-                                                                                     const search_space_info& ss_info)
+expected<pdcch_dl_information*, alloc_status>
+ue_cell_grid_allocator::alloc_dl_pdcch(const ue_cell& ue_cc, const search_space_info& ss_info) const
 {
   const rnti_t crnti = ue_cc.rnti();
 
@@ -116,15 +117,16 @@ expected<pdcch_dl_information*, alloc_status> ue_cell_grid_allocator::alloc_dl_p
   return pdcch;
 }
 
-std::optional<uci_allocation>
-ue_cell_grid_allocator::alloc_uci(const ue_cell& ue_cc, const search_space_info& ss_info, uint8_t pdsch_td_res_index)
+std::optional<uci_allocation> ue_cell_grid_allocator::alloc_uci(const ue_cell&           ue_cc,
+                                                                const search_space_info& ss_info,
+                                                                uint8_t                  pdsch_td_res_index) const
 {
   const pdsch_time_domain_resource_allocation& pdsch_td_cfg = ss_info.pdsch_time_domain_list[pdsch_td_res_index];
 
   // Allocate UCI. UCI destination (i.e., PUCCH or PUSCH) depends on whether there exist a PUSCH grant for the UE.
   span<const uint8_t>           k1_list = ss_info.get_k1_candidates();
   std::optional<uci_allocation> uci =
-      uci_alloc.alloc_uci_harq_ue(cell_alloc, ue_cc.rnti(), ue_cc.cfg(), pdsch_td_cfg.k0, k1_list, nullptr);
+      uci_alloc.alloc_harq_ack(cell_alloc, ue_cc.rnti(), ue_cc.cfg(), pdsch_td_cfg.k0, k1_list);
   if (not uci.has_value()) {
     logger.debug("ue={} rnti={}: Failed to allocate PDSCH. Cause: UCI allocation failed.",
                  fmt::underlying(ue_cc.ue_index),
@@ -159,7 +161,7 @@ expected<ue_cell_grid_allocator::dl_grant_info, dl_alloc_failure_cause>
 ue_cell_grid_allocator::setup_dl_grant_builder(const slice_ue&                       user,
                                                const sched_helper::dl_sched_context& params,
                                                std::optional<dl_harq_process_handle> h_dl,
-                                               unsigned                              pending_bytes)
+                                               unsigned                              pending_bytes) const
 {
   const bool            is_retx            = h_dl.has_value();
   const search_space_id ss_id              = params.ss_id;
@@ -227,7 +229,7 @@ ue_cell_grid_allocator::setup_dl_grant_builder(const slice_ue&                  
 void ue_cell_grid_allocator::set_pdsch_params(dl_grant_info&                        grant,
                                               vrb_interval                          vrbs,
                                               std::pair<crb_interval, crb_interval> crbs,
-                                              bool                                  enable_interleaving)
+                                              bool                                  enable_interleaving) const
 {
   // Derive remaining parameters from \c dl_grant_params.
   ue&                                          u                  = ues[grant.user->ue_index()];
@@ -248,6 +250,15 @@ void ue_cell_grid_allocator::set_pdsch_params(dl_grant_info&                    
 
   cell_slot_resource_allocator& pdcch_alloc = cell_alloc[0];
   cell_slot_resource_allocator& pdsch_alloc = cell_alloc[pdsch_td_cfg.k0];
+
+  if (vrbs.empty()) {
+    // RBs could not be allocated. Cancel associated grants.
+    grant.pdcch->ctx.rnti       = rnti_t::INVALID_RNTI;
+    grant.pdsch->pdsch_cfg.rnti = rnti_t::INVALID_RNTI;
+    // TODO: Cancel UCI allocation.
+    grant.h_dl.reset();
+    return;
+  }
 
   srsran_sanity_check(not(pdsch_alloc.dl_res_grid.collides(scs, pdsch_td_cfg.symbols, crbs.first) or
                           pdsch_alloc.dl_res_grid.collides(scs, pdsch_td_cfg.symbols, crbs.second)),
@@ -375,11 +386,13 @@ void ue_cell_grid_allocator::set_pdsch_params(dl_grant_info&                    
 
   if (not is_retx) {
     // Set MAC logical channels to schedule in this PDU if it is a newtx.
-    u.build_dl_transport_block_info(
-        msg.tb_list.emplace_back(), msg.pdsch_cfg.codewords[0].tb_size_bytes, grant.user->ran_slice_id());
+    build_dl_transport_block_info(msg.tb_list.emplace_back(),
+                                  u.logical_channels(),
+                                  msg.pdsch_cfg.codewords[0].tb_size_bytes,
+                                  grant.user->ran_slice_id());
 
     // Update context with buffer occupancy after the TB is built.
-    msg.context.buffer_occupancy = u.pending_dl_newtx_bytes();
+    msg.context.buffer_occupancy = u.logical_channels().dl_pending_bytes();
   }
 
   // Save PDSCH parameters in DL HARQ.
@@ -390,7 +403,7 @@ void ue_cell_grid_allocator::set_pdsch_params(dl_grant_info&                    
 }
 
 expected<vrb_interval, dl_alloc_failure_cause>
-ue_cell_grid_allocator::allocate_dl_grant(const ue_retx_dl_grant_request& request)
+ue_cell_grid_allocator::allocate_dl_grant(const ue_retx_dl_grant_request& request) const
 {
   // Select PDCCH searchSpace and PDSCH time-domain resource config.
   auto sched_ctxt = sched_helper::get_retx_dl_sched_context(
@@ -412,7 +425,7 @@ ue_cell_grid_allocator::allocate_dl_grant(const ue_retx_dl_grant_request& reques
   }
 
   // Compute the corresponding CRBs.
-  constexpr static search_space_id      ue_ded_ss_id = to_search_space_id(2);
+  static constexpr search_space_id      ue_ded_ss_id = to_search_space_id(2);
   const auto&                           ss_info      = request.user.get_cc().cfg().search_space(ue_ded_ss_id);
   std::pair<crb_interval, crb_interval> crbs;
   if (request.interleaving_enabled) {
@@ -434,8 +447,12 @@ ue_cell_grid_allocator::allocate_ul_grant(const ue_newtx_ul_grant_request& reque
       uci_alloc.get_scheduled_pdsch_counter_in_ue_uci(request.pusch_slot, request.user.crnti());
 
   // Select PDCCH searchSpace and PUSCH time-domain resource config.
-  auto sched_ctxt = sched_helper::get_newtx_ul_sched_context(
-      request.user, cell_alloc[0].slot, request.pusch_slot, pending_uci_harq_bits, request.pending_bytes);
+  auto sched_ctxt = sched_helper::get_newtx_ul_sched_context(request.user,
+                                                             cell_alloc[0].slot,
+                                                             request.pusch_slot,
+                                                             pending_uci_harq_bits,
+                                                             request.pending_bytes,
+                                                             request.allowed_symbols);
   if (not sched_ctxt.has_value()) {
     // No valid parameters were found for this UE.
     return make_unexpected(alloc_status::skip_ue);
@@ -449,17 +466,22 @@ ue_cell_grid_allocator::allocate_ul_grant(const ue_newtx_ul_grant_request& reque
 
   // Add UL grant to list of pending grants and create a newTx DL grant builder.
   ul_grants.push_back(*result);
-  return ul_newtx_grant_builder{*this, (unsigned)ul_grants.size() - 1};
+  return ul_newtx_grant_builder{*this, static_cast<unsigned>(ul_grants.size()) - 1};
 }
 
-expected<vrb_interval, alloc_status> ue_cell_grid_allocator::allocate_ul_grant(const ue_retx_ul_grant_request& request)
+expected<vrb_interval, alloc_status>
+ue_cell_grid_allocator::allocate_ul_grant(const ue_retx_ul_grant_request& request) const
 {
   unsigned pending_uci_harq_bits =
       uci_alloc.get_scheduled_pdsch_counter_in_ue_uci(request.pusch_slot, request.user.crnti());
 
   // Select PDCCH searchSpace and PUSCH time-domain resource config.
-  auto sched_ctxt = sched_helper::get_retx_ul_sched_context(
-      request.user, cell_alloc[0].slot, request.pusch_slot, pending_uci_harq_bits, request.h_ul);
+  auto sched_ctxt = sched_helper::get_retx_ul_sched_context(request.user,
+                                                            cell_alloc[0].slot,
+                                                            request.pusch_slot,
+                                                            pending_uci_harq_bits,
+                                                            request.h_ul,
+                                                            request.allowed_symbols);
   if (not sched_ctxt) {
     return make_unexpected(alloc_status::skip_ue);
   }
@@ -486,7 +508,7 @@ expected<ue_cell_grid_allocator::ul_grant_info, alloc_status>
 ue_cell_grid_allocator::setup_ul_grant_builder(const slice_ue&                       user,
                                                const sched_helper::ul_sched_context& params,
                                                std::optional<ul_harq_process_handle> h_ul,
-                                               unsigned                              pending_bytes)
+                                               unsigned                              pending_bytes) const
 {
   // Derive remaining parameters from \c ul_grant_params.
   ue&                                          u                  = ues[user.ue_index()];
@@ -507,7 +529,7 @@ ue_cell_grid_allocator::setup_ul_grant_builder(const slice_ue&                  
 
   // [Implementation-defined] We skip allocation of PUSCH if there is already a PUCCH grant scheduled using common
   // PUCCH resources.
-  if (uci_alloc.has_uci_harq_on_common_pucch_res(u.crnti, pusch_alloc.slot)) {
+  if (uci_alloc.has_harq_ack_on_common_pucch_res(u.crnti, pusch_alloc.slot)) {
     logger.debug("ue={} rnti={}: Failed to allocate PUSCH in slot={}. Cause: UE has PUCCH grant using common PUCCH "
                  "resources scheduled",
                  fmt::underlying(u.ue_index),
@@ -554,7 +576,7 @@ ue_cell_grid_allocator::setup_ul_grant_builder(const slice_ue&                  
   return ul_grant_info{&user, params, h_ul.value(), pdcch, &msg, pending_bytes};
 }
 
-void ue_cell_grid_allocator::set_pusch_params(ul_grant_info& grant, const vrb_interval& vrbs)
+void ue_cell_grid_allocator::set_pusch_params(ul_grant_info& grant, const vrb_interval& vrbs) const
 {
   srsran_assert(not vrbs.empty(), "Invalid set of PUSCH VRBs");
 
@@ -582,6 +604,14 @@ void ue_cell_grid_allocator::set_pusch_params(ul_grant_info& grant, const vrb_in
   const unsigned                final_k2    = pusch_td_cfg.k2 + cell_cfg.ntn_cs_koffset;
   cell_slot_resource_allocator& pusch_alloc = cell_alloc[final_k2];
 
+  if (vrbs.empty()) {
+    // RBs could not be allocated. Cancel associated grants.
+    grant.pdcch->ctx.rnti       = rnti_t::INVALID_RNTI;
+    grant.pusch->pusch_cfg.rnti = rnti_t::INVALID_RNTI;
+    grant.h_ul.reset();
+    return;
+  }
+
   // Compute exact MCS and TBS for this transmission.
   expected<sch_mcs_tbs, compute_ul_mcs_tbs_error> mcs_tbs_info;
   // TODO: find TS reference for -> Since, PUSCH always uses non interleaved mapping, prbs = vrbs.
@@ -593,7 +623,7 @@ void ue_cell_grid_allocator::set_pusch_params(ul_grant_info& grant, const vrb_in
     // dc_offset_helper::is_contained), we take the conservative approach and assume that the DC location is always
     // contained in the RBs. This may slightly reduce the MCS beyond what's needed to satisfy the effective code rate
     // limits. We do this to simplify the search for available RBs during HARQ retxs.
-    const bool contains_dc = true;
+    constexpr bool contains_dc = true;
     mcs_tbs_info =
         compute_ul_mcs_tbs(pusch_cfg, ue_cc.active_bwp(), grant.cfg.recommended_mcs, vrbs.length(), contains_dc);
 
@@ -760,7 +790,7 @@ void ue_cell_grid_allocator::set_pusch_params(ul_grant_info& grant, const vrb_in
   grant.h_ul.save_grant_params(pusch_sched_ctx, msg.pusch_cfg);
 
   // Register UL allocations for this slot.
-  u.handle_ul_transport_block_info(grant.h_ul.get_grant_params().tbs_bytes);
+  u.logical_channels().handle_ul_grant(grant.h_ul.get_grant_params().tbs_bytes);
 
   // Update DRX state given the new allocation.
   u.drx_controller().on_new_ul_pdcch_alloc(pdcch_alloc.slot, pusch_alloc.slot);
@@ -773,6 +803,36 @@ void ue_cell_grid_allocator::post_process_results()
 {
   auto& slot_alloc = cell_alloc[0];
 
+  // Remove cancelled allocations.
+  for (auto* it = slot_alloc.result.dl.dl_pdcchs.begin(); it != slot_alloc.result.dl.dl_pdcchs.end();) {
+    if (it->ctx.rnti == rnti_t::INVALID_RNTI) {
+      it = slot_alloc.result.dl.dl_pdcchs.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  for (auto* it = slot_alloc.result.dl.ul_pdcchs.begin(); it != slot_alloc.result.dl.ul_pdcchs.end();) {
+    if (it->ctx.rnti == rnti_t::INVALID_RNTI) {
+      it = slot_alloc.result.dl.ul_pdcchs.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  for (auto* it = slot_alloc.result.dl.ue_grants.begin(); it != slot_alloc.result.dl.ue_grants.end();) {
+    if (it->pdsch_cfg.rnti == rnti_t::INVALID_RNTI) {
+      it = slot_alloc.result.dl.ue_grants.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  for (auto* it = slot_alloc.result.ul.puschs.begin(); it != slot_alloc.result.ul.puschs.end();) {
+    if (it->pusch_cfg.rnti == rnti_t::INVALID_RNTI) {
+      it = slot_alloc.result.ul.puschs.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   // Update the PUCCH power control data.
   post_process_pucch_pw_ctrl_results(slot_alloc.slot);
 
@@ -780,7 +840,7 @@ void ue_cell_grid_allocator::post_process_results()
   ul_grants.clear();
 }
 
-void ue_cell_grid_allocator::post_process_pucch_pw_ctrl_results(slot_point slot)
+void ue_cell_grid_allocator::post_process_pucch_pw_ctrl_results(slot_point slot) const
 {
   if (not cell_alloc.cfg.is_ul_enabled(slot)) {
     return;
@@ -839,9 +899,10 @@ void ue_cell_grid_allocator::post_process_pucch_pw_ctrl_results(slot_point slot)
   }
 }
 
-void ue_cell_grid_allocator::dl_newtx_grant_builder::set_pdsch_params(vrb_interval                          alloc_vrbs,
-                                                                      std::pair<crb_interval, crb_interval> alloc_crbs,
-                                                                      bool enable_interleaving)
+void ue_cell_grid_allocator::dl_newtx_grant_builder::set_pdsch_params(
+    vrb_interval                                 alloc_vrbs,
+    const std::pair<crb_interval, crb_interval>& alloc_crbs,
+    bool                                         enable_interleaving)
 {
   // Transfer the PDSCH parameters to the parent DL grant.
   parent->set_pdsch_params(parent->dl_grants[grant_index], alloc_vrbs, alloc_crbs, enable_interleaving);

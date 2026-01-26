@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,6 +22,9 @@
 
 #pragma once
 
+#include "srsran/cu_up/cu_up_manager.h"
+#include "srsran/e1ap/cu_up/e1ap_cu_up.h"
+#include "srsran/f1u/cu_up/f1u_tx_sdu_handler.h"
 #include "srsran/pdcp/pdcp_rx.h"
 #include "srsran/pdcp/pdcp_tx.h"
 #include "srsran/sdap/sdap.h"
@@ -33,8 +36,8 @@ namespace srs_cu_up {
 class pdcp_sdap_adapter : public pdcp_rx_upper_data_notifier
 {
 public:
-  pdcp_sdap_adapter()  = default;
-  ~pdcp_sdap_adapter() = default;
+  pdcp_sdap_adapter()           = default;
+  ~pdcp_sdap_adapter() override = default;
 
   void connect_sdap(sdap_rx_pdu_handler& sdap_handler_) { sdap_handler = &sdap_handler_; }
 
@@ -49,16 +52,16 @@ private:
 };
 
 /// Adapter between PDCP Rx and E1AP (to be forwarded to RRC in the DU)
-class pdcp_rx_e1ap_adapter : public pdcp_rx_upper_control_notifier
+class pdcp_rx_cu_up_mngr_adapter : public pdcp_rx_upper_control_notifier
 {
 public:
-  pdcp_rx_e1ap_adapter()  = default;
-  ~pdcp_rx_e1ap_adapter() = default;
+  pdcp_rx_cu_up_mngr_adapter()           = default;
+  ~pdcp_rx_cu_up_mngr_adapter() override = default;
 
-  void connect_e1ap()
+  void connect_cu_up_mngr(ue_index_t ue_index_, cu_up_manager_pdcp_interface* cu_up_mngr_)
   {
-    // TODO: Connect a E1AP handler
-    srslog::fetch_basic_logger("PDCP").debug("No E1AP handler for PDCP Rx control events. All events will be ignored.");
+    cu_up_mngr = cu_up_mngr_;
+    ue_index   = ue_index_;
   }
 
   void on_protocol_failure() override
@@ -73,16 +76,24 @@ public:
 
   void on_max_count_reached() override
   {
-    srslog::fetch_basic_logger("PDCP").warning("Ignoring on_max_count_reached() from PDCP Rx: No E1AP handler.");
+    if (cu_up_mngr == nullptr) {
+      srslog::fetch_basic_logger("PDCP").debug(
+          "Max COUNT reached from PDCP Rx, but no E1AP handler present. Ignoring.");
+      return;
+    }
+    cu_up_mngr->handle_pdcp_max_count_reached(ue_index);
   }
+
+  cu_up_manager_pdcp_interface* cu_up_mngr = nullptr;
+  ue_index_t                    ue_index   = INVALID_UE_INDEX;
 };
 
 /// Adapter between PDCP and F1-U
 class pdcp_f1u_adapter : public pdcp_tx_lower_notifier
 {
 public:
-  pdcp_f1u_adapter() = default;
-  ~pdcp_f1u_adapter() override {}
+  pdcp_f1u_adapter()           = default;
+  ~pdcp_f1u_adapter() override = default;
 
   void connect_f1u(f1u_tx_sdu_handler& f1u_handler_) { f1u_handler = &f1u_handler_; }
   void disconnect_f1u() { f1u_handler = nullptr; }
@@ -110,27 +121,36 @@ private:
 };
 
 /// Adapter between PDCP Tx and E1AP (to be forwarded to RRC in the DU)
-class pdcp_tx_e1ap_adapter : public pdcp_tx_upper_control_notifier
+class pdcp_tx_cu_up_mngr_adapter : public pdcp_tx_upper_control_notifier
 {
 public:
-  pdcp_tx_e1ap_adapter()  = default;
-  ~pdcp_tx_e1ap_adapter() = default;
+  pdcp_tx_cu_up_mngr_adapter()           = default;
+  ~pdcp_tx_cu_up_mngr_adapter() override = default;
 
-  void connect_e1ap()
+  void connect_cu_up_mngr(ue_index_t ue_index_, cu_up_manager_pdcp_interface* cu_up_mngr_)
   {
-    // TODO: connect a E1AP handler
-    srslog::fetch_basic_logger("PDCP").debug("No E1AP handler for PDCP Tx control events. All events will be ignored.");
+    cu_up_mngr = cu_up_mngr_;
+    ue_index   = ue_index_;
   }
 
   void on_protocol_failure() override
   {
-    srslog::fetch_basic_logger("PDCP").warning("Ignoring on_protocol_failure() from PDCP Tx: No E1AP handler.");
+    srslog::fetch_basic_logger("PDCP").warning("Ignoring on_protocol_failure() from PDCP Tx: No E1AP handler");
   }
 
   void on_max_count_reached() override
   {
-    srslog::fetch_basic_logger("PDCP").warning("Ignoring on_max_count_reached() from PDCP Tx: No E1AP handler.");
+    if (cu_up_mngr == nullptr) {
+      srslog::fetch_basic_logger("PDCP").warning(
+          "No CU-UP manager handler for PDCP Tx control events. All events will be ignored");
+      return;
+    }
+    cu_up_mngr->handle_pdcp_max_count_reached(ue_index);
   }
+
+private:
+  cu_up_manager_pdcp_interface* cu_up_mngr = nullptr;
+  ue_index_t                    ue_index   = INVALID_UE_INDEX;
 };
 
 } // namespace srs_cu_up

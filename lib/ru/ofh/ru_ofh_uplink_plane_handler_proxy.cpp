@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,12 +28,13 @@
 
 using namespace srsran;
 
-void ru_uplink_plane_handler_proxy::handle_prach_occasion(const prach_buffer_context& context, prach_buffer& buffer)
+void ru_uplink_plane_handler_proxy::handle_prach_occasion(const prach_buffer_context& context,
+                                                          shared_prach_buffer         buffer)
 {
   srsran_assert(context.sector < sectors.size(), "Invalid sector id '{}'", context.sector);
 
   auto& sector = sectors[context.sector];
-  sector->handle_prach_occasion(context, buffer);
+  sector->handle_prach_occasion(context, std::move(buffer));
 }
 
 void ru_uplink_plane_handler_proxy::handle_new_uplink_slot(const resource_grid_context& context,

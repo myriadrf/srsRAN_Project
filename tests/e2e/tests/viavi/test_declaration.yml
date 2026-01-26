@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -40,42 +40,40 @@ tests:
     test_timeout: *test_timeout
     # Configuration
     gnb_extra_config: &base_config
+      ru_ofh:
+        t1a_max_up: 400
+        t1a_min_up: 120
       metrics:
         enable_log: true
         layers:
           enable_executor: true
           enable_rlc: true
           enable_ru: true
-      cell_cfg:
-        pdsch:
-          max_pdschs_per_slot: 4
-        ul_common:
-          max_ul_grants_per_slot: 12
-          max_pucchs_per_slot: 10
-        pusch:
-          max_puschs_per_slot: 2
+      trace:
+        layers:
+          du_high_enable: true
+          phy_enable: true
       cu_cp:
         rrc:
-          rrc_procedure_timeout_ms: 2000
+          rrc_procedure_guard_time_ms: 2000
       expert_execution:
         queues:
           du_ue_data_executor_queue_size: 16384
         threads:
-          non_rt:
-            nof_non_rt_threads: 3
-            non_rt_task_queue_size: 8192
+          main_pool:
+            task_queue_size: 8192
           upper_phy:
-            nof_dl_threads: 4
-            nof_ul_threads: 1
-            nof_pusch_decoder_threads: 3
+            max_pucch_concurrency: 1
+            max_pusch_and_srs_concurrency: 3
     # Pass / Fail Criteria
     expected_dl_bitrate: 1.2e+9
     expected_ul_bitrate: 75.0e+6
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: &base_warning_allowlist
       - missed incoming User-Plane PRACH messages
+      - Tracing thread cannot keep up
 
   - id: "32UE ideal UDP bidirectional"
     campaign_filename: *campaign_filename
@@ -87,7 +85,7 @@ tests:
     expected_dl_bitrate: 1.2e+9
     expected_ul_bitrate: 72.0e+6
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -99,14 +97,14 @@ tests:
     gnb_extra_config:
       <<: *base_config
       cell_cfg:
-        sched_expert_cfg:
-          policy_sched_cfg:
+        scheduler:
+          policy:
             rr_sched:
     # Pass / Fail Criteria
     expected_dl_bitrate: 1.2e+9
     expected_ul_bitrate: 72.0e+6
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -123,11 +121,12 @@ tests:
     expected_dl_bitrate: 1.2e+9
     expected_ul_bitrate: 72.0e+6
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist:
       - missed incoming User-Plane PRACH messages
       - missed incoming User-Plane uplink messages for slot
+      - Tracing thread cannot keep up
 
   - id: "1UE fading UDP uplink"
     campaign_filename: *campaign_filename
@@ -141,6 +140,8 @@ tests:
     expected_max_late_harqs: 4
     expected_nof_kos: .inf
     warning_as_errors: false
+    warning_allowlist:
+      - Tracing thread cannot keep up
 
   - id: "1UE fading noise UDP uplink"
     campaign_filename: *campaign_filename
@@ -154,6 +155,8 @@ tests:
     expected_max_late_harqs: 4
     expected_nof_kos: .inf
     warning_as_errors: false
+    warning_allowlist:
+      - Tracing thread cannot keep up
 
   - id: "1UE ideal TCP downlink"
     campaign_filename: *campaign_filename
@@ -165,7 +168,7 @@ tests:
     expected_dl_bitrate: 1.0e+9
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -179,7 +182,7 @@ tests:
     expected_dl_bitrate: 1.0e+9
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -195,7 +198,7 @@ tests:
     expected_dl_bitrate: 1.0e+9
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -211,6 +214,8 @@ tests:
     expected_max_late_harqs: 4
     expected_nof_kos: .inf
     warning_as_errors: false
+    warning_allowlist:
+      - Tracing thread cannot keep up
 
   - id: "32UE fading UDP attach-detach with traffic"
     campaign_filename: *campaign_filename
@@ -224,6 +229,8 @@ tests:
     expected_max_late_harqs: 4
     expected_nof_kos: .inf
     warning_as_errors: false
+    warning_allowlist:
+      - Tracing thread cannot keep up
 
   - id: "32UE ideal UDP attach-detach with traffic"
     campaign_filename: *campaign_filename
@@ -235,7 +242,7 @@ tests:
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -249,19 +256,22 @@ tests:
       cell_cfg:
         pucch:
           sr_period_ms: 20
-          f2_or_f3_or_f4_nof_cell_res_csi: 21
-          f0_or_f1_nof_cell_res_sr: 42
+          nof_cell_csi_res: 21
+          nof_cell_sr_res: 42
         tdd_ul_dl_cfg:
           dl_ul_tx_period: 5
           nof_dl_symbols: 6
           nof_dl_slots: 3
           nof_ul_slots: 1
           nof_ul_symbols: 4
+        pdcch:
+          common:
+            ss1_n_candidates: 0 0 2 0 0
     # Pass / Fail Criteria
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -275,24 +285,26 @@ tests:
       cell_cfg:
         pucch:
           sr_period_ms: 40
-          f0_or_f1_nof_cell_res_sr: 30
+          nof_cell_sr_res: 30
         tdd_ul_dl_cfg:
           dl_ul_tx_period: 10
           nof_dl_slots: 2
           nof_dl_symbols: 10
           nof_ul_slots: 7
           nof_ul_symbols: 0
+        pdcch:
+          common:
+            ss1_n_candidates: 0 0 2 0 0
       expert_execution:
         threads:
           upper_phy:
-            nof_dl_threads: 4
-            nof_ul_threads: 2
-            nof_pusch_decoder_threads: 3
+            max_pucch_concurrency: 1
+            max_pusch_and_srs_concurrency: 4
     # Pass / Fail Criteria
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -306,24 +318,65 @@ tests:
       cell_cfg:
         pucch:
           sr_period_ms: 40
-          f0_or_f1_nof_cell_res_sr: 30
+          nof_cell_sr_res: 30
         tdd_ul_dl_cfg:
           dl_ul_tx_period: 10
           nof_dl_slots: 3
           nof_dl_symbols: 10
           nof_ul_slots: 6
           nof_ul_symbols: 0
+        pdcch:
+          common:
+            ss1_n_candidates: 0 0 2 0 0
       expert_execution:
         threads:
           upper_phy:
-            nof_dl_threads: 4
-            nof_ul_threads: 2
-            nof_pusch_decoder_threads: 3
+            max_pucch_concurrency: 2
+            max_pusch_and_srs_concurrency: 3
     # Pass / Fail Criteria
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
+    warning_as_errors: true
+    warning_allowlist: *base_warning_allowlist
+
+  - id: "32UE ideal UDP attach-detach with traffic tdd DSUUUUDSUU"
+    campaign_filename: *campaign_filename
+    test_name: "32UE ideal UDP attach-detach with traffic conservative"
+    test_timeout: *test_timeout
+    # Configuration
+    gnb_extra_config:
+      <<: *base_config
+      cell_cfg:
+        pucch:
+          sr_period_ms: 40
+          nof_cell_sr_res: 30
+        tdd_ul_dl_cfg:
+          dl_ul_tx_period: 6
+          nof_dl_slots: 1
+          nof_dl_symbols: 10
+          nof_ul_slots: 4
+          nof_ul_symbols: 0
+          pattern2:
+            dl_ul_tx_period: 4
+            nof_dl_slots: 1
+            nof_dl_symbols: 10
+            nof_ul_slots: 2
+            nof_ul_symbols: 0
+        pdcch:
+          common:
+            ss1_n_candidates: 0 0 2 0 0
+      expert_execution:
+        threads:
+          upper_phy:
+            max_pucch_concurrency: 1
+            max_pusch_and_srs_concurrency: 4
+    # Pass / Fail Criteria
+    expected_dl_bitrate: 14.0e+3
+    expected_ul_bitrate: 1.0e+3
+    expected_max_late_harqs: 4
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -337,18 +390,21 @@ tests:
       cell_cfg:
         pucch:
           sr_period_ms: 40
-          f0_or_f1_nof_cell_res_sr: 30
+          nof_cell_sr_res: 30
         tdd_ul_dl_cfg:
           dl_ul_tx_period: 10
           nof_dl_slots: 6
           nof_dl_symbols: 12
           nof_ul_slots: 3
           nof_ul_symbols: 0
+        pdcch:
+          common:
+            ss1_n_candidates: 0 0 2 0 0
     # Pass / Fail Criteria
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -376,7 +432,7 @@ tests:
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -390,7 +446,7 @@ tests:
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -405,11 +461,13 @@ tests:
         nof_antennas_ul: 2
         srs:
           srs_period_ms: 10
+    retina_params:
+      nof_antennas_ul: 2
     # Pass / Fail Criteria
     expected_dl_bitrate: 1.2e+9
-    expected_ul_bitrate: 130.0e+6
+    expected_ul_bitrate: 195.0e+6
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
     warning_allowlist: *base_warning_allowlist
 
@@ -419,12 +477,16 @@ tests:
     test_timeout: *test_timeout
     # Configuration
     gnb_extra_config: *1ue_mimo_config
+    retina_params:
+      nof_antennas_ul: 2
     # Pass / Fail Criteria
     expected_dl_bitrate: 14.0e+3
     expected_ul_bitrate: 1.0e+3
     expected_max_late_harqs: 4
     expected_nof_kos: .inf
     warning_as_errors: false
+    warning_allowlist:
+      - Tracing thread cannot keep up
 
   - id: "32UE ideal UDP bidirectional Long 1h"
     campaign_filename: *campaign_filename
@@ -436,8 +498,10 @@ tests:
     expected_dl_bitrate: 1.2e+9
     expected_ul_bitrate: 75.0e+6
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
+    warning_allowlist:
+      - Tracing thread cannot keep up
 
   - id: "32UE ideal UDP bidirectional Long 3h"
     campaign_filename: *campaign_filename
@@ -449,8 +513,10 @@ tests:
     expected_dl_bitrate: 1.2e+9
     expected_ul_bitrate: 75.0e+6
     expected_max_late_harqs: 4
-    expected_nof_kos: 5
+    expected_nof_kos: 0
     warning_as_errors: true
+    warning_allowlist:
+      - Tracing thread cannot keep up
 
   - id: "32UE ideal UDP bidirectional Long 24h"
     campaign_filename: *campaign_filename
@@ -477,3 +543,5 @@ tests:
     expected_max_late_harqs: 4
     expected_nof_kos: .inf
     warning_as_errors: true
+    warning_allowlist:
+      - Tracing thread cannot keep up

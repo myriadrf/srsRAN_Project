@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -64,22 +64,26 @@ public:
   bool start_new_slot(slot_point slot)
   {
     uint32_t expected_pending_pdu_count = pending_pdu_count_idle;
-    if (!pending_pdu_count.compare_exchange_weak(expected_pending_pdu_count, accepting_pdu_mask)) {
+    if (!pending_pdu_count.compare_exchange_strong(expected_pending_pdu_count, accepting_pdu_mask)) {
       return false;
     }
     configured_slot = slot;
     return true;
   }
 
-  /// \brief Returns true if the repository is configured with the given slot and ready to process PDUs.
+  /// \brief Returns true if the uplink slot processor contains receive requests associated with the given slot.
   ///
-  /// The slot is considered invalid if:
+  /// The processor does not have requests if:
   /// - the current state is accepting PDUs, idle, locked, or stopped; or
   /// - the given slot is not equal to the configured one.
-  bool is_slot_valid(slot_point slot) const
+  ///
+  /// \param[in] slot Given slot.
+  /// \return True if the processor has requests associated with the slot.
+  bool has_receive_request(slot_point slot) const
   {
     uint32_t current_state = pending_pdu_count.load();
-    // Verify that the repository is in a valid state to process PDUs.
+
+    // Verify that the repository is in a valid state to process PDUs. Idle implies that there are no requests pending.
     if (is_state_idle(current_state) || is_state_accepting_pdu(current_state) || is_state_locked(current_state) ||
         is_state_stopped(current_state)) {
       return false;
@@ -242,6 +246,40 @@ public:
                   prev);
   }
 
+  /// \brief Notifies a new PRACH detection request.
+  ///
+  /// It tries to increment the number of pending PRACH detection task counter by one if the internal state allows the
+  /// creation of the PRACH detection task.
+  ///
+  /// The creation of the task is allowed if the internal state is not stopped. See is_state_stopped() for more details.
+  ///
+  /// \return True if the internal state allows the creation of the PRACH detection task. False, otherwise.
+  bool on_prach_detection()
+  {
+    // Get current count.
+    uint32_t current_pending_prach_count = pending_prach_count.load();
+
+    // Try to increment the count.
+    bool success = false;
+    while (!is_state_stopped(current_pending_prach_count) && !success) {
+      success = pending_prach_count.compare_exchange_weak(current_pending_prach_count, current_pending_prach_count + 1);
+    }
+
+    // Return true if the exchange was successful.
+    return success;
+  }
+
+  /// \brief Notifies the completion of a PRACH detection task.
+  /// \remark An assertion is triggered if the PRACH detection task counter was zero or stopped before the decrement.
+  void on_end_prach_detection()
+  {
+    [[maybe_unused]] uint32_t prev = pending_prach_count.fetch_sub(1);
+
+    // Assert previous count is valid.
+    srsran_assert(
+        !is_state_stopped(prev) && (prev != 0), "The PRACH detection task count 0x{:08x} is unexpected.", prev);
+  }
+
   /// \brief Stops the uplink PDU slot repository.
   ///
   /// It waits as long as:
@@ -256,6 +294,13 @@ public:
          is_state_locked(current_state) ||
          !pending_pdu_count.compare_exchange_weak(current_state, pending_pdu_count_stopped);
          current_state = pending_pdu_count.load()) {
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
+    }
+
+    // As long as there are pending PRACH detection tasks, wait for them to finish.
+    for (uint32_t current_state = pending_prach_count.load();
+         (current_state != 0) || !pending_prach_count.compare_exchange_weak(current_state, pending_pdu_count_stopped);
+         current_state = pending_prach_count.load()) {
       std::this_thread::sleep_for(std::chrono::microseconds(10));
     }
   }
@@ -279,6 +324,14 @@ private:
   std::atomic<uint32_t> pending_pdu_count = {};
   /// Current configured slot.
   slot_point configured_slot;
+  /// \brief Counts the current number of pending PRACH detection tasks.
+  ///
+  /// This counter is mainly used during the stop process of the processor for guaranteeing all PRACH detection tasks
+  /// are completed before returning from the stop() method.
+  ///
+  /// The counter is set to zero when no tasks are executed. It is set to \ref pending_pdu_count_stopped when no more
+  /// PRACH detection tasks are allowed. Use is_state_stopped() for determining if the state is stopped.
+  std::atomic<uint32_t> pending_prach_count = 0;
 
   /// Returns true if a state is idle.
   static bool is_state_idle(uint32_t state) { return (state == pending_pdu_count_idle); }
@@ -286,8 +339,10 @@ private:
   static bool is_state_accepting_pdu(uint32_t state) { return (state & accepting_pdu_mask); }
   /// Returns true if a state is locked.
   static bool is_state_locked(uint32_t state) { return (state & locked_mask); }
-  /// Returns true if a state is stopped.
-  static bool is_state_stopped(unsigned state) { return (state == pending_pdu_count_stopped); }
+  /// \brief Returns true if a state is stopped.
+  ///
+  /// An internal state is considered stopped if it is equal to \ref pending_pdu_count_stopped.
+  static bool is_state_stopped(uint32_t state) { return (state == pending_pdu_count_stopped); }
   /// Returns the total number of pending PDUs in execution for the given state.
   static unsigned get_nof_pending_pdu_in_exec(uint32_t state) { return (state & 0xfff000); }
   /// Returns the total number of pending PDUs in the queues.

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,8 +34,8 @@ class concurrent_queue<T, concurrent_queue_policy::locking_mpmc, concurrent_queu
 {
 public:
   using value_type                                           = T;
-  constexpr static concurrent_queue_policy      queue_policy = concurrent_queue_policy::locking_mpmc;
-  constexpr static concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::non_blocking;
+  static constexpr concurrent_queue_policy      queue_policy = concurrent_queue_policy::locking_mpmc;
+  static constexpr concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::non_blocking;
   using consumer_type                                        = detail::basic_queue_consumer<concurrent_queue, T>;
 
   explicit concurrent_queue(size_t qsize) : queue(qsize) {}
@@ -48,6 +48,14 @@ public:
   [[nodiscard]] size_t try_push_bulk(span<U> batch)
   {
     return detail::queue_helper::try_push_bulk_generic(*this, batch);
+  }
+
+  /// Pushes a new element into the queue in a blocking fashion. If the queue is full, the call blocks until space is
+  /// made available.
+  template <typename U>
+  void push_blocking(U&& elem)
+  {
+    queue.push_blocking(std::forward<U>(elem));
   }
 
   [[nodiscard]] bool try_pop(T& elem) { return queue.try_pop(elem); }
@@ -79,8 +87,8 @@ class concurrent_queue<T, concurrent_queue_policy::locking_mpmc, concurrent_queu
 
 public:
   using value_type                                           = T;
-  constexpr static concurrent_queue_policy      queue_policy = concurrent_queue_policy::locking_mpmc;
-  constexpr static concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::condition_variable;
+  static constexpr concurrent_queue_policy      queue_policy = concurrent_queue_policy::locking_mpmc;
+  static constexpr concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::condition_variable;
   using consumer_type                                        = detail::basic_queue_consumer<concurrent_queue, T>;
 
   // Inherited methods.

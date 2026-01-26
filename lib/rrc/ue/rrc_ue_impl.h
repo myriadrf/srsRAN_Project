@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,6 +27,7 @@
 #include "rrc_ue_logger.h"
 #include "srsran/asn1/rrc_nr/ul_dcch_msg.h"
 #include "srsran/asn1/rrc_nr/ul_dcch_msg_ies.h"
+#include "srsran/rrc/rrc_cell_context.h"
 #include "srsran/rrc/rrc_ue.h"
 
 namespace srsran {
@@ -78,22 +79,25 @@ public:
   bool             store_ue_capabilities(byte_buffer ue_capabilities) override;
   async_task<bool> handle_rrc_ue_capability_transfer_request(const rrc_ue_capability_transfer_request& msg) override;
   rrc_ue_release_context
-                                        get_rrc_ue_release_context(bool                                requires_rrc_message,
-                                                                   std::optional<std::chrono::seconds> release_wait_time = std::nullopt) override;
-  rrc_ue_transfer_context               get_transfer_context() override;
-  std::optional<rrc_meas_cfg>           generate_meas_config(std::optional<rrc_meas_cfg> current_meas_config) override;
-  byte_buffer                           get_packed_meas_config() override;
-  byte_buffer                           get_rrc_handover_command(const rrc_reconfiguration_procedure_request& request,
-                                                                 unsigned                                     transaction_id) override;
-  byte_buffer                           handle_rrc_handover_command(byte_buffer cmd) override;
-  bool                                  handle_rrc_handover_preparation_info(byte_buffer pdu) override;
-  void                                  create_srb(const srb_creation_message& msg) override;
+                              get_rrc_ue_release_context(bool                                requires_rrc_message,
+                                                         std::optional<std::chrono::seconds> release_wait_time = std::nullopt) override;
+  rrc_ue_transfer_context     get_transfer_context() override;
+  std::optional<rrc_meas_cfg> generate_meas_config(const std::optional<rrc_meas_cfg>& current_meas_config) override;
+  byte_buffer                 get_packed_meas_config() override;
+  std::optional<uint8_t>      get_serving_cell_mo() override;
+  byte_buffer                 get_rrc_handover_command(const rrc_reconfiguration_procedure_request& request,
+                                                       unsigned                                     transaction_id) override;
+  byte_buffer                 handle_rrc_handover_command(byte_buffer cmd) override;
+  bool                        handle_rrc_handover_preparation_info(byte_buffer pdu) override;
+  void                        create_srb(const srb_creation_message& msg) override;
   static_vector<srb_id_t, MAX_NOF_SRBS> get_srbs() override;
   rrc_state                             get_rrc_state() const override;
   void                                  cancel_handover_reconfiguration_transaction(uint8_t transaction_id) override;
+  void                                  cancel_all_transactions() override;
 
   // rrc_ue_context_handler
   rrc_ue_reestablishment_context_response get_context() override;
+  rrc_cell_context                        get_cell_context() const override { return context.cell; }
 
 private:
   void stop() override;
@@ -117,7 +121,7 @@ private:
   void on_ue_release_required(const ngap_cause_t& cause) override;
 
   // rrc_ue_security_mode_command_proc_notifier
-  void on_new_dl_dcch(srb_id_t srb_id, const asn1::rrc_nr::dl_dcch_msg_s& dl_ccch_msg) override;
+  void on_new_dl_dcch(srb_id_t srb_id, const asn1::rrc_nr::dl_dcch_msg_s& dl_dcch_msg) override;
   void on_new_as_security_context() override;
 
   rrc_ue_context_t                context;

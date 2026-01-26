@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -28,6 +28,6 @@ set(SOURCES_ZMQ
         radio_zmq_tx_stream.cpp)
 add_library(srsran_radio_zmq STATIC ${SOURCES_ZMQ})
 
-target_link_libraries(srsran_radio_zmq ${ZEROMQ_LIBRARIES} fmt srslog)
+target_link_libraries(srsran_radio_zmq ${ZEROMQ_LIBRARIES} fmt srslog srsvec srsran_support)
 
 add_to_exported_libs(srsran_radio_zmq)

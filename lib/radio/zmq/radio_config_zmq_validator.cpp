@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,7 +21,6 @@
  */
 
 #include "radio_config_zmq_validator.h"
-#include "srsran/srslog/srslog.h"
 #include "fmt/format.h"
 #include <regex>
 

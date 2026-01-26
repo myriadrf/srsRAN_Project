@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -115,6 +115,9 @@ std::pair<pucch_uci_message, channel_state_information>
 pucch_detector_format0::detect(const srsran::resource_grid_reader&          grid,
                                const pucch_detector::format0_configuration& config)
 {
+  // Minimum noise variance.
+  static constexpr float min_noise_var = 1e-6;
+
   // Select table.
   span<const pucch_detector_format0_entry> m_cs_table;
   if (config.nof_harq_ack == 0) {
@@ -214,8 +217,8 @@ pucch_detector_format0::detect(const srsran::resource_grid_reader&          grid
 
     // Calculate detection metric.
     float detection_metric = 0.0F;
-    if (std::isnormal(sum_noise_var)) {
-      detection_metric = sum_corr / sum_noise_var;
+    if (!std::isnan(sum_noise_var) && !std::isinf(sum_noise_var)) {
+      detection_metric = sum_corr / std::max(sum_noise_var, min_noise_var);
     }
 
     // Update the best metric and the actual message.
@@ -236,7 +239,7 @@ pucch_detector_format0::detect(const srsran::resource_grid_reader&          grid
 
   channel_state_information csi(channel_state_information::sinr_type::post_equalization);
   csi.set_sinr_dB(channel_state_information::sinr_type::post_equalization, convert_power_to_dB(best_metric));
-  csi.set_rsrp(convert_power_to_dB(best_rsrp));
+  csi.set_rsrp_dB(convert_power_to_dB(best_rsrp));
   csi.set_epre(convert_power_to_dB(epre));
 
   return std::make_pair(message, csi);

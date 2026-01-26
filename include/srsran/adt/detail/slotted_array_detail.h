@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,7 +25,6 @@
 #include "srsran/adt/span.h"
 
 namespace srsran {
-
 namespace detail {
 
 template <typename IdType>
@@ -35,5 +34,4 @@ struct cast_to_size_operator {
 };
 
 } // namespace detail
-
 } // namespace srsran

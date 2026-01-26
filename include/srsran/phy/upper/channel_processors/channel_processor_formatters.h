@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -73,10 +73,11 @@ struct formatter<srsran::prach_detection_result::preamble_indication> {
   auto format(const srsran::prach_detection_result::preamble_indication& preamble, FormatContext& ctx) const
   {
     format_to(ctx.out(),
-              "{{idx={} ta={:.2f}us detection_metric={:.1f}}}",
+              "{{idx={} ta={:.2f}us detection_metric={:.1f} power_dB={:.2f}}}",
               preamble.preamble_index,
               preamble.time_advance.to_seconds() * 1e6,
-              preamble.detection_metric);
+              preamble.detection_metric,
+              preamble.preamble_power_dB);
     return ctx.out();
   }
 };

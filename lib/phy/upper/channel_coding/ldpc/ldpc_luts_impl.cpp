@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -41,6 +41,7 @@
 using namespace srsran::ldpc;
 
 namespace {
+
 /// Describes a lifting size.
 struct ls_description_t {
   /// Lifting index.
@@ -48,6 +49,7 @@ struct ls_description_t {
   /// Position in the list of possible lifting sizes.
   uint8_t position;
 };
+
 } // anonymous namespace
 
 /// \brief Lifting size look-up table.

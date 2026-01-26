@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -65,22 +65,22 @@ int main(int argc, char** argv)
     return -1;
   }
 
-  handle = dlopen(argv[1], RTLD_NOW);
+  handle = ::dlopen(argv[1], RTLD_NOW);
   if (handle == nullptr) {
-    std::cerr << "Error: " << dlerror() << std::endl;
-    exit(EXIT_FAILURE);
+    std::cerr << "Error: " << ::dlerror() << std::endl;
+    std::exit(EXIT_FAILURE);
   }
 
   // Clear any existing error.
-  dlerror();
+  ::dlerror();
 
   // Load init function.
-  driver_init = (int (*)(TRXState*))dlsym(handle, "trx_driver_init");
+  driver_init = (int (*)(TRXState*))::dlsym(handle, "trx_driver_init");
 
-  error = dlerror();
+  error = ::dlerror();
   if (error != nullptr) {
     std::cerr << "Error: " << error << std::endl;
-    exit(EXIT_FAILURE);
+    std::exit(EXIT_FAILURE);
   }
   std::cout << "Dynamic library loaded." << std::endl;
 
@@ -123,8 +123,8 @@ int main(int argc, char** argv)
   TESTASSERT(state.trx_stop_func == nullptr);
   std::cout << "Driver set callbacks." << std::endl;
 
-  dlclose(handle);
+  ::dlclose(handle);
 
   std::cout << "Successful." << std::endl;
-  exit(EXIT_SUCCESS);
+  std::exit(EXIT_SUCCESS);
 }

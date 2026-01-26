@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -143,4 +143,10 @@ mac_cell_rach_handler_impl& mac_rach_handler::add_cell(const sched_cell_configur
   srsran_assert(not cell_map.contains(sched_cfg.cell_index), "Cell already exists");
   cell_map.emplace(sched_cfg.cell_index, std::make_unique<mac_cell_rach_handler_impl>(*this, sched_cfg));
   return *cell_map[sched_cfg.cell_index];
+}
+
+void mac_rach_handler::rem_cell(du_cell_index_t cell_index)
+{
+  srsran_assert(cell_map.contains(cell_index), "Cell does not exist");
+  cell_map.erase(cell_index);
 }

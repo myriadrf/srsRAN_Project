@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -41,9 +41,9 @@ public:
     ctrl_strand(std::make_unique<strand_type>(&config.pool_executor, task_worker_queue_size))
   {
     // Decorate strand if needed.
-    if (config.metrics_period) {
+    if (config.exec_metrics_channel_registry != nullptr) {
       execution_decoration_config cfg;
-      cfg.metrics = execution_decoration_config::metrics_option{"cu_cp_exec", config.metrics_period.value()};
+      cfg.metrics.emplace("cu_cp_exec", *config.exec_metrics_channel_registry, false);
       ctrl_strand = decorate_executor(std::move(ctrl_strand), cfg);
     }
   }
@@ -57,6 +57,12 @@ public:
   }
 
   task_executor& n2_rx_executor() override { return pool_exec; }
+
+  task_executor& f1c_rx_executor() override { return pool_exec; }
+
+  task_executor& e1_rx_executor() override { return pool_exec; }
+
+  task_executor& e2_rx_executor() override { return pool_exec; }
 
 private:
   task_executor& pool_exec;

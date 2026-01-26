@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,9 +32,9 @@ namespace srsvec {
 
 ///@{
 /// \brief Sum of two vectors.
-/// \param[out]  Output vector.
-/// \param[in]   First input vector.
-/// \param[in]   Second input vector.
+/// \param[out]  z Output vector.
+/// \param[in]   x First input vector.
+/// \param[in]   y Second input vector.
 /// \warning An assertion is triggered if input and output vectors have different sizes.
 void add(span<cf_t> z, span<const cf_t> x, span<const cf_t> y);
 void add(span<cf_t> z, span<const cf_t> x, span<const cbf16_t> y);

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -152,7 +152,7 @@ void iq_compression_bfp_avx512::compress(span<uint8_t>                buffer,
     span<uint8_t> output_span(&buffer[rb * prb_size], prb_size);
 
     // Save exponent.
-    memcpy(output_span.data(), &exp_byte_ptr[0], sizeof(uint8_t));
+    std::memcpy(output_span.data(), &exp_byte_ptr[0], sizeof(uint8_t));
 
     // Shift and pack a PRB using utility function.
     __m512i rb_shifted_epi16 = _mm512_srai_epi16(rb_epi16, exp_byte_ptr[0]);

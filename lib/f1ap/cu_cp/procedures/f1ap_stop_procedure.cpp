@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -49,7 +49,7 @@ void f1ap_stop_procedure::operator()(coro_context<async_task<void>>& ctx)
 
 async_task<void> f1ap_stop_procedure::handle_transaction_info_loss()
 {
-  f1_ue_transaction_info_loss_event ev;
+  ue_transaction_info_loss_event ev;
   ev.ues_lost.reserve(ue_ctxt_list.size());
 
   // Add DU UEs to the list of UEs with transaction information lost.

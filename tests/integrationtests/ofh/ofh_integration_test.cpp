@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -265,11 +265,11 @@ static void parse_args(int argc, char** argv)
       case 'h':
       default:
         usage(argv[0]);
-        ::exit(0);
+        std::exit(0);
     }
     if (invalid_arg) {
       usage(argv[0]);
-      ::exit(0);
+      std::exit(0);
     }
     nof_antennas_dl = test_params.dl_port_id.size();
     nof_antennas_ul = test_params.ul_port_id.size();
@@ -380,7 +380,7 @@ private:
   {
     socket_fd = ::socket(AF_PACKET, SOCK_RAW | SOCK_NONBLOCK, IPPROTO_RAW);
     if (socket_fd < 0) {
-      report_error("Unable to open raw socket for Ethernet gateway: {}", strerror(errno));
+      report_error("Unable to open raw socket for Ethernet gateway: {}", ::strerror(errno));
     }
 
     // Get the index of loopback interface.
@@ -406,13 +406,15 @@ class dummy_rx_symbol_notifier : public ru_uplink_plane_rx_symbol_notifier
 {
 public:
   // See interface for documentation.
-  void on_new_uplink_symbol(const ru_uplink_rx_symbol_context& context, const shared_resource_grid& grid) override
+  void on_new_uplink_symbol(const ru_uplink_rx_symbol_context& context,
+                            const shared_resource_grid&        grid,
+                            bool                               is_valid) override
   {
     srsran_assert(grid, "Invalid grid.");
   }
 
   // See interface for documentation.
-  void on_new_prach_window_data(const prach_buffer_context& context, const prach_buffer& buffer) override {}
+  void on_new_prach_window_data(const prach_buffer_context& context, shared_prach_buffer buffer) override {}
 };
 
 /// Dummy RU notifier class for timing events.

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -37,4 +37,5 @@ void srsran::fill_e2_config_in_yaml_schema(YAML::Node node, const e2_config& con
   node["sctp_max_init_timeo"]    = config.sctp_max_init_timeo;
   node["e2sm_kpm_enabled"]       = config.e2sm_kpm_enabled;
   node["e2sm_rc_enabled"]        = config.e2sm_rc_enabled;
+  node["e2sm_ccc_enabled"]       = config.e2sm_ccc_enabled;
 }

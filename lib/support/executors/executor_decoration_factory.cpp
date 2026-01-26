@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,19 +24,18 @@
 #include "srsran/srslog/srslog.h"
 #include "srsran/support/executors/executor_throttler.h"
 #include "srsran/support/executors/executor_tracer.h"
-#include "srsran/support/executors/sequential_metrics_executor.h"
+#include "srsran/support/executors/metrics/executor_metrics_channel_registry.h"
+#include "srsran/support/executors/metrics/executor_metrics_decorator.h"
 #include "srsran/support/executors/sync_task_executor.h"
 #include "srsran/support/tracing/event_tracing.h"
 
 using namespace srsran;
 
-namespace {
-
-file_event_tracer<true> tracer;
+static file_event_tracer<true> tracer;
 
 /// Helper function that converts an executor of type T to a unique_ptr<task_executor>.
 template <typename T>
-std::unique_ptr<task_executor> convert_to_unique_executor_ptr(T&& exec)
+static std::unique_ptr<task_executor> convert_to_unique_executor_ptr(T&& exec)
 {
   if constexpr (std::is_same_v<std::decay_t<T>, std::unique_ptr<task_executor>>) {
     // If T is already a unique task_executor, we can return it as a unique_ptr.
@@ -59,16 +58,16 @@ std::unique_ptr<task_executor> convert_to_unique_executor_ptr(T&& exec)
 }
 
 template <typename ComposedExecutor>
-void make_executor_decorator_helper(std::unique_ptr<task_executor>& result, ComposedExecutor&& exec)
+static void make_executor_decorator_helper(std::unique_ptr<task_executor>& result, ComposedExecutor&& exec)
 {
   result = convert_to_unique_executor_ptr(std::forward<ComposedExecutor>(exec));
 }
 
 template <typename ComposedExecutor, typename FirstPolicy, typename... Policies>
-void make_executor_decorator_helper(std::unique_ptr<task_executor>&   result,
-                                    ComposedExecutor&&                exec,
-                                    const std::optional<FirstPolicy>& first_policy,
-                                    const Policies&... policies)
+static void make_executor_decorator_helper(std::unique_ptr<task_executor>&   result,
+                                           ComposedExecutor&&                exec,
+                                           const std::optional<FirstPolicy>& first_policy,
+                                           const Policies&... policies)
 {
   if (not first_policy.has_value()) {
     // Skip this policy.
@@ -86,13 +85,22 @@ void make_executor_decorator_helper(std::unique_ptr<task_executor>&   result,
         executor_throttler<ComposedExecutor>(std::forward<ComposedExecutor>(exec), first_policy->nof_task_threshold),
         policies...);
   } else if constexpr (std::is_same_v<Decoration, execution_decoration_config::metrics_option>) {
-    make_executor_decorator_helper(
-        result,
-        sequential_metrics_executor<ComposedExecutor, srslog::basic_logger&>(first_policy->name,
-                                                                             std::forward<ComposedExecutor>(exec),
-                                                                             srslog::fetch_basic_logger("METRICS"),
-                                                                             first_policy->period),
-        policies...);
+    if (first_policy->tracing_enabled) {
+      make_executor_decorator_helper(result,
+                                     executor_metrics_decorator<ComposedExecutor, file_event_tracer<true>>(
+                                         first_policy->name,
+                                         std::forward<ComposedExecutor>(exec),
+                                         first_policy->channel_registry.add_channel(first_policy->name),
+                                         first_policy->tracer ? first_policy->tracer : &tracer),
+                                     policies...);
+    } else {
+      make_executor_decorator_helper(
+          result,
+          executor_metrics_decorator<ComposedExecutor>(first_policy->name,
+                                                       std::forward<ComposedExecutor>(exec),
+                                                       first_policy->channel_registry.add_channel(first_policy->name)),
+          policies...);
+    }
   } else if constexpr (std::is_same_v<Decoration, execution_decoration_config::trace_option>) {
     make_executor_decorator_helper(result,
                                    executor_tracer<ComposedExecutor, file_event_tracer<true>>{
@@ -103,7 +111,7 @@ void make_executor_decorator_helper(std::unique_ptr<task_executor>&   result,
   }
 }
 
-void validate_config(const execution_decoration_config& config)
+static void validate_config(const execution_decoration_config& config)
 {
   if (config.metrics.has_value() and config.trace.has_value()) {
     report_fatal_error("Metrics and tracing cannot be enabled at the same time.");
@@ -112,8 +120,6 @@ void validate_config(const execution_decoration_config& config)
     report_fatal_error("Synchronous executors cannot be throttled.");
   }
 }
-
-} // namespace
 
 std::unique_ptr<task_executor> srsran::decorate_executor(std::unique_ptr<task_executor>     exec,
                                                          const execution_decoration_config& config)

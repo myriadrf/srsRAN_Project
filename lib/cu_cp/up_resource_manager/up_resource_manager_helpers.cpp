@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,8 +25,8 @@
 using namespace srsran;
 using namespace srs_cu_cp;
 
-// Verifies if any of the PDU sessions to be setup/modified already contains a DRB with the given ID.
-bool contains_drb(const up_config_update& config_update, drb_id_t drb_id)
+/// Verifies if any of the PDU sessions to be setup/modified already contains a DRB with the given ID.
+static bool contains_drb(const up_config_update& config_update, drb_id_t drb_id)
 {
   for (const auto& setup_item : config_update.pdu_sessions_to_setup_list) {
     for (const auto& drb_item : setup_item.second.drb_to_add) {
@@ -46,7 +46,7 @@ bool contains_drb(const up_config_update& config_update, drb_id_t drb_id)
   return false;
 }
 
-bool contains_drb(const up_context& context, drb_id_t new_drb_id)
+static bool contains_drb(const up_context& context, drb_id_t new_drb_id)
 {
   for (const auto& drb : context.drb_map) {
     if (drb.first == new_drb_id) {
@@ -56,7 +56,7 @@ bool contains_drb(const up_context& context, drb_id_t new_drb_id)
   return false;
 }
 
-bool contains_drb(const up_pdu_session_context_update& new_session_context, drb_id_t new_drb_id)
+static bool contains_drb(const up_pdu_session_context_update& new_session_context, drb_id_t new_drb_id)
 {
   return (new_session_context.drb_to_add.find(new_drb_id) != new_session_context.drb_to_add.end());
 }
@@ -77,15 +77,13 @@ drb_id_t srsran::srs_cu_cp::allocate_drb_id(const up_pdu_session_context_update&
   drb_id_t new_drb_id = drb_id_t::drb1;
   // The new DRB ID must not be allocated already.
   while (contains_drb(context, new_drb_id) || contains_drb(config_update, new_drb_id) ||
-         contains_drb(new_session_context, new_drb_id)) {
+         contains_drb(new_session_context, new_drb_id) || context.drb_dirty[get_dirty_drb_index(new_drb_id)]) {
     // Try next.
     new_drb_id = uint_to_drb_id(drb_id_to_uint(new_drb_id) + 1);
 
-    if (drb_id_to_uint(new_drb_id) > max_nof_drbs_per_ue) {
-      logger.warning("DRB creation failed. Cause: Maximum number of DRBs per UE already created ({}). To increase the "
-                     "number of allowed DRBs per UE change the \"--max_nof_drbs_per_ue\" in the CU-CP configuration\n",
-                     max_nof_drbs_per_ue);
-      return drb_id_t::invalid;
+    // Scanned all DRB IDs, none is available.
+    if (new_drb_id == drb_id_t::invalid) {
+      break;
     }
   }
 
@@ -209,12 +207,12 @@ bool srsran::srs_cu_cp::is_valid(const cu_cp_pdu_session_resource_release_comman
 }
 
 /// \brief Allocates a QoS flow to a new DRB. Inserts it in PDU session object.
-drb_id_t allocate_qos_flow(up_pdu_session_context_update&     new_session_context,
-                           const qos_flow_setup_request_item& qos_flow,
-                           const up_config_update&            config_update,
-                           const up_context&                  full_context,
-                           const up_resource_manager_cfg&     cfg,
-                           const srslog::basic_logger&        logger)
+static drb_id_t allocate_qos_flow(up_pdu_session_context_update&     new_session_context,
+                                  const qos_flow_setup_request_item& qos_flow,
+                                  const up_config_update&            config_update,
+                                  const up_context&                  full_context,
+                                  const up_resource_manager_cfg&     cfg,
+                                  const srslog::basic_logger&        logger)
 {
   five_qi_t five_qi = get_five_qi(qos_flow, cfg, logger);
   srsran_assert(five_qi != five_qi_t::invalid, "5QI cannot be invalid.");
@@ -223,7 +221,7 @@ drb_id_t allocate_qos_flow(up_pdu_session_context_update&     new_session_contex
   // potential optimization to support more QoS flows is to map non-GPB flows onto existing DRBs.
   if (full_context.drb_map.size() >= cfg.max_nof_drbs_per_ue) {
     logger.warning("DRB creation failed. Cause: Maximum number of DRBs per UE already created ({}). To increase the "
-                   "number of allowed DRBs per UE change the \"--max_nof_drbs_per_ue\" in the CU-CP configuration\n",
+                   "number of allowed DRBs per UE change the \"--max_nof_drbs_per_ue\" in the CU-CP configuration",
                    cfg.max_nof_drbs_per_ue);
     return drb_id_t::invalid;
   }
@@ -317,6 +315,10 @@ up_config_update srsran::srs_cu_cp::calculate_update(
     up_pdu_session_context_update new_ctxt(pdu_session.pdu_session_id);
     for (const auto& flow_item : pdu_session.qos_flow_setup_request_items) {
       auto drb_id = allocate_qos_flow(new_ctxt, flow_item, config, context, cfg, logger);
+      if (drb_id == drb_id_t::invalid) {
+        logger.warning("Couldn't allocate {}", flow_item.qos_flow_id);
+        continue;
+      }
       // S-NSSAI
       new_ctxt.drb_to_add.at(drb_id).s_nssai = pdu_session.s_nssai;
       logger.debug("Allocated {} to {} with {}",
@@ -324,7 +326,9 @@ up_config_update srsran::srs_cu_cp::calculate_update(
                    drb_id,
                    new_ctxt.drb_to_add.at(drb_id).qos_params.qos_desc.get_5qi());
     }
-    config.pdu_sessions_to_setup_list.emplace(new_ctxt.id, new_ctxt);
+    if (!new_ctxt.drb_to_add.empty()) {
+      config.pdu_sessions_to_setup_list.emplace(new_ctxt.id, new_ctxt);
+    }
   }
 
   return config;
@@ -476,4 +480,11 @@ up_config_update srsran::srs_cu_cp::to_config_update(const up_context& old_conte
   }
 
   return config;
+}
+
+unsigned srsran::srs_cu_cp::get_dirty_drb_index(drb_id_t drb_id)
+{
+  unsigned index = drb_id_to_uint(drb_id) - 1;
+  srsran_assert(index < MAX_NOF_DRBS, "Invalid DRB ID when checking for DRB dirtyness");
+  return index;
 }

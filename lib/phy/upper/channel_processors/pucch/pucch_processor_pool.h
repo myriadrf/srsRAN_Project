@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #pragma once
 
 #include "srsran/phy/upper/channel_processors/pucch/pucch_processor.h"
+#include "srsran/srslog/srslog.h"
 #include "srsran/support/memory_pool/bounded_object_pool.h"
 
 namespace srsran {

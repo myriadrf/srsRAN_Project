@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,9 +22,11 @@
 
 #pragma once
 
+#include "srsran/ran/bwp/bwp_configuration.h"
 #include "srsran/ran/csi_report/csi_report_configuration.h"
 #include "srsran/ran/pucch/pucch_mapping.h"
 #include "srsran/ran/pucch/pucch_uci_bits.h"
+#include "srsran/ran/slot_pdu_capacity_constants.h"
 #include "srsran/scheduler/result/pucch_format.h"
 
 namespace srsran {

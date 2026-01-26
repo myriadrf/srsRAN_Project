@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,6 +24,7 @@
 #include "srsran/support/executors/priority_task_worker.h"
 #include "srsran/support/executors/task_worker.h"
 #include "srsran/support/executors/task_worker_pool.h"
+#include "srsran/support/synchronization/sync_event.h"
 #include <future>
 #include <gtest/gtest.h>
 
@@ -93,7 +94,8 @@ protected:
 };
 using worker_pool_types = ::testing::Types<task_worker_pool<concurrent_queue_policy::lockfree_mpmc>,
                                            task_worker_pool<concurrent_queue_policy::locking_mpmc>,
-                                           task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_mpmc>>;
+                                           task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_mpmc>,
+                                           task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc>>;
 TYPED_TEST_SUITE(task_worker_pool_test, worker_pool_types);
 
 TYPED_TEST(task_worker_pool_test, correct_initialization)
@@ -104,13 +106,14 @@ TYPED_TEST(task_worker_pool_test, correct_initialization)
 
 TYPED_TEST(task_worker_pool_test, worker_pool_runs_single_task)
 {
-  std::promise<void> p;
-  std::future<void>  f = p.get_future();
-  ASSERT_TRUE(this->pool.push_task([&p]() {
-    p.set_value();
+  sync_event        wait_all;
+  std::atomic<bool> task_ran{false};
+  ASSERT_TRUE(this->pool.push_task([token = wait_all.get_token(), &task_ran]() {
     fmt::print("Finished in {}\n", this_thread_name());
+    task_ran = true;
   }));
-  f.get();
+  wait_all.wait();
+  ASSERT_TRUE(task_ran);
 }
 
 TYPED_TEST(task_worker_pool_test, worker_pool_runs_tasks_in_all_workers)
@@ -166,15 +169,17 @@ protected:
   pool_type pool;
 };
 
-INSTANTIATE_TEST_SUITE_P(priority_task_worker_different_policies,
-                         prio_task_worker_pool_test,
-                         testing::Values(std::vector<concurrent_queue_policy>{concurrent_queue_policy::lockfree_mpmc,
-                                                                              concurrent_queue_policy::lockfree_mpmc},
-                                         std::vector<concurrent_queue_policy>{concurrent_queue_policy::locking_mpmc,
-                                                                              concurrent_queue_policy::locking_mpmc},
-                                         std::vector<concurrent_queue_policy>{
-                                             concurrent_queue_policy::moodycamel_lockfree_mpmc,
-                                             concurrent_queue_policy::moodycamel_lockfree_mpmc}));
+INSTANTIATE_TEST_SUITE_P(
+    priority_task_worker_different_policies,
+    prio_task_worker_pool_test,
+    testing::Values(std::vector<concurrent_queue_policy>{concurrent_queue_policy::lockfree_mpmc,
+                                                         concurrent_queue_policy::lockfree_mpmc},
+                    std::vector<concurrent_queue_policy>{concurrent_queue_policy::locking_mpmc,
+                                                         concurrent_queue_policy::locking_mpmc},
+                    std::vector<concurrent_queue_policy>{concurrent_queue_policy::moodycamel_lockfree_mpmc,
+                                                         concurrent_queue_policy::moodycamel_lockfree_mpmc},
+                    std::vector<concurrent_queue_policy>{concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc,
+                                                         concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc}));
 
 TEST_P(prio_task_worker_pool_test, correct_initialization)
 {
@@ -184,13 +189,14 @@ TEST_P(prio_task_worker_pool_test, correct_initialization)
 
 TEST_P(prio_task_worker_pool_test, prio_worker_pool_runs_single_task)
 {
-  std::promise<void> p;
-  std::future<void>  f = p.get_future();
-  ASSERT_TRUE(this->pool.push_task(enqueue_priority::max, [&p]() {
-    p.set_value();
+  sync_event        wait_all;
+  std::atomic<bool> task_ran{false};
+  ASSERT_TRUE(this->pool.push_task(enqueue_priority::max, [token = wait_all.get_token(), &task_ran]() {
     fmt::print("Finished in {}\n", this_thread_name());
+    task_ran = true;
   }));
-  f.get();
+  wait_all.wait();
+  ASSERT_TRUE(task_ran);
 }
 
 TEST_P(prio_task_worker_pool_test, prio_worker_pool_executor_can_run_inline)

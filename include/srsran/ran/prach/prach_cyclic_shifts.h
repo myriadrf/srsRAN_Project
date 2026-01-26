@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,7 +29,7 @@
 namespace srsran {
 
 /// Reserved number of cyclic shifts. It indicates the number of cyclic shifts is invalid.
-static constexpr uint16_t PRACH_CYCLIC_SHIFTS_RESERVED = 430;
+constexpr uint16_t PRACH_CYCLIC_SHIFTS_RESERVED = 430;
 
 /// \brief Calculates the number of cyclic shifts \f$N_{CS}\f$ used in the sequence generation as per TS38.211
 /// Section 6.3.3.1.

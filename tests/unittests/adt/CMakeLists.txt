@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -73,10 +73,6 @@ add_executable(unique_function_test unique_function_test.cpp)
 target_link_libraries(unique_function_test srslog)
 add_test(unique_function_test unique_function_test)
 
-add_executable(filter_view_test filter_view_test.cpp)
-target_link_libraries(filter_view_test srslog)
-add_test(filter_view_test filter_view_test)
-
 add_executable(transform_view_test transform_view_test.cpp)
 target_link_libraries(transform_view_test srslog gtest gtest_main)
 add_test(transform_view_test transform_view_test)
@@ -100,3 +96,7 @@ add_test(batched_dispatch_queue_test batched_dispatch_queue_test)
 add_executable(flat_map_test flat_map_test.cpp)
 target_link_libraries(flat_map_test srslog srsran_support gtest gtest_main)
 add_test(flat_map_test flat_map_test)
+
+add_executable(soa_table_test soa_table_test.cpp)
+target_link_libraries(soa_table_test srslog srsran_support gtest gtest_main)
+add_test(soa_table_test soa_table_test)

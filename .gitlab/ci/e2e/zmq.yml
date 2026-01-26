@@ -10,13 +10,12 @@
   type: ue
   image: ${RETINA_REGISTRY_PREFIX}/amarisoftue:${AMARISOFT_VERSION}_${RETINA_VERSION}
   labels:
-    - ${ZMQ_HOSTLABEL_0}
+    - ${ZMQ_HOSTLABEL}
   nof_ports: 64
   requirements:
-    arch: amd64
     cpu:
-      requests: 5
-      limits: 5
+      requests: 6
+      limits: 6
     memory:
       requests: "26G"
       limits: "26G"
@@ -26,7 +25,7 @@
   resources:
     - type: zmq
     - type: license
-      model: amarisoft-5g
+      model: amarisoft-ue.*
   shared_files:
     - local_path: ${AMARISOFT_TXRX_BINARY_PATH}
       remote_path: /opt/lteue/trx_srsran.so
@@ -36,12 +35,11 @@
   type: gnb
   image: ${RETINA_REGISTRY_PREFIX}/srsgnb:${RETINA_VERSION}
   labels:
-    - ${ZMQ_HOSTLABEL_0}
+    - ${ZMQ_HOSTLABEL}
   requirements:
-    arch: amd64
     cpu:
-      requests: 5
-      limits: 5
+      requests: 6
+      limits: 6
     memory:
       requests: "26G"
       limits: "26G"
@@ -53,6 +51,7 @@
   environment:
     - RTSAN_OPTIONS: halt_on_error=false:suppress_equal_stacks=true
     - PATH: ${PATH}:/builds/softwareradiosystems/srsgnb/build/apps/gnb
+    - LD_LIBRARY_PATH: /opt/rohc/lib/
   shared_files:
     - local_path: ${GNB_BUILD_PATH}/apps/gnb/gnb
       remote_path: /usr/local/bin/gnb
@@ -61,10 +60,9 @@
 - name: open5gs
   type: 5gc
   requirements:
-    arch: amd64
     cpu:
-      requests: 1
-      limits: 1
+      requests: 2
+      limits: 2
     memory:
       requests: "8G"
       limits: "8G"
@@ -73,4 +71,4 @@
       limits: "6G"
   image: ${RETINA_REGISTRY_PREFIX}/open5gs:${OPEN5GS_VERSION}_${RETINA_VERSION}
   labels:
-    - ${ZMQ_HOSTLABEL_0}
+    - ${ZMQ_HOSTLABEL}

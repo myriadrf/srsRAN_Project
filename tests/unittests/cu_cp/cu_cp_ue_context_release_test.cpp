@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,15 +32,35 @@
 #include "srsran/f1ap/f1ap_message.h"
 #include "srsran/f1ap/f1ap_ue_id_types.h"
 #include "srsran/ngap/ngap_message.h"
+#include "srsran/ran/gnb_cu_up_id.h"
+#include "srsran/ran/plmn_identity.h"
+#include <chrono>
 #include <gtest/gtest.h>
 
 using namespace srsran;
 using namespace srs_cu_cp;
 
+static std::vector<std::vector<supported_tracking_area>> make_amf_test_config()
+{
+  slice_service_type      sst     = slice_service_type{1};
+  s_nssai_t               s_nssai = s_nssai_t{sst, slice_differentiator{}};
+  plmn_item               plmn    = plmn_item{plmn_identity::parse("99999").value(), std::vector<s_nssai_t>{s_nssai}};
+  tac_t                   tac     = 7;
+  supported_tracking_area supported_ta = supported_tracking_area{tac, {plmn}};
+
+  return {{supported_ta}};
+}
+
 class cu_cp_ue_context_release_test : public cu_cp_test_environment, public ::testing::Test
 {
 public:
-  cu_cp_ue_context_release_test() : cu_cp_test_environment(cu_cp_test_env_params{})
+  cu_cp_ue_context_release_test() :
+    cu_cp_test_environment(cu_cp_test_env_params{/* max_nof_cu_ups */ 8,
+                                                 /* max_nof_dus */ 8,
+                                                 /* max_nof_ues */ 8192,
+                                                 /* max_nof_drbs_per_ue */ 8,
+                                                 /* amf_config */ make_amf_test_config(),
+                                                 /* trigger_ho_from_measurements */ false})
   {
     // Run NG setup to completion.
     run_ng_setup();
@@ -49,7 +69,11 @@ public:
     std::optional<unsigned> ret = connect_new_du();
     EXPECT_TRUE(ret.has_value());
     du_idx = ret.value();
-    EXPECT_TRUE(this->run_f1_setup(du_idx));
+    EXPECT_TRUE(
+        this->run_f1_setup(du_idx,
+                           int_to_gnb_du_id(0x11),
+                           {test_helpers::served_cell_item_info{
+                               .plmn_id = plmn, .sib1_str = srsran::test_helpers::create_sib1_hex_string(plmn)}}));
 
     // Setup CU-UP.
     ret = connect_new_cu_up();
@@ -61,7 +85,7 @@ public:
   [[nodiscard]] bool attach_ue()
   {
     // Connect UE 0x4601.
-    if (!connect_new_ue(du_idx, du_ue_id, crnti)) {
+    if (!connect_new_ue(du_idx, du_ue_id, crnti, plmn)) {
       return false;
     }
     if (!authenticate_ue(du_idx, du_ue_id, amf_ue_id)) {
@@ -100,7 +124,7 @@ public:
     report_fatal_error_if_not(not this->get_cu_up(cu_up_idx).try_pop_rx_pdu(e1ap_pdu),
                               "there are still E1AP messages to pop from CU-UP");
 
-    // Inject NGAP UE Context Release Command and wait for F1AP UE Context Release Command
+    // Inject NGAP UE Context Release Command and wait for F1AP UE Context Release Command.
     get_amf().push_tx_pdu(generate_valid_ue_context_release_command_with_amf_ue_ngap_id(ue_ctx->amf_ue_id.value()));
     report_fatal_error_if_not(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu),
                               "Failed to receive UE Context Release Command");
@@ -118,7 +142,7 @@ public:
     report_fatal_error_if_not(not this->get_cu_up(cu_up_idx).try_pop_rx_pdu(e1ap_pdu),
                               "there are still E1AP messages to pop from CU-UP");
 
-    // Inject NGAP UE Context Release Command and wait for Bearer Context Release Command
+    // Inject NGAP UE Context Release Command and wait for Bearer Context Release Command.
     get_amf().push_tx_pdu(generate_valid_ue_context_release_command_with_amf_ue_ngap_id(ue_ctx->amf_ue_id.value()));
     report_fatal_error_if_not(this->wait_for_e1ap_tx_pdu(cu_up_idx, e1ap_pdu),
                               "Failed to receive Bearer Context Release Command");
@@ -129,7 +153,7 @@ public:
 
   [[nodiscard]] bool send_bearer_context_release_complete_and_await_f1ap_ue_context_release_command()
   {
-    // Inject Bearer Context Release Complete and wait for F1AP UE Context Release Command
+    // Inject Bearer Context Release Complete and wait for F1AP UE Context Release Command.
     get_cu_up(cu_up_idx).push_tx_pdu(
         generate_bearer_context_release_complete(ue_ctx->cu_cp_e1ap_id.value(), ue_ctx->cu_up_e1ap_id.value()));
     report_fatal_error_if_not(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu),
@@ -148,7 +172,7 @@ public:
 
   [[nodiscard]] bool send_f1ap_ue_context_release_complete_and_await_ngap_ue_context_release_complete()
   {
-    // Inject F1AP UE Context Release Complete and wait for N1AP UE Context Release Command
+    // Inject F1AP UE Context Release Complete and wait for N1AP UE Context Release Command.
     if (!send_f1ap_ue_context_release_complete(ue_ctx->cu_ue_id.value(), ue_ctx->du_ue_id.value())) {
       return false;
     }
@@ -160,7 +184,7 @@ public:
 
   [[nodiscard]] bool send_pdu_session_resource_setup_request()
   {
-    // Inject PDU Session Resource Setup Request
+    // Inject PDU Session Resource Setup Request.
     get_amf().push_tx_pdu(generate_valid_pdu_session_resource_setup_request_message(
         ue_ctx->amf_ue_id.value(),
         ue_ctx->ran_ue_id.value(),
@@ -177,7 +201,7 @@ public:
 
   [[nodiscard]] bool send_f1ap_ue_context_release_request(gnb_cu_ue_f1ap_id_t cu_ue_id_, gnb_du_ue_f1ap_id_t du_ue_id_)
   {
-    // Inject F1AP UE Context Release Request
+    // Inject F1AP UE Context Release Request.
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ue_context_release_request(cu_ue_id_, du_ue_id_));
     return true;
   }
@@ -191,7 +215,7 @@ public:
     report_fatal_error_if_not(not this->get_cu_up(cu_up_idx).try_pop_rx_pdu(e1ap_pdu),
                               "there are still E1AP messages to pop from CU-UP");
 
-    // Inject F1AP UE Context Release Request and wait for NGAP UE Context Release Request
+    // Inject F1AP UE Context Release Request and wait for NGAP UE Context Release Request.
     if (!send_f1ap_ue_context_release_request(ue_ctx->cu_ue_id.value(), ue_ctx->du_ue_id.value())) {
       return false;
     }
@@ -202,11 +226,75 @@ public:
     return true;
   }
 
+  [[nodiscard]] bool send_e1ap_bearer_context_release_request(gnb_cu_cp_ue_e1ap_id_t cu_cp_ue_id_,
+                                                              gnb_cu_up_ue_e1ap_id_t cu_up_ue_id_)
+  {
+    // Inject E1AP Bearer Context Release Request.
+    get_cu_up(cu_up_idx).push_tx_pdu(generate_bearer_context_release_request(cu_cp_ue_id_, cu_up_ue_id_));
+    return true;
+  }
+
+  [[nodiscard]] bool send_e1ap_bearer_context_release_request_and_await_ngap_ue_context_release_request()
+  {
+    report_fatal_error_if_not(not this->get_amf().try_pop_rx_pdu(ngap_pdu),
+                              "there are still NGAP messages to pop from AMF");
+    report_fatal_error_if_not(not this->get_du(du_idx).try_pop_dl_pdu(f1ap_pdu),
+                              "there are still F1AP DL messages to pop from DU");
+    report_fatal_error_if_not(not this->get_cu_up(cu_up_idx).try_pop_rx_pdu(e1ap_pdu),
+                              "there are still E1AP messages to pop from CU-UP");
+
+    // Inject E1AP Bearer Context Release Request and wait for NGAP UE Context Release Request.
+    if (!send_e1ap_bearer_context_release_request(ue_ctx->cu_cp_e1ap_id.value(), ue_ctx->cu_up_e1ap_id.value())) {
+      return false;
+    }
+    report_fatal_error_if_not(this->wait_for_ngap_tx_pdu(ngap_pdu),
+                              "Failed to receive NGAP UE Context Release Request");
+    report_fatal_error_if_not(test_helpers::is_valid_ue_context_release_request(ngap_pdu),
+                              "Invalid NGAP UE Context Release Request");
+    return true;
+  }
+
+  [[nodiscard]] bool send_error_indication_and_await_f1ap_ue_context_release_command(ngap_cause_t cause)
+  {
+    report_fatal_error_if_not(not this->get_amf().try_pop_rx_pdu(ngap_pdu),
+                              "there are still NGAP messages to pop from AMF");
+    report_fatal_error_if_not(not this->get_du(du_idx).try_pop_dl_pdu(f1ap_pdu),
+                              "there are still F1AP DL messages to pop from DU");
+    report_fatal_error_if_not(not this->get_cu_up(cu_up_idx).try_pop_rx_pdu(e1ap_pdu),
+                              "there are still E1AP messages to pop from CU-UP");
+
+    // Inject Error Indication and wait for Bearer Context Release Command..
+    get_amf().push_tx_pdu(
+        generate_error_indication_message(ue_ctx->amf_ue_id.value(), ue_ctx->ran_ue_id.value(), cause));
+    report_fatal_error_if_not(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu),
+                              "Failed to receive UE Context Release Command");
+    report_fatal_error_if_not(test_helpers::is_valid_ue_context_release_command(f1ap_pdu),
+                              "Invalid UE Context Release Command");
+    return true;
+  }
+
+  [[nodiscard]] bool timeout_rrc_setup_and_await_f1ap_ue_context_release_command()
+  {
+    // Fail RRC Setup (UE doesn't respond) and wait for F1AP UE Context Release Command.
+    if (tick_until(
+            rrc_test_timer_values.t300 + this->get_cu_cp_cfg().rrc.rrc_procedure_guard_time_ms,
+            [&]() { return false; },
+            false)) {
+      return false;
+    }
+    report_fatal_error_if_not(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu),
+                              "Failed to receive UE Context Release Command");
+    report_fatal_error_if_not(test_helpers::is_valid_ue_context_release_command(f1ap_pdu),
+                              "Invalid UE Context Release Command");
+    return true;
+  }
+
   unsigned du_idx    = 0;
   unsigned cu_up_idx = 0;
 
   gnb_du_ue_f1ap_id_t    du_ue_id      = gnb_du_ue_f1ap_id_t::min;
   rnti_t                 crnti         = to_rnti(0x4601);
+  plmn_identity          plmn          = plmn_identity::parse("99999").value();
   amf_ue_id_t            amf_ue_id     = amf_ue_id_t::min;
   gnb_cu_up_ue_e1ap_id_t cu_up_e1ap_id = gnb_cu_up_ue_e1ap_id_t::min;
 
@@ -217,19 +305,51 @@ public:
   e1ap_message e1ap_pdu;
 };
 
+TEST_F(cu_cp_ue_context_release_test, when_ue_rrc_setup_fails_then_ue_is_released)
+{
+  // Inject Initial UL RRC Message Transfer containing RRC Setup Request.
+  srsran_assert(not this->get_amf().try_pop_rx_pdu(ngap_pdu), "there are still NGAP messages to pop from AMF");
+  srsran_assert(not this->get_du(du_idx).try_pop_dl_pdu(f1ap_pdu), "there are still F1AP DL messages to pop from DU");
+
+  // Inject Initial UL RRC message
+  f1ap_message init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(du_ue_id, crnti, plmn);
+  test_logger.info("c-rnti={} du_ue={}: Injecting Initial UL RRC message", crnti, fmt::underlying(du_ue_id));
+  get_du(du_idx).push_ul_pdu(init_ul_rrc_msg);
+
+  // Wait for DL RRC message transfer (containing RRC Setup)
+  ASSERT_TRUE(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu, std::chrono::milliseconds{1000}));
+  ASSERT_TRUE(test_helpers::is_valid_dl_rrc_message_transfer_with_msg4(f1ap_pdu));
+
+  gnb_cu_ue_f1ap_id_t cu_ue_id =
+      int_to_gnb_cu_ue_f1ap_id(f1ap_pdu.pdu.init_msg().value.dl_rrc_msg_transfer()->gnb_cu_ue_f1ap_id);
+
+  // Fail RRC Setup (UE doesn't respond) and await F1AP UE Context Release Command.
+  ASSERT_TRUE(timeout_rrc_setup_and_await_f1ap_ue_context_release_command());
+
+  // Inject F1AP UE Context Release Complete.
+  ASSERT_TRUE(send_f1ap_ue_context_release_complete(cu_ue_id, du_ue_id));
+
+  // STATUS: UE should be removed at this stage.
+  auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.ues.size(), 0) << "UE should be removed";
+
+  // Wait for DL RRC message transfer. This should fail.
+  ASSERT_FALSE(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu, std::chrono::milliseconds{1000}));
+}
+
 TEST_F(cu_cp_ue_context_release_test,
        when_ue_context_release_command_but_no_pdu_session_setup_received_then_release_succeeds)
 {
-  // Attach UE
+  // Attach UE.
   ASSERT_TRUE(attach_ue());
 
-  // Inject NGAP UE Context Release Command and await F1AP UE Context Release Command
+  // Inject NGAP UE Context Release Command and await F1AP UE Context Release Command.
   ASSERT_TRUE(send_ngap_ue_context_release_command_and_await_f1ap_ue_context_release_command());
 
-  // Inject F1AP UE Context Release Complete and await NGAP UE Context Release Complete
+  // Inject F1AP UE Context Release Complete and await NGAP UE Context Release Complete.
   ASSERT_TRUE(send_f1ap_ue_context_release_complete_and_await_ngap_ue_context_release_complete());
 
-  // STATUS: UE should be removed at this stage
+  // STATUS: UE should be removed at this stage.
   auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
   ASSERT_EQ(report.ues.size(), 0) << "UE should be removed";
 }
@@ -237,44 +357,44 @@ TEST_F(cu_cp_ue_context_release_test,
 TEST_F(cu_cp_ue_context_release_test,
        when_pdu_session_resource_setup_request_is_received_during_release_then_error_indication_is_sent)
 {
-  // Setup PDU Session
+  // Setup PDU Session.
   ASSERT_TRUE(setup_ue_pdu_session());
 
-  // Inject NGAP UE Context Release Command and await Bearer Context Release Command
+  // Inject NGAP UE Context Release Command and await Bearer Context Release Command.
   ASSERT_TRUE(send_ngap_ue_context_release_command_and_await_bearer_context_release_command());
 
-  // Inject Bearer Context Release Complete and await F1AP UE Context Release Command
+  // Inject Bearer Context Release Complete and await F1AP UE Context Release Command.
   ASSERT_TRUE(send_bearer_context_release_complete_and_await_f1ap_ue_context_release_command());
 
-  // Inject PDU Session Resource Setup Request
+  // Inject PDU Session Resource Setup Request.
   ASSERT_TRUE(send_pdu_session_resource_setup_request());
 
-  // Inject F1AP UE Context Release Complete and await NGAP UE Context Release Complete
+  // Inject F1AP UE Context Release Complete and await NGAP UE Context Release Complete.
   ASSERT_TRUE(send_f1ap_ue_context_release_complete_and_await_ngap_ue_context_release_complete());
 
-  // STATUS: UE should be removed at this stage
+  // STATUS: UE should be removed at this stage.
   auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
   ASSERT_EQ(report.ues.size(), 0) << "UE should be removed";
 
-  // STATUS: An error indication should be sent to the AMF
+  // STATUS: An error indication should be sent to the AMF.
   ASSERT_TRUE(await_error_indication());
 }
 
 TEST_F(cu_cp_ue_context_release_test, when_ue_context_release_command_received_then_release_succeeds)
 {
-  // Setup PDU Session
+  // Setup PDU Session.
   ASSERT_TRUE(setup_ue_pdu_session());
 
-  // Inject NGAP UE Context Release Command and await Bearer Context Release Command
+  // Inject NGAP UE Context Release Command and await Bearer Context Release Command.
   ASSERT_TRUE(send_ngap_ue_context_release_command_and_await_bearer_context_release_command());
 
-  // Inject Bearer Context Release Complete and await F1AP UE Context Release Command
+  // Inject Bearer Context Release Complete and await F1AP UE Context Release Command.
   ASSERT_TRUE(send_bearer_context_release_complete_and_await_f1ap_ue_context_release_command());
 
-  // Inject F1AP UE Context Release Complete and await NGAP UE Context Release Complete
+  // Inject F1AP UE Context Release Complete and await NGAP UE Context Release Complete.
   ASSERT_TRUE(send_f1ap_ue_context_release_complete_and_await_ngap_ue_context_release_complete());
 
-  // STATUS: UE should be removed at this stage
+  // STATUS: UE should be removed at this stage.
   auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
   ASSERT_EQ(report.ues.size(), 0) << "UE should be removed";
 }
@@ -282,10 +402,10 @@ TEST_F(cu_cp_ue_context_release_test, when_ue_context_release_command_received_t
 TEST_F(cu_cp_ue_context_release_test,
        when_du_initiated_ue_context_release_received_then_ue_context_release_request_is_sent)
 {
-  // Setup PDU Session
+  // Setup PDU Session.
   ASSERT_TRUE(setup_ue_pdu_session());
 
-  // Inject F1AP UE Context Release Request and await NGAP UE Context Release Request
+  // Inject F1AP UE Context Release Request and await NGAP UE Context Release Request.
   ASSERT_TRUE(send_f1ap_ue_context_release_request_and_await_ngap_ue_context_release_request());
 }
 
@@ -293,18 +413,18 @@ TEST_F(
     cu_cp_ue_context_release_test,
     when_du_initiated_ue_context_release_received_and_ue_unknown_to_amf_then_ue_is_released_without_release_request_to_amf)
 {
-  // RRC connect UE without sending message to AMF
+  // RRC connect UE without sending message to AMF.
   gnb_cu_ue_f1ap_id_t cu_ue_id = gnb_cu_ue_f1ap_id_t::min;
   {
     srsran_assert(not this->get_amf().try_pop_rx_pdu(ngap_pdu), "there are still NGAP messages to pop from AMF");
     srsran_assert(not this->get_du(du_idx).try_pop_dl_pdu(f1ap_pdu), "there are still F1AP DL messages to pop from DU");
 
-    // Inject Initial UL RRC message
-    f1ap_message init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(du_ue_id, crnti);
+    // Inject Initial UL RRC message.
+    f1ap_message init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(du_ue_id, crnti, plmn);
     test_logger.info("c-rnti={} du_ue={}: Injecting Initial UL RRC message", crnti, fmt::underlying(du_ue_id));
     get_du(du_idx).push_ul_pdu(init_ul_rrc_msg);
 
-    // Wait for DL RRC message transfer (containing RRC Setup)
+    // Wait for DL RRC message transfer (containing RRC Setup).
     report_error_if_not(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu, std::chrono::milliseconds{1000}),
                         "Failed to receive DL RRC message");
 
@@ -325,16 +445,66 @@ TEST_F(
     get_du(du_idx).push_ul_pdu(ul_dcch_msg);
   }
 
-  // Inject F1AP UE Context Release Request
+  // Inject F1AP UE Context Release Request.
   ASSERT_TRUE(send_f1ap_ue_context_release_request(cu_ue_id, du_ue_id));
 
-  // No NGAP UE Context Release Request should be sent to the AMF
+  // No NGAP UE Context Release Request should be sent to the AMF.
   ASSERT_NE(ngap_pdu.pdu.type().value, asn1::ngap::ngap_pdu_c::types_opts::init_msg);
 
-  // Inject F1AP UE Context Release Complete
+  // Inject F1AP UE Context Release Complete.
   ASSERT_TRUE(send_f1ap_ue_context_release_complete(cu_ue_id, du_ue_id));
 
-  // STATUS: UE should be removed at this stage
+  // STATUS: UE should be removed at this stage.
+  auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.ues.size(), 0) << "UE should be removed";
+}
+
+TEST_F(cu_cp_ue_context_release_test,
+       when_cu_up_initiated_bearer_context_release_received_then_ue_context_release_request_is_sent)
+{
+  // Setup PDU Session.
+  ASSERT_TRUE(setup_ue_pdu_session());
+
+  // Inject E1AP Bearer Context Release Request and await NGAP UE Context Release Request.
+  ASSERT_TRUE(send_e1ap_bearer_context_release_request_and_await_ngap_ue_context_release_request());
+}
+
+TEST_F(cu_cp_ue_context_release_test, when_pdu_session_setup_is_not_requested_then_ue_is_released)
+{
+  // Attach UE.
+  ASSERT_TRUE(attach_ue());
+
+  // Expire request_pdu_session_timer.
+  ASSERT_FALSE(tick_until(this->get_cu_cp_cfg().ue.request_pdu_session_timeout, [&]() { return false; }, false));
+
+  // UE release is requested from AMF.
+  ASSERT_TRUE(this->wait_for_ngap_tx_pdu(ngap_pdu)) << "Failed to receive NGAP UE Context Release Request";
+  ASSERT_TRUE(test_helpers::is_valid_ue_context_release_request(ngap_pdu)) << "Invalid NGAP UE Context Release Request";
+}
+
+TEST_F(cu_cp_ue_context_release_test,
+       when_ue_release_was_requested_and_error_indication_is_received_then_ue_is_released)
+{
+  // Attach UE.
+  ASSERT_TRUE(attach_ue());
+
+  // Expire request_pdu_session_timer.
+  ASSERT_FALSE(tick_until(this->get_cu_cp_cfg().ue.request_pdu_session_timeout, [&]() { return false; }, false));
+
+  // UE release is requested from AMF.
+  ASSERT_TRUE(this->wait_for_ngap_tx_pdu(ngap_pdu)) << "Failed to receive NGAP UE Context Release Request";
+  ASSERT_TRUE(test_helpers::is_valid_ue_context_release_request(ngap_pdu)) << "Invalid NGAP UE Context Release Request";
+
+  // Receive Error Indication from AMF.
+
+  // Inject NGAP Error Indication and await F1AP UE Context Release Command.
+  ASSERT_TRUE(send_error_indication_and_await_f1ap_ue_context_release_command(
+      ngap_cause_radio_network_t::unknown_local_ue_ngap_id));
+
+  // Inject F1AP UE Context Release Complete.
+  ASSERT_TRUE(send_f1ap_ue_context_release_complete(ue_ctx->cu_ue_id.value(), ue_ctx->du_ue_id.value()));
+
+  // STATUS: UE should be removed at this stage.
   auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
   ASSERT_EQ(report.ues.size(), 0) << "UE should be removed";
 }

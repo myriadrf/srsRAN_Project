@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,7 +34,7 @@ public:
   virtual ~ue_metrics_handler() = default;
 
   /// \brief Handle new request for UE metrics.
-  virtual std::vector<metrics_report::ue_info> handle_ue_metrics_report_request() const = 0;
+  virtual std::vector<cu_cp_metrics_report::ue_info> handle_ue_metrics_report_request() const = 0;
 };
 
 } // namespace srs_cu_cp

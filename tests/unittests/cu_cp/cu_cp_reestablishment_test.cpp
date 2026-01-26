@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,12 +27,12 @@
 #include "tests/test_doubles/ngap/ngap_test_message_validators.h"
 #include "tests/test_doubles/rrc/rrc_test_message_validators.h"
 #include "tests/test_doubles/rrc/rrc_test_messages.h"
-#include "tests/unittests/cu_cp/test_helpers.h"
 #include "tests/unittests/ngap/ngap_test_messages.h"
 #include "srsran/asn1/f1ap/f1ap_pdu_contents_ue.h"
 #include "srsran/asn1/ngap/ngap_pdu_contents.h"
 #include "srsran/f1ap/f1ap_message.h"
 #include "srsran/ngap/ngap_message.h"
+#include "srsran/ran/plmn_identity.h"
 #include <gtest/gtest.h>
 
 using namespace srsran;
@@ -70,10 +70,10 @@ public:
     srsran_assert(not this->get_cu_up(cu_up_idx).try_pop_rx_pdu(e1ap_pdu),
                   "there are still E1AP messages to pop from CU-UP");
 
-    // Inject NGAP DL message (authentication request)
+    // Inject NGAP DL message (authentication request).
     get_amf().push_tx_pdu(generate_downlink_nas_transport_message(amf_ue_id, ran_ue_id));
 
-    // Wait for DL RRC message transfer (containing NAS message)
+    // Wait for DL RRC message transfer (containing NAS message).
     bool result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
     if (not result) {
       return false;
@@ -81,20 +81,20 @@ public:
     report_fatal_error_if_not(test_helpers::is_valid_dl_rrc_message_transfer(f1ap_pdu),
                               "Invalid DL RRC message transfer");
 
-    // Inject UL RRC msg transfer (authentication response)
+    // Inject UL RRC msg transfer (authentication response).
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ul_rrc_message_transfer(
         du_ue_id,
         cu_ue_id,
         srb_id_t::srb1,
         make_byte_buffer("00013a0abf002b96882dac46355c4f34464ddaf7b43fde37ae8000000000").value()));
 
-    // Wait for UL NAS Message (containing authentication response)
+    // Wait for UL NAS Message (containing authentication response).
     result = this->wait_for_ngap_tx_pdu(ngap_pdu);
     if (not result) {
       return false;
     }
 
-    // Inject DL NAS Transport message (ue security mode command)
+    // Inject DL NAS Transport message (ue security mode command).
     get_amf().push_tx_pdu(generate_downlink_nas_transport_message(amf_ue_id, ran_ue_id));
 
     result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
@@ -104,7 +104,7 @@ public:
     report_fatal_error_if_not(test_helpers::is_valid_dl_rrc_message_transfer(f1ap_pdu),
                               "Invalid DL RRC message transfer");
 
-    // Inject UL RRC msg transfer (ue security mode complete)
+    // Inject UL RRC msg transfer (ue security mode complete).
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ul_rrc_message_transfer(
         du_ue_id,
         cu_ue_id,
@@ -114,13 +114,13 @@ public:
             "c080080170170700c0080a980808000000000")
             .value()));
 
-    // Wait for UL NAS Message (containing ue security mode complete)
+    // Wait for UL NAS Message (containing ue security mode complete).
     result = this->wait_for_ngap_tx_pdu(ngap_pdu);
     if (not result) {
       return false;
     }
 
-    // Inject NGAP Initial Context Setup Request
+    // Inject NGAP Initial Context Setup Request.
     get_amf().push_tx_pdu(generate_valid_initial_context_setup_request_message(amf_ue_id, ran_ue_id));
 
     // Wait for F1AP UE Context Setup Request (containing Security Mode Command).
@@ -135,14 +135,14 @@ public:
           "Invalid Security Mode command");
     }
 
-    // Inject UE Context Setup Response
+    // Inject UE Context Setup Response.
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ue_context_setup_response(cu_ue_id, du_ue_id));
 
-    // Inject RRC Security Mode Complete
+    // Inject RRC Security Mode Complete.
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ul_rrc_message_transfer(
         du_ue_id, cu_ue_id, srb_id_t::srb1, make_byte_buffer("00032a00fd5ec7ff").value()));
 
-    // Wait for UE Capability Enquiry
+    // Wait for UE Capability Enquiry.
     result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
     report_fatal_error_if_not(result, "Failed to receive DL RRC Message, containing RRC UE Capability Enquiry");
     report_fatal_error_if_not(test_helpers::is_valid_dl_rrc_message_transfer(f1ap_pdu),
@@ -154,7 +154,7 @@ public:
           "Invalid UE Capability Enquiry");
     }
 
-    // Inject UL RRC Message Transfer (containing UE Capability Info)
+    // Inject UL RRC Message Transfer (containing UE Capability Info).
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ul_rrc_message_transfer(
         du_ue_id,
         cu_ue_id,
@@ -165,7 +165,7 @@ public:
             "03c000000100200409028098a8660c")
             .value()));
 
-    // Wait for DL RRC Message Transfer (containing NAS Registration Accept)
+    // Wait for DL RRC Message Transfer (containing NAS Registration Accept).
     result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
     report_fatal_error_if_not(result, "Failed to receive DL RRC Message, containing NAS Registration Accept");
     report_fatal_error_if_not(test_helpers::is_valid_dl_rrc_message_transfer(f1ap_pdu),
@@ -201,7 +201,7 @@ public:
     result = this->wait_for_ngap_tx_pdu(ngap_pdu);
     report_fatal_error_if_not(result, "Failed to receive Registration Complete");
 
-    // Inject Configuration Update Command
+    // Inject Configuration Update Command.
     get_amf().push_tx_pdu(generate_downlink_nas_transport_message(
         amf_ue_id,
         ran_ue_id,
@@ -215,7 +215,7 @@ public:
     drb_id_t         drb_id = drb_id_t::drb1;
     qos_flow_id_t    qfi    = qos_flow_id_t::min;
 
-    // Inject PDU Session Resource Setup Request and wait for Bearer Context Setup Request
+    // Inject PDU Session Resource Setup Request and wait for Bearer Context Setup Request.
     get_amf().push_tx_pdu(generate_valid_pdu_session_resource_setup_request_message(
         amf_ue_id, ran_ue_id, {{psi, {pdu_session_type_t::ipv4, {{qfi, 9}}}}}));
     result = this->wait_for_e1ap_tx_pdu(cu_up_idx, e1ap_pdu);
@@ -225,7 +225,7 @@ public:
 
     gnb_cu_cp_ue_e1ap_id_t cu_cp_e1ap_id = gnb_cu_cp_ue_e1ap_id_t::min;
 
-    // Inject Bearer Context Setup Response and wait for UE Context Modification Request
+    // Inject Bearer Context Setup Response and wait for UE Context Modification Request.
     get_cu_up(cu_up_idx).push_tx_pdu(generate_bearer_context_setup_response(
         cu_cp_e1ap_id, cu_up_e1ap_id, {{psi, drb_test_params{drb_id_t::drb1, qfi}}}));
     result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
@@ -233,14 +233,14 @@ public:
     report_fatal_error_if_not(test_helpers::is_valid_ue_context_modification_request(f1ap_pdu),
                               "Invalid UE Context Modification Request");
 
-    // Inject UE Context Modification Response and wait for Bearer Context Modification Request
+    // Inject UE Context Modification Response and wait for Bearer Context Modification Request.
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ue_context_modification_response(du_ue_id, cu_ue_id, crnti));
     result = this->wait_for_e1ap_tx_pdu(cu_up_idx, e1ap_pdu);
     report_fatal_error_if_not(result, "Failed to receive Bearer Context Modification Request");
     report_fatal_error_if_not(test_helpers::is_valid_bearer_context_modification_request(e1ap_pdu),
                               "Invalid Bearer Context Modification Request");
 
-    // Inject E1AP Bearer Context Modification Response and wait for DL RRC Message (containing RRC Reconfiguration)
+    // Inject E1AP Bearer Context Modification Response and wait for DL RRC Message (containing RRC Reconfiguration).
     get_cu_up(cu_up_idx).push_tx_pdu(
         generate_bearer_context_modification_response(cu_cp_e1ap_id, cu_up_e1ap_id, {}, {{psi, drb_id}}, {}));
     result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
@@ -254,7 +254,7 @@ public:
                                 "Invalid RRC Reconfiguration");
     }
 
-    // Inject UL RRC Message (containing RRC Reconfiguration Complete) and wait for PDU Session Resource Setup Response
+    // Inject UL RRC Message (containing RRC Reconfiguration Complete) and wait for PDU Session Resource Setup Response.
     get_du(du_idx).push_ul_pdu(test_helpers::generate_ul_rrc_message_transfer(
         du_ue_id, cu_ue_id, srb_id_t::srb1, make_byte_buffer("00070e00cc6fcda5").value()));
     result = this->wait_for_ngap_tx_pdu(ngap_pdu);
@@ -275,15 +275,15 @@ public:
                                                               pci_t               old_pci_)
   {
     // Generate RRC Reestablishment Request.
-    byte_buffer rrc_container =
-        pack_ul_ccch_msg(create_rrc_reestablishment_request(old_rnti_, old_pci_, "1111010001000010"));
+    byte_buffer rrc_container = test_helpers::pack_ul_ccch_msg(
+        test_helpers::create_rrc_reestablishment_request(old_rnti_, old_pci_, "1111010001000010"));
 
     // Send Initial UL RRC Message to CU-CP.
-    f1ap_message f1ap_init_ul_rrc_msg =
-        test_helpers::generate_init_ul_rrc_message_transfer(new_du_ue_id, new_rnti, {}, std::move(rrc_container));
+    f1ap_message f1ap_init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(
+        new_du_ue_id, new_rnti, plmn_identity::test_value(), {}, std::move(rrc_container));
     get_du(du_idx).push_ul_pdu(f1ap_init_ul_rrc_msg);
 
-    // Wait for DL RRC message transfer
+    // Wait for DL RRC message transfer.
     f1ap_message f1ap_pdu;
     bool         result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
     report_fatal_error_if_not(result, "F1AP DL RRC Message Transfer with Msg4 not sent to DU");
@@ -305,12 +305,12 @@ public:
     f1ap_message f1ap_pdu;
     srsran_assert(not this->get_du(du_idx).try_pop_dl_pdu(f1ap_pdu), "there are still F1AP DL messages to pop from DU");
 
-    // Inject Initial UL RRC message
+    // Inject Initial UL RRC message.
     f1ap_message init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(du_ue_id, crnti);
     test_logger.info("c-rnti={} du_ue_id={}: Injecting Initial UL RRC message", crnti, fmt::underlying(du_ue_id));
     get_du(du_idx).push_ul_pdu(init_ul_rrc_msg);
 
-    // Wait for DL RRC message transfer (containing RRC Setup)
+    // Wait for DL RRC message transfer (containing RRC Setup).
     bool result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu, std::chrono::milliseconds{1000});
     if (not result) {
       return std::nullopt;
@@ -329,7 +329,7 @@ public:
   [[nodiscard]] bool ue_sends_rrc_setup_complete(gnb_du_ue_f1ap_id_t du_ue_id, gnb_cu_ue_f1ap_id_t cu_ue_id)
   {
     // Generate RRC Setup Complete.
-    byte_buffer pdu = pack_ul_dcch_msg(create_rrc_setup_complete());
+    byte_buffer pdu = test_helpers::pack_ul_dcch_msg(test_helpers::create_rrc_setup_complete());
 
     // Prepend PDCP header and append MAC.
     if (!pdu.prepend(std::array<uint8_t, 2>{0x00U, 0x00U})) {
@@ -349,7 +349,7 @@ public:
   [[nodiscard]] bool ue_sends_rrc_reest_complete(gnb_du_ue_f1ap_id_t du_ue_id, gnb_cu_ue_f1ap_id_t cu_ue_id)
   {
     // Generate RRC Reestablishment Complete.
-    byte_buffer pdu = pack_ul_dcch_msg(create_rrc_reestablishment_complete());
+    byte_buffer pdu = test_helpers::pack_ul_dcch_msg(test_helpers::create_rrc_reestablishment_complete());
 
     // Prepend PDCP header and append MAC.
     if (!pdu.prepend(std::array<uint8_t, 2>{0x00U, 0x00U})) {
@@ -476,6 +476,74 @@ TEST_F(cu_cp_reestablishment_test,
   ASSERT_EQ(report.ues.size(), 2) << "Old UE should not be removed yet";
 }
 
+TEST_F(
+    cu_cp_reestablishment_test,
+    du_sends_initial_ul_rrc_message_without_du_to_cu_container_then_release_for_old_ue_is_requested_and_new_ue_is_rejected)
+{
+  // Attach UE 0x4601.
+  EXPECT_TRUE(attach_ue(du_idx, cu_up_idx, old_du_ue_id, old_crnti, amf_ue_id, cu_up_e1ap_id));
+
+  // Generate RRC Reestablishment Request.
+  byte_buffer rrc_container = test_helpers::pack_ul_ccch_msg(
+      test_helpers::create_rrc_reestablishment_request(old_crnti, old_pci, "1111010001000010"));
+
+  // Send Initial UL RRC Message to CU-CP.
+  gnb_du_ue_f1ap_id_t new_du_ue_id         = int_to_gnb_du_ue_f1ap_id(1);
+  rnti_t              new_crnti            = to_rnti(0x4602);
+  f1ap_message        f1ap_init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(
+      new_du_ue_id, new_crnti, plmn_identity::test_value(), {}, std::move(rrc_container));
+  f1ap_init_ul_rrc_msg.pdu.init_msg().value.init_ul_rrc_msg_transfer()->du_to_cu_rrc_container_present = false;
+  f1ap_init_ul_rrc_msg.pdu.init_msg().value.init_ul_rrc_msg_transfer()->du_to_cu_rrc_container.clear();
+  get_du(du_idx).push_ul_pdu(f1ap_init_ul_rrc_msg);
+
+  // Check metrics for RRC connection re-establishment attempt.
+  auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.dus[0].rrc_metrics.attempted_rrc_connection_reestablishments, 1);
+
+  // STATUS: Given that the old UE has an AMF-UE-ID, the CU-CP should request its release.
+  ngap_message ngap_pdu;
+  ASSERT_TRUE(this->wait_for_ngap_tx_pdu(ngap_pdu)) << "NGAP UEContextReleaseRequest should have been sent for old UE";
+  ASSERT_TRUE(test_helpers::is_valid_ue_context_release_request(ngap_pdu));
+  ASSERT_EQ(ngap_pdu.pdu.init_msg().value.ue_context_release_request()->amf_ue_ngap_id, 0);
+
+  // STATUS: old UE should not be removed at this stage (Still waiting for AMF UE CONTEXT RELEASE COMMAND).
+  report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.ues.size(), 2) << "Old UE should not be removed yet";
+
+  // TEST: CU-CP sends a UE Context Release command over SRB0.
+  f1ap_message f1ap_pdu;
+  ASSERT_TRUE(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu));
+  ASSERT_EQ(f1ap_pdu.pdu.type(), asn1::f1ap::f1ap_pdu_c::types_opts::options::init_msg);
+  ASSERT_EQ(f1ap_pdu.pdu.init_msg().value.type().value,
+            asn1::f1ap::f1ap_elem_procs_o::init_msg_c::types_opts::ue_context_release_cmd);
+  const auto& ue_rel = f1ap_pdu.pdu.init_msg().value.ue_context_release_cmd();
+  ASSERT_TRUE(ue_rel->rrc_container_present);
+  // Check that the SRB ID is set if the RRC Container is included.
+  ASSERT_TRUE(ue_rel->srb_id_present);
+  ASSERT_EQ(ue_rel->srb_id, 0);
+
+  // TEST: UE Context Release command contains an RRC Reject.
+  asn1::rrc_nr::dl_ccch_msg_s ccch;
+  {
+    asn1::cbit_ref bref{f1ap_pdu.pdu.init_msg().value.ue_context_release_cmd()->rrc_container};
+    ASSERT_EQ(ccch.unpack(bref), asn1::SRSASN_SUCCESS);
+  }
+  ASSERT_EQ(ccch.msg.c1().type().value, asn1::rrc_nr::dl_ccch_msg_type_c::c1_c_::types_opts::rrc_reject);
+
+  // TEST: New UE is not destroyed in CU-CP until UE Context Release Complete is received.
+  report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.ues.size(), 2);
+
+  // EVENT: DU sends F1AP UE Context Release Complete.
+  auto rel_complete = test_helpers::generate_ue_context_release_complete(
+      int_to_gnb_cu_ue_f1ap_id(ue_rel->gnb_cu_ue_f1ap_id), int_to_gnb_du_ue_f1ap_id(ue_rel->gnb_du_ue_f1ap_id));
+  get_du(du_idx).push_ul_pdu(rel_complete);
+
+  // TEST: New UE context removed from CU-CP.
+  report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.ues.size(), 1);
+}
+
 TEST_F(cu_cp_reestablishment_test,
        when_old_ue_has_drb_then_reestablishment_succeeds_and_no_ngap_release_request_is_sent_for_old_ue)
 {
@@ -496,6 +564,38 @@ TEST_F(cu_cp_reestablishment_test,
   ASSERT_EQ(report.dus[0].rrc_metrics.successful_rrc_connection_reestablishments_with_ue_context, 1);
   // Old UE should not be removed at this stage.
   ASSERT_EQ(report.ues.size(), 1) << "Old UE should not be removed yet";
+}
+
+TEST_F(cu_cp_reestablishment_test, when_reestablishment_succeeds_then_amf_is_connected)
+{
+  // Attach UE 0x4601.
+  EXPECT_TRUE(attach_ue(du_idx, cu_up_idx, old_du_ue_id, old_crnti, amf_ue_id, cu_up_e1ap_id));
+
+  // Send RRC Reestablishment Request and DU receives RRC Reestablishment.
+  gnb_du_ue_f1ap_id_t new_du_ue_id = int_to_gnb_du_ue_f1ap_id(1);
+  rnti_t              new_crnti    = to_rnti(0x4602);
+  ASSERT_TRUE(reestablish_ue(du_idx, cu_up_idx, new_du_ue_id, new_crnti, old_crnti, old_pci))
+      << "Reestablishment failed";
+
+  // Check metrics for successful RRC connection re-establishment.
+  auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.dus[0].rrc_metrics.attempted_rrc_connection_reestablishments, 1);
+  ASSERT_EQ(report.dus[0].rrc_metrics.successful_rrc_connection_establishments.get_count(establishment_cause_t::mo_sig),
+            1);
+  ASSERT_EQ(report.dus[0].rrc_metrics.successful_rrc_connection_reestablishments_with_ue_context, 1);
+  // Old UE should not be removed at this stage.
+  ASSERT_EQ(report.ues.size(), 1) << "Old UE should not be removed yet";
+
+  // Check that the UE is connected to the AMF by injecting a deregistration request and make sure its forwarded.
+  f1ap_message ul_rrc_msg_transfer = test_helpers::generate_ul_rrc_message_transfer(
+      new_du_ue_id,
+      this->find_ue_context(du_idx, new_du_ue_id)->cu_ue_id.value(),
+      srb_id_t::srb1,
+      make_byte_buffer("00023a0c3f016f19764701bf0022808005f9007888010020600003068014367cc5").value());
+  get_du(du_idx).push_ul_pdu(ul_rrc_msg_transfer);
+  ngap_message ngap_pdu;
+  ASSERT_TRUE(this->wait_for_ngap_tx_pdu(ngap_pdu));
+  ASSERT_TRUE(test_helpers::is_valid_ul_nas_transport_message(ngap_pdu));
 }
 
 TEST_F(cu_cp_reestablishment_test, when_old_ue_is_busy_with_a_procedure_then_reestablishment_fallback_still_completes)
@@ -526,7 +626,8 @@ TEST_F(cu_cp_reestablishment_test, when_old_ue_is_busy_with_a_procedure_then_ree
   ASSERT_TRUE(finish_ue_attach(new_du_ue_id, cu_ue_id, new_crnti, ran_ue_id_t::min));
 
   // RRC Setup timeout for old UE.
-  std::chrono::milliseconds timeout{this->get_cu_cp_cfg().rrc.rrc_procedure_timeout_ms};
+  std::chrono::milliseconds timeout =
+      rrc_test_timer_values.t300 + this->get_cu_cp_cfg().rrc.rrc_procedure_guard_time_ms;
   for (unsigned i = 0; i != timeout.count(); ++i) {
     this->tick();
   }
@@ -584,4 +685,56 @@ TEST_F(cu_cp_reestablishment_test,
   auto crnti3    = to_rnti(0x4603);
   ASSERT_FALSE(reestablish_ue(du_idx, cu_up_idx, du_ue_id3, crnti3, old_crnti, old_pci))
       << "Fallback should have occurred";
+}
+
+TEST_F(cu_cp_reestablishment_test,
+       when_reestablishment_is_received_procedures_of_old_ue_are_canceled_and_reestablishment_succeeds)
+{
+  // Attach UE 0x4601.
+  EXPECT_TRUE(attach_ue(du_idx, cu_up_idx, old_du_ue_id, old_crnti, amf_ue_id, cu_up_e1ap_id));
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  // Run PDU Session Resource Modification but the RRC Reconfiguration is never received.
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  // Inject PDU Session Resource Modify Request and wait for Bearer Context Modification Request.
+  get_amf().push_tx_pdu(generate_valid_pdu_session_resource_modify_request_message(
+      amf_ue_id, ran_ue_id_t::min, pdu_session_id_t::min, {uint_to_qos_flow_id(2)}, {}));
+  e1ap_message e1ap_pdu;
+  ASSERT_TRUE(this->wait_for_e1ap_tx_pdu(cu_up_idx, e1ap_pdu))
+      << "Failed to receive Bearer Context Modification Request";
+  ASSERT_TRUE(test_helpers::is_valid_bearer_context_modification_request(e1ap_pdu))
+      << "Invalid Bearer Context Modification Request";
+
+  // Inject Bearer Context Modification Response and await UE Context Modification Request.
+  ASSERT_TRUE(send_bearer_context_modification_response_and_await_ue_context_modification_request(
+      du_idx, cu_up_idx, old_du_ue_id, pdu_session_id_t::min, drb_id_t::drb1, uint_to_qos_flow_id(2)));
+
+  // Inject UE Context Modification Response and await Bearer Context Modification Request.
+  ASSERT_TRUE(send_ue_context_modification_response_and_await_bearer_context_modification_request(
+      du_idx, cu_up_idx, old_du_ue_id, old_crnti));
+
+  // Inject E1AP Bearer Context Modification Response and wait for DL RRC Message (containing RRC Reconfiguration).
+  get_cu_up(cu_up_idx).push_tx_pdu(generate_bearer_context_modification_response(
+      gnb_cu_cp_ue_e1ap_id_t::min, cu_up_e1ap_id, {}, {{pdu_session_id_t::min, drb_id_t::drb1}}, {}));
+  f1ap_message f1ap_pdu;
+  ASSERT_TRUE(this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu))
+      << "Failed to receive F1AP DL RRC Message (containing RRC Reconfiguration)";
+  ASSERT_TRUE(test_helpers::is_valid_dl_rrc_message_transfer(f1ap_pdu)) << "Invalid DL RRC Message Transfer";
+
+  // RRC Reconfiguration is not sent to the DU so the old UE is stuck.
+
+  // Run Reestablishment. This should cancel the procedures of the old UE and succeed.
+  auto du_ue_id2 = int_to_gnb_du_ue_f1ap_id(1);
+  auto crnti2    = to_rnti(0x4602);
+  ASSERT_TRUE(reestablish_ue(du_idx, cu_up_idx, du_ue_id2, crnti2, old_crnti, old_pci)) << "Reestablishment failsed";
+
+  // Check metrics for successful RRC connection re-establishment.
+  auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
+  ASSERT_EQ(report.dus[0].rrc_metrics.attempted_rrc_connection_reestablishments, 1);
+  ASSERT_EQ(report.dus[0].rrc_metrics.successful_rrc_connection_establishments.get_count(establishment_cause_t::mo_sig),
+            1);
+  ASSERT_EQ(report.dus[0].rrc_metrics.successful_rrc_connection_reestablishments_with_ue_context, 1);
+  // Old UE should not be removed at this stage.
+  ASSERT_EQ(report.ues.size(), 1) << "Old UE should not be removed yet";
 }

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,20 +25,11 @@
 #include <array>
 #include <cstddef>
 
-/**
- *
- * @file circular_array.h
- *
- * @brief Helper class to safely access elements of a std::array
- *
- * Protects from out-of-bounds access by applying modulo of it's length
- * when using the [] operator for element access.
- *
- * This is useful for circular data structures, like TTIs or SNs.
- */
-
 namespace srsran {
 
+/// \brief Helper class to safely access elements of a std::array.
+///
+/// Protects from out-of-bounds access by applying modulo of its length when using the [] operator for element access.
 template <typename T, std::size_t N>
 class circular_array
 {
@@ -47,6 +38,9 @@ class circular_array
 public:
   using iterator       = T*;
   using const_iterator = const T*;
+
+  circular_array() = default;
+  circular_array(const T& value) { data.fill(value); }
 
   T&       operator[](std::size_t pos) { return data[pos % N]; }
   const T& operator[](std::size_t pos) const { return data[pos % N]; }

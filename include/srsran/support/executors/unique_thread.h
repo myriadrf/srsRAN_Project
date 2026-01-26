@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -248,6 +248,9 @@ public:
   /// Print to console the current thread priority.
   void print_priority();
 
+  /// Returns maximum number of threads supported by the application.
+  static unsigned get_max_nof_supported_threads();
+
   /// Add a new observer of created/destroyed threads.
   static void add_observer(std::unique_ptr<observer> observer);
 
@@ -266,5 +269,8 @@ private:
 
 /// Print caller thread priority.
 void print_this_thread_priority();
+
+/// Returns internal index associated with the calling thread.
+unsigned get_thread_index();
 
 } // namespace srsran

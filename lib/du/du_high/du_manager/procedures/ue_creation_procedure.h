@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,6 +26,7 @@
 #include "../du_ue/du_ue_manager_repository.h"
 #include "procedure_logger.h"
 #include "srsran/mac/mac.h"
+#include "srsran/mac/mac_ue_configurator.h"
 #include "srsran/support/async/async_task.h"
 
 namespace srsran {

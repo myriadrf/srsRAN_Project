@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,55 +21,16 @@
  */
 
 #include "realtime_timing_worker.h"
+#include "../support/logger_utils.h"
+#include "../support/metrics_helpers.h"
 #include "srsran/instrumentation/traces/ofh_traces.h"
 #include "srsran/ofh/timing/ofh_ota_symbol_boundary_notifier.h"
 #include "srsran/support/rtsan.h"
-#include <future>
+#include "srsran/support/synchronization/sync_event.h"
 #include <thread>
 
 using namespace srsran;
 using namespace ofh;
-
-/// Difference between Unix seconds to GPS seconds.
-/// GPS epoch: 1980.1.6 00:00:00 (UTC); Unix time epoch: 1970:1.1 00:00:00 UTC
-/// Last leap second added in 31st Dec 2016 by IERS.
-/// 1970:1.1 - 1980.1.6: 3657 days
-/// 3657*24*3600=315 964 800 seconds (Unix seconds value at 1980.1.6 00:00:00 (UTC))
-/// There are 18 leap seconds inserted after 1980.1.6 00:00:00 (UTC), which means GPS is 18 seconds larger.
-static constexpr uint64_t UNIX_TO_GPS_SECONDS_OFFSET = 315964800ULL - 18ULL;
-
-/// Offset for converting from UTC to GPS time including Alpha and Beta parameters.
-static std::chrono::nanoseconds gps_offset;
-
-namespace {
-
-/// A GPS clock implementation.
-struct gps_clock {
-  using duration   = std::chrono::nanoseconds;
-  using rep        = duration::rep;
-  using period     = duration::period;
-  using time_point = std::chrono::time_point<gps_clock>;
-  // static constexpr bool is_steady = false;
-
-  static time_point now()
-  {
-    ::timespec ts;
-    ::clock_gettime(CLOCK_REALTIME, &ts);
-
-    time_point now(std::chrono::seconds(ts.tv_sec) + std::chrono::nanoseconds(ts.tv_nsec));
-
-    return now - gps_offset;
-  }
-};
-
-} // namespace
-
-/// Calculates the fractional part inside a second from the given time point.
-static std::chrono::nanoseconds calculate_ns_fraction_from(gps_clock::time_point tp)
-{
-  auto tp_sec = std::chrono::time_point_cast<std::chrono::seconds>(tp);
-  return tp - tp_sec;
-}
 
 realtime_timing_worker::realtime_timing_worker(srslog::basic_logger&      logger_,
                                                task_executor&             executor_,
@@ -80,7 +41,8 @@ realtime_timing_worker::realtime_timing_worker(srslog::basic_logger&      logger
   nof_symbols_per_slot(get_nsymb_per_slot(cfg.cp)),
   nof_symbols_per_sec(nof_symbols_per_slot * get_nof_slots_per_subframe(scs) * NOF_SUBFRAMES_PER_FRAME * 100),
   symbol_duration(1e9 / nof_symbols_per_sec),
-  sleep_time(std::chrono::duration_cast<std::chrono::nanoseconds>(symbol_duration) / 15)
+  sleep_time(std::chrono::duration_cast<std::chrono::nanoseconds>(symbol_duration) / 15),
+  enable_log_warnings_for_lates(cfg.enable_log_warnings_for_lates)
 {
   // The GPS time epoch starts on 1980.1.6 so make sure that the system time is set after this date.
   // For simplicity reasons, only allow dates after 1981.
@@ -92,8 +54,9 @@ realtime_timing_worker::realtime_timing_worker(srslog::basic_logger&      logger
                       "The Open FrontHaul standard uses GPS time for synchronization. Make sure that system time is "
                       "set after the year 1981 since the GPS time epoch starts on 1980.1.6");
 
-  gps_offset = std::chrono::nanoseconds(static_cast<unsigned>(std::round(cfg.gps_Alpha / 1.2288))) +
-               std::chrono::milliseconds(cfg.gps_Beta * 10) + std::chrono::seconds(UNIX_TO_GPS_SECONDS_OFFSET);
+  gps_clock::gps_offset = std::chrono::nanoseconds(static_cast<unsigned>(std::round(cfg.gps_Alpha / 1.2288))) +
+                          std::chrono::milliseconds(cfg.gps_Beta * 10) +
+                          std::chrono::seconds(gps_clock::UNIX_TO_GPS_SECONDS_OFFSET);
 }
 
 /// Returns the symbol index inside a second.
@@ -108,22 +71,26 @@ void realtime_timing_worker::start()
 {
   logger.info("Starting the realtime timing worker");
 
-  std::promise<void> p;
-  std::future<void>  fut = p.get_future();
+  stop_manager.reset();
 
-  if (!executor.defer([this, &p]() {
+  sync_event wait_event;
+  if (!executor.defer([this, start_token = wait_event.get_token(), stop_token = stop_manager.get_token()]() mutable {
         // Signal start() caller thread that the operation is complete.
-        p.set_value();
+        start_token.reset();
 
-        auto ns_fraction    = calculate_ns_fraction_from(gps_clock::now());
-        previous_symb_index = get_symbol_index(ns_fraction, symbol_duration);
-        timing_loop();
+        auto now                  = gps_clock::now();
+        auto ns_fraction          = calculate_ns_fraction_from(now);
+        last_wakeup_tp            = std::chrono::steady_clock::now();
+        previous_symb_index       = get_symbol_index(ns_fraction, symbol_duration);
+        previous_time_since_epoch = now.time_since_epoch().count();
+
+        timing_loop(stop_token);
       })) {
     report_fatal_error("Unable to start the realtime timing worker");
   }
 
   // Block waiting for timing executor to start.
-  fut.wait();
+  wait_event.wait();
 
   logger.info("Started the realtime timing worker");
 }
@@ -131,28 +98,19 @@ void realtime_timing_worker::start()
 void realtime_timing_worker::stop()
 {
   logger.info("Requesting stop of the realtime timing worker");
-  status.store(worker_status::stop_requested, std::memory_order_relaxed);
 
-  // Wait for the timing thread to stop - this line also introduces a happens-before relationship with the clear on
-  // ota_notifier.
-  while (status.load(std::memory_order_acquire) != worker_status::stopped) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-
+  stop_manager.stop();
   // Clear the subscribed notifiers.
   ota_notifiers.clear();
 
   logger.info("Stopped the realtime timing worker");
 }
 
-void realtime_timing_worker::timing_loop() SRSRAN_RTSAN_NONBLOCKING
+void realtime_timing_worker::timing_loop(const stop_event_token& token) noexcept SRSRAN_RTSAN_NONBLOCKING
 {
-  while (SRSRAN_LIKELY(status.load(std::memory_order_relaxed) == worker_status::running)) {
+  while (SRSRAN_LIKELY(!token.is_stop_requested())) {
     poll();
   }
-
-  // Acquire/Release semantics - ota_notifiers is cleared and destructed by a different thread.
-  status.store(worker_status::stopped, std::memory_order_release);
 }
 
 /// Returns the difference between cur and prev taking into account a potential wrap around of the values.
@@ -177,12 +135,29 @@ calculate_slot_point(subcarrier_spacing scs, uint64_t gps_seconds, uint32_t frac
 
 void realtime_timing_worker::poll()
 {
+  auto sleeping_time = calculate_sleeping_time();
+
   auto now         = gps_clock::now();
   auto ns_fraction = calculate_ns_fraction_from(now);
 
-  unsigned current_symbol_index = get_symbol_index(ns_fraction, symbol_duration);
-  unsigned delta                = circular_distance(current_symbol_index, previous_symb_index, nof_symbols_per_sec);
-  previous_symb_index           = current_symbol_index;
+  auto     current_time_since_epoch = now.time_since_epoch().count();
+  unsigned current_symbol_index     = get_symbol_index(ns_fraction, symbol_duration);
+  unsigned delta                    = circular_distance(current_symbol_index, previous_symb_index, nof_symbols_per_sec);
+  auto     delta_ns                 = current_time_since_epoch - previous_time_since_epoch;
+
+  // The clock may jump backwards as it is continuously being adjusted by PTP, in this case, do not update the symbol
+  // index.
+  if (delta_ns < 0) {
+    logger.info("Real-time timing worker detected PTP-synchronized time going backward by {}ns", -delta_ns);
+
+    SRSRAN_RTSAN_SCOPED_DISABLER(d);
+    std::this_thread::sleep_for(sleep_time);
+    return;
+  }
+  // The values are updated after the condition above to avoid notifying again the symbols that have already been
+  // notified (this is possible in an extreme case when the time went backward by more than 1 symbol duration).
+  previous_time_since_epoch = current_time_since_epoch;
+  previous_symb_index       = current_symbol_index;
 
   // Are we still in the same symbol as before?
   if (delta == 0) {
@@ -193,12 +168,30 @@ void realtime_timing_worker::poll()
 
   // Check if we have missed more than one symbol.
   if (SRSRAN_UNLIKELY(delta > 1)) {
-    logger.info("Real-time timing worker woke up late, skipped '{}' symbols", delta);
+    logger.info("Real-time timing worker woke up late, skipped '{}' symbols, current symbol is '{}'",
+                delta,
+                current_symbol_index % nof_symbols_per_slot);
+    metrics_collector.update_skipped_symbols(delta);
   }
+  if (SRSRAN_UNLIKELY(delta >= 3)) {
+    log_conditional_warning(
+        logger,
+        enable_log_warnings_for_lates,
+        "Real-time timing worker woke up late, skipped '{}' symbols. Current symbol is '{}'. Equivalent realtime clock "
+        "sleep time has been '{}us', wall clock sleep time has been '{}us'",
+        delta,
+        current_symbol_index % nof_symbols_per_slot,
+        std::chrono::duration_cast<std::chrono::microseconds>(delta * symbol_duration).count(),
+        sleeping_time.count());
+  }
+
   if (SRSRAN_UNLIKELY(delta >= nof_symbols_per_slot)) {
-    logger.warning("Real-time timing worker woke up late, sleep time has been '{}us', or equivalently, '{}' symbols",
-                   std::chrono::duration_cast<std::chrono::microseconds>(delta * symbol_duration).count(),
-                   delta);
+    log_conditional_warning(
+        logger,
+        enable_log_warnings_for_lates,
+        "Real-time timing worker woke up late, sleep time has been '{}us', or equivalently, '{}' symbols",
+        std::chrono::duration_cast<std::chrono::microseconds>(delta * symbol_duration).count(),
+        delta);
   }
 
   slot_symbol_point symbol_point(
@@ -220,9 +213,11 @@ void realtime_timing_worker::notify_slot_symbol_point(const slot_symbol_point_co
 {
   ofh_tracer << instant_trace_event("ofh_timing_notify_symbol", instant_trace_event::cpu_scope::global);
 
+  time_execution_measurer meas(true);
   for (auto* notifier : ota_notifiers) {
     notifier->on_new_symbol(slot_context);
   }
+  metrics_collector.update_symbol_notification_latency(meas.stop());
 }
 
 void realtime_timing_worker::subscribe(span<ota_symbol_boundary_notifier*> notifiers)

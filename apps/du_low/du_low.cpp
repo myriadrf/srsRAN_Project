@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,11 +21,11 @@
  */
 
 #include "apps/helpers/metrics/metrics_helpers.h"
+#include "apps/services/app_execution_metrics/executor_metrics_manager.h"
 #include "apps/services/app_resource_usage/app_resource_usage.h"
 #include "apps/services/application_message_banners.h"
 #include "apps/services/application_tracer.h"
 #include "apps/services/cmdline/cmdline_command_dispatcher.h"
-#include "apps/services/core_isolation_manager.h"
 #include "apps/services/metrics/metrics_manager.h"
 #include "apps/services/metrics/metrics_notifier_proxy.h"
 #include "apps/services/remote_control/remote_server.h"
@@ -37,13 +37,15 @@
 #include "du_low_appconfig_translators.h"
 #include "du_low_appconfig_validators.h"
 #include "du_low_appconfig_yaml_writer.h"
+#include "srsran/adt/scope_exit.h"
 #include "srsran/support/backtrace.h"
 #include "srsran/support/config_parsers.h"
 #include "srsran/support/cpu_features.h"
 #include "srsran/support/io/io_broker_factory.h"
+#include "srsran/support/io/io_timer_source.h"
 #include "srsran/support/signal_handling.h"
 #include "srsran/support/signal_observer.h"
-#include "srsran/support/tracing/event_tracing.h"
+#include "srsran/support/sysinfo.h"
 #include "srsran/support/versioning/build_info.h"
 #include "srsran/support/versioning/version.h"
 #include <atomic>
@@ -127,6 +129,9 @@ static void register_app_logs(const du_low_appconfig& du_cfg, application_unit& 
   // Metrics log channels.
   const app_helpers::metrics_config& metrics_cfg = du_cfg.metrics_cfg.rusage_config.metrics_consumers_cfg;
   app_helpers::initialize_metrics_log_channels(metrics_cfg, log_cfg.hex_max_size);
+  if (metrics_cfg.enable_json_metrics) {
+    app_services::initialize_json_channel();
+  }
 
   // Register units logs.
   du_low_app_unit.on_loggers_registration();
@@ -175,16 +180,19 @@ int main(int argc, char** argv)
     return 0;
   }
 
+  if (du_low_cfg.metrics_cfg.rusage_config.metrics_consumers_cfg.enable_json_metrics &&
+      !du_low_cfg.remote_control_config.enabled) {
+    fmt::println("NOTE: No JSON metrics will be generated as the remote server is disabled");
+  }
+
   // Check the modified configuration.
-  if (!validate_du_low_appconfig(du_low_cfg) ||
-      !o_du_app_unit->on_configuration_validation((du_low_cfg.expert_execution_cfg.affinities.isolated_cpus)
-                                                      ? du_low_cfg.expert_execution_cfg.affinities.isolated_cpus.value()
-                                                      : os_sched_affinity_bitmask::available_cpus())) {
+  if (!validate_du_low_appconfig(du_low_cfg) || !o_du_app_unit->on_configuration_validation()) {
     report_error("Invalid configuration detected.\n");
   }
 
   // Set up logging.
   initialize_log(du_low_cfg.log_cfg.filename);
+  auto log_flusher = make_scope_exit([]() { srslog::flush(); });
   register_app_logs(du_low_cfg, *o_du_app_unit);
 
   // Check the metrics and metrics consumers.
@@ -208,15 +216,11 @@ int main(int argc, char** argv)
   }
 
   app_services::application_tracer app_tracer;
-  if (not du_low_cfg.log_cfg.tracing_filename.empty()) {
-    app_tracer.enable_tracer(du_low_cfg.log_cfg.tracing_filename, app_logger);
-  }
-
-  app_services::core_isolation_manager core_isolation_mngr;
-  if (du_low_cfg.expert_execution_cfg.affinities.isolated_cpus) {
-    if (!core_isolation_mngr.isolate_cores(*du_low_cfg.expert_execution_cfg.affinities.isolated_cpus)) {
-      report_error("Failed to isolate specified CPUs");
-    }
+  if (not du_low_cfg.trace_cfg.filename.empty()) {
+    app_tracer.enable_tracer(du_low_cfg.trace_cfg.filename,
+                             du_low_cfg.trace_cfg.max_tracing_events_per_file,
+                             du_low_cfg.trace_cfg.nof_tracing_events_after_severe,
+                             app_logger);
   }
 
   // Log CPU architecture.
@@ -249,31 +253,43 @@ int main(int argc, char** argv)
   // Create manager of timers for DU, which will be driven by the PHY slot ticks.
   timer_manager app_timers{256};
 
+  app_services::metrics_notifier_proxy_impl metrics_notifier_forwarder;
+
+  // Instantiate executor metrics service.
+  app_services::executor_metrics_service_and_metrics exec_metrics_service = build_executor_metrics_service(
+      metrics_notifier_forwarder, app_timers, du_low_cfg.metrics_cfg.executors_metrics_cfg);
+  std::vector<app_services::metrics_config> app_metrics = std::move(exec_metrics_service.metrics);
+
   // Instantiate worker manager.
   worker_manager_config worker_manager_cfg;
   fill_du_low_worker_manager_config(worker_manager_cfg, du_low_cfg);
   o_du_app_unit->fill_worker_manager_config(worker_manager_cfg);
-  worker_manager_cfg.app_timers = &app_timers;
+  worker_manager_cfg.app_timers                    = &app_timers;
+  worker_manager_cfg.exec_metrics_channel_registry = exec_metrics_service.channel_registry;
 
   worker_manager workers{worker_manager_cfg};
 
   // Set layer-specific pcap options.
-  const auto& low_prio_cpu_mask = du_low_cfg.expert_execution_cfg.affinities.low_priority_cpu_cfg.mask;
+  const auto& main_pool_cpu_mask = du_low_cfg.expert_execution_cfg.affinities.main_pool_cpu_cfg.mask;
 
   // Create IO broker.
-  io_broker_config           io_broker_cfg(low_prio_cpu_mask);
+  io_broker_config           io_broker_cfg(os_thread_realtime_priority::min() + 5, main_pool_cpu_mask);
   std::unique_ptr<io_broker> epoll_broker = create_io_broker(io_broker_type::epoll, io_broker_cfg);
 
-  // Register the commands.
-  app_services::cmdline_command_dispatcher command_parser(*epoll_broker, *workers.non_rt_low_prio_exec, {});
+  // Create time source that ticks the timers.
+  std::optional<io_timer_source> time_source(
+      std::in_place_t{}, app_timers, *epoll_broker, workers.get_timer_source_executor(), std::chrono::milliseconds{1});
 
-  app_services::metrics_notifier_proxy_impl metrics_notifier_forwarder;
+  // Register the commands.
+  app_services::cmdline_command_dispatcher command_parser(*epoll_broker, workers.get_cmd_line_executor(), {});
 
   // Create app-level resource usage service and metrics.
   auto app_resource_usage_service = app_services::build_app_resource_usage_service(
       metrics_notifier_forwarder, du_low_cfg.metrics_cfg.rusage_config, srslog::fetch_basic_logger("APP"));
 
-  std::vector<app_services::metrics_config> app_metrics = std::move(app_resource_usage_service.metrics);
+  for (auto& metric : app_resource_usage_service.metrics) {
+    app_metrics.push_back(std::move(metric));
+  }
 
   auto du = o_du_app_unit->create_flexible_o_du_low(
       workers, metrics_notifier_forwarder, app_timers, srslog::fetch_basic_logger("APP"));
@@ -285,7 +301,7 @@ int main(int argc, char** argv)
   // Only DU has metrics now.
   app_services::metrics_manager metrics_mngr(
       srslog::fetch_basic_logger("APP"),
-      *workers.metrics_exec,
+      workers.get_metrics_executor(),
       app_metrics,
       app_timers,
       std::chrono::milliseconds(du_low_cfg.metrics_cfg.metrics_service_cfg.app_usage_report_period));
@@ -301,6 +317,10 @@ int main(int argc, char** argv)
   {
     app_services::application_message_banners app_banner(app_name, du_low_cfg.log_cfg.filename);
 
+    auto exec_metrics_session = exec_metrics_service.service
+                                    ? exec_metrics_service.service->create_session(workers.get_metrics_executor())
+                                    : app_services::app_executor_metrics_service::create_dummy_session();
+
     while (is_app_running) {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
@@ -308,10 +328,6 @@ int main(int argc, char** argv)
 
   du.odu_low->stop();
   metrics_mngr.stop();
-
-  workers.stop();
-
-  srslog::flush();
 
   return 0;
 }

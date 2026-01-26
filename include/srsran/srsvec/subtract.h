@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,9 +32,9 @@ namespace srsvec {
 
 ///@{
 /// \brief Difference of two vectors.
-/// \param[out]  Output vector.
-/// \param[in]   Minuend input vector.
-/// \param[in]   Subtrahend input vector.
+/// \param[out]  z Output vector.
+/// \param[in]   x Minuend input vector.
+/// \param[in]   y Subtrahend input vector.
 /// \warning An assertion is triggered if input and output vectors have different sizes.
 void subtract(span<cf_t> z, span<const cf_t> x, span<const cf_t> y);
 void subtract(span<float> z, span<const float> x, span<const float> y);

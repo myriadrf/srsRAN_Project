@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -98,7 +98,7 @@ struct formatter<srsran::srs_cu_cp::cell_meas_config> {
   }
 
   template <typename FormatContext>
-  auto format(srsran::srs_cu_cp::cell_meas_config cfg, FormatContext& ctx) const
+  auto format(const srsran::srs_cu_cp::cell_meas_config& cfg, FormatContext& ctx) const
   {
     std::string ncell_str = "[ ";
     for (const auto& ncell : cfg.ncells) {

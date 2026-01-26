@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -158,6 +158,8 @@ void e2sm_kpm_du_meas_provider_impl::report_metrics(const scheduler_cell_metrics
   for (auto& ue_metric : cell_metrics.ue_metrics) {
     last_ue_metrics.push_back(ue_metric);
   }
+  // Scheduler metrics are always delivered, RLC only when UEs are present to clear RLC history.
+  clear_rlc_metrics();
 }
 
 void e2sm_kpm_du_meas_provider_impl::report_metrics(const rlc_metrics& metrics)
@@ -166,6 +168,30 @@ void e2sm_kpm_du_meas_provider_impl::report_metrics(const rlc_metrics& metrics)
   ue_aggr_rlc_metrics[metrics.ue_index].push_back(metrics);
   if (ue_aggr_rlc_metrics[metrics.ue_index].size() > max_rlc_metrics) {
     ue_aggr_rlc_metrics[metrics.ue_index].pop_front();
+  }
+}
+
+void e2sm_kpm_du_meas_provider_impl::clear_rlc_metrics()
+{
+  // Check if enough time has passed since last clear (at least 1 second)
+  auto current_time = std::chrono::system_clock::now();
+  auto time_since_last_clear =
+      std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_rlc_metrics_clear_time);
+
+  if (time_since_last_clear.count() <= 1000) {
+    return;
+  }
+
+  last_rlc_metrics_clear_time = current_time;
+  auto it                     = ue_aggr_rlc_metrics.begin();
+  while (it != ue_aggr_rlc_metrics.end()) {
+    du_ue_index_t       ue_index   = to_du_ue_index(it->first);
+    gnb_du_ue_f1ap_id_t ue_f1ap_id = f1ap_ue_id_provider.get_gnb_du_ue_f1ap_id(ue_index);
+    if (ue_f1ap_id == gnb_du_ue_f1ap_id_t::invalid) {
+      it = ue_aggr_rlc_metrics.erase(it);
+    } else {
+      ++it;
+    }
   }
 }
 
@@ -226,14 +252,14 @@ bool e2sm_kpm_du_meas_provider_impl::get_ues_matching_test_conditions(
 {
   // TODO: add test condition checking, now return all UEs
   for (const auto& ue : ue_aggr_rlc_metrics) {
-    du_ue_index_t       ue_index          = to_du_ue_index(ue.first);
-    gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = f1ap_ue_id_provider.get_gnb_cu_ue_f1ap_id(ue_index);
-    if (gnb_cu_ue_f1ap_id == gnb_cu_ue_f1ap_id_t::invalid) {
+    du_ue_index_t                      ue_index          = to_du_ue_index(ue.first);
+    std::optional<gnb_cu_ue_f1ap_id_t> gnb_cu_ue_f1ap_id = f1ap_ue_id_provider.get_gnb_cu_ue_f1ap_id(ue_index);
+    if (not gnb_cu_ue_f1ap_id.has_value()) {
       continue;
     }
     ue_id_c        ueid;
     ue_id_gnb_du_s ueid_gnb_du{};
-    ueid_gnb_du.gnb_cu_ue_f1ap_id = gnb_cu_ue_f1ap_id_to_uint(gnb_cu_ue_f1ap_id);
+    ueid_gnb_du.gnb_cu_ue_f1ap_id = gnb_cu_ue_f1ap_id_to_uint(gnb_cu_ue_f1ap_id.value());
     ueid_gnb_du.ran_ue_id_present = false;
     ueid.set_gnb_du_ue_id()       = ueid_gnb_du;
     ues.push_back(ueid);
@@ -248,14 +274,14 @@ bool e2sm_kpm_du_meas_provider_impl::get_ues_matching_test_conditions(
 {
   // TODO: add test condition checking, now return all UEs
   for (const auto& ue : ue_aggr_rlc_metrics) {
-    du_ue_index_t       ue_index          = to_du_ue_index(ue.first);
-    gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = f1ap_ue_id_provider.get_gnb_cu_ue_f1ap_id(ue_index);
-    if (gnb_cu_ue_f1ap_id == gnb_cu_ue_f1ap_id_t::invalid) {
+    du_ue_index_t                      ue_index          = to_du_ue_index(ue.first);
+    std::optional<gnb_cu_ue_f1ap_id_t> gnb_cu_ue_f1ap_id = f1ap_ue_id_provider.get_gnb_cu_ue_f1ap_id(ue_index);
+    if (not gnb_cu_ue_f1ap_id.has_value()) {
       continue;
     }
     ue_id_c        ueid;
     ue_id_gnb_du_s ueid_gnb_du{};
-    ueid_gnb_du.gnb_cu_ue_f1ap_id = gnb_cu_ue_f1ap_id_to_uint(gnb_cu_ue_f1ap_id);
+    ueid_gnb_du.gnb_cu_ue_f1ap_id = gnb_cu_ue_f1ap_id_to_uint(gnb_cu_ue_f1ap_id.value());
     ueid_gnb_du.ran_ue_id_present = false;
     ueid.set_gnb_du_ue_id()       = ueid_gnb_du;
     ues.push_back(ueid);
@@ -318,7 +344,7 @@ bool e2sm_kpm_du_meas_provider_impl::get_cqi(const asn1::e2sm::label_info_list_l
 
   meas_record_item_c meas_record_item;
   meas_record_item.set_integer() = ue_metrics.cqi_stats.get_nof_observations() > 0
-                                       ? static_cast<uint64_t>(std::roundf(ue_metrics.cqi_stats.get_mean()))
+                                       ? static_cast<uint64_t>(std::round(ue_metrics.cqi_stats.get_mean()))
                                        : 0;
   items.push_back(meas_record_item);
   meas_collected = true;
@@ -459,8 +485,12 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_used_dl(const asn1::e2sm::label_inf
     gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = int_to_gnb_cu_ue_f1ap_id(ue.gnb_du_ue_id().gnb_cu_ue_f1ap_id);
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
-    unsigned ue_mean_dl_prbs_used  = nof_dl_slots > 0 ? last_ue_metrics[ue_idx].tot_pdsch_prbs_used / nof_dl_slots : 0;
-    meas_record_item.set_integer() = ue_mean_dl_prbs_used;
+    if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
+      unsigned ue_mean_dl_prbs_used = nof_dl_slots > 0 ? last_ue_metrics[ue_idx].tot_pdsch_prbs_used / nof_dl_slots : 0;
+      meas_record_item.set_integer() = ue_mean_dl_prbs_used;
+    } else {
+      meas_record_item.set_no_value();
+    }
     items.push_back(meas_record_item);
     meas_collected = true;
   }
@@ -501,8 +531,12 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_used_ul(const asn1::e2sm::label_inf
     gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = int_to_gnb_cu_ue_f1ap_id(ue.gnb_du_ue_id().gnb_cu_ue_f1ap_id);
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
-    unsigned ue_mean_ul_prbs_used  = nof_ul_slots > 0 ? last_ue_metrics[ue_idx].tot_pusch_prbs_used / nof_ul_slots : 0;
-    meas_record_item.set_integer() = ue_mean_ul_prbs_used;
+    if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
+      unsigned ue_mean_ul_prbs_used = nof_ul_slots > 0 ? last_ue_metrics[ue_idx].tot_pusch_prbs_used / nof_ul_slots : 0;
+      meas_record_item.set_integer() = ue_mean_ul_prbs_used;
+    } else {
+      meas_record_item.set_no_value();
+    }
     items.push_back(meas_record_item);
     meas_collected = true;
   }
@@ -543,8 +577,12 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_use_perc_dl(const asn1::e2sm::label
     gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = int_to_gnb_cu_ue_f1ap_id(ue.gnb_du_ue_id().gnb_cu_ue_f1ap_id);
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
-    unsigned ue_mean_dl_prbs_used  = nof_dl_slots > 0 ? last_ue_metrics[ue_idx].tot_pdsch_prbs_used / nof_dl_slots : 0;
-    meas_record_item.set_integer() = ue_mean_dl_prbs_used * 100 / nof_cell_prbs;
+    if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
+      unsigned ue_mean_dl_prbs_used = nof_dl_slots > 0 ? last_ue_metrics[ue_idx].tot_pdsch_prbs_used / nof_dl_slots : 0;
+      meas_record_item.set_integer() = ue_mean_dl_prbs_used * 100 / nof_cell_prbs;
+    } else {
+      meas_record_item.set_no_value();
+    }
     items.push_back(meas_record_item);
     meas_collected = true;
   }
@@ -584,8 +622,12 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_use_perc_ul(const asn1::e2sm::label
     gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = int_to_gnb_cu_ue_f1ap_id(ue.gnb_du_ue_id().gnb_cu_ue_f1ap_id);
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
-    unsigned ue_mean_ul_prbs_used  = nof_ul_slots > 0 ? last_ue_metrics[ue_idx].tot_pusch_prbs_used / nof_ul_slots : 0;
-    meas_record_item.set_integer() = ue_mean_ul_prbs_used * 100 / nof_cell_prbs;
+    if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
+      unsigned ue_mean_ul_prbs_used = nof_ul_slots > 0 ? last_ue_metrics[ue_idx].tot_pusch_prbs_used / nof_ul_slots : 0;
+      meas_record_item.set_integer() = ue_mean_ul_prbs_used * 100 / nof_cell_prbs;
+    } else {
+      meas_record_item.set_no_value();
+    }
     items.push_back(meas_record_item);
     meas_collected = true;
   }
@@ -630,8 +672,12 @@ bool e2sm_kpm_du_meas_provider_impl::get_delay_ul(const asn1::e2sm::label_info_l
     gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = int_to_gnb_cu_ue_f1ap_id(ue.gnb_du_ue_id().gnb_cu_ue_f1ap_id);
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
-    if (last_ue_metrics[ue_idx].avg_crc_delay_ms.has_value()) {
-      meas_record_item.set_real().value = (last_ue_metrics[ue_idx].avg_crc_delay_ms.value() * 10); // unit is 0.1ms
+    if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
+      if (last_ue_metrics[ue_idx].avg_crc_delay_ms.has_value()) {
+        meas_record_item.set_real().value = (last_ue_metrics[ue_idx].avg_crc_delay_ms.value() * 10); // unit is 0.1ms
+      } else {
+        meas_record_item.set_no_value();
+      }
     } else {
       meas_record_item.set_no_value();
     }

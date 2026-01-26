@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -114,6 +114,11 @@ std::unique_ptr<log_formatter> srslog::get_default_log_formatter()
 std::unique_ptr<log_formatter> srslog::create_text_formatter()
 {
   return std::unique_ptr<log_formatter>(new text_formatter);
+}
+
+std::unique_ptr<log_formatter> srslog::create_contextual_text_formatter()
+{
+  return std::unique_ptr<log_formatter>(new contextual_text_formatter);
 }
 
 std::unique_ptr<log_formatter> srslog::create_json_formatter()
@@ -433,8 +438,8 @@ sink* srslog::create_file_sink(const std::string& path, size_t max_size, bool ma
       .get_sink_repo()
       .emplace(std::piecewise_construct,
                std::forward_as_tuple(path),
-               std::forward_as_tuple(
-                   new file_sink(path, max_size, mark_eof, false, std::unique_ptr<log_formatter>(new text_formatter))))
+               std::forward_as_tuple(new file_sink(
+                   path, max_size, mark_eof, false, std::unique_ptr<log_formatter>(new contextual_text_formatter))))
       .get();
 }
 

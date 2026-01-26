@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,7 +26,6 @@
 #include "srsran/support/executors/task_executor.h"
 #include "srsran/support/executors/unique_thread.h"
 #include <unordered_map>
-#include <variant>
 
 namespace srsran {
 
@@ -46,7 +45,7 @@ struct task_queue {
   /// Size of the queue used.
   unsigned size;
   /// Number of pre-reserved producers in the case of the moodycamel lockfree MPMC queue.
-  unsigned nof_prereserved_producers = std::thread::hardware_concurrency();
+  unsigned nof_prereserved_producers = cpu_architecture_info::get().get_host_total_nof_cpus();
 };
 
 /// Arguments for a single task worker creation.

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -138,8 +138,7 @@ private:
   /// This timer is used by the transmitting side of an AM RLC entity in order to retransmit a poll (see sub
   /// clause 5.3.3).
   /// Ref: TS 38.322 Sec. 7.3
-  unique_timer      poll_retransmit_timer;
-  std::atomic<bool> is_poll_retransmit_timer_expired;
+  unique_timer poll_retransmit_timer;
 
   task_executor& pcell_executor;
   task_executor& ue_executor;
@@ -187,12 +186,11 @@ public:
       stopped_upper = true;
       high_metrics_timer.stop();
       // stop lower part (e.g. timers) from cell executor
-      auto stop_lower_part = TRACE_TASK([this]() {
-        stopped_lower = true;
-        poll_retransmit_timer.stop();
-        low_metrics_timer.stop();
-      });
-      if (!pcell_executor.execute(std::move(stop_lower_part))) {
+      if (!pcell_executor.execute([this]() {
+            stopped_lower = true;
+            poll_retransmit_timer.stop();
+            low_metrics_timer.stop();
+          })) {
         logger.log_error("Unable to stop lower timers.");
       }
     }

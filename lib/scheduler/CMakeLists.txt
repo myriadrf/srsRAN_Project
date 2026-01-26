@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -33,7 +33,8 @@ set(SOURCES
         policy/scheduler_time_rr.cpp
         policy/scheduler_time_qos.cpp
         pucch_scheduling/pucch_allocator_impl.cpp
-        pucch_scheduling/pucch_guardbands_scheduler.cpp
+        pucch_scheduling/pucch_allocator_helpers.cpp
+        pucch_scheduling/pucch_collision_manager.cpp
         pucch_scheduling/pucch_resource_manager.cpp
         uci_scheduling/uci_scheduler_impl.cpp
         uci_scheduling/uci_allocator_impl.cpp

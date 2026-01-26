@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -333,7 +333,6 @@ struct upper_phy_dl_processor_metrics {
 
 /// Upper PHY metrics.
 struct upper_phy_metrics {
-  unsigned                       sector_id;
   upper_phy_ldpc_metrics         ldpc_metrics;
   upper_phy_pusch_metrics        pusch_metrics;
   upper_phy_pdsch_metrics        pdsch_metrics;

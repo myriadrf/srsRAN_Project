@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -44,8 +44,9 @@ public:
   /// The fist uplink processing block is expected at \c init_time and the first downlink processing block transmission
   /// will be relative to this time.
   ///
-  /// \param[in] init_time Initial time in clock ticks.
-  virtual void start(baseband_gateway_timestamp init_time) = 0;
+  /// \param[in] init_time     Initial time in clock ticks.
+  /// \param[in] sfn0_ref_time System Frame Number (SFN) zero reference time.
+  virtual void start(baseband_gateway_timestamp init_time, baseband_gateway_timestamp sfn0_ref_time = 0) = 0;
 
   /// \brief Stops the lower physical layer operation.
   ///

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,8 +47,5 @@ struct ru_sdr_cell_validation_config {
 
 /// Validates the given SDR Radio Unit configuration. Returns true on success, false otherwise.
 bool validate_ru_sdr_config(const ru_sdr_unit_config& config, span<const ru_sdr_cell_validation_config> cell_config);
-
-/// Validates the given SDR Radio Unit CPUs configuration. Returns true on success, false otherwise.
-bool validate_ru_sdr_cpus(const ru_sdr_unit_config& config, const os_sched_affinity_bitmask& available_cpus);
 
 } // namespace srsran

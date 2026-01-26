@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "fmt/base.h"
 #include <chrono>
 
 namespace fmt {
@@ -39,7 +40,7 @@ struct formatter<std::chrono::nanoseconds> {
   }
 
   template <typename FormatContext>
-  auto format(const std::chrono::nanoseconds& nanoseconds, FormatContext& ctx) const
+  auto format(std::chrono::nanoseconds nanoseconds, FormatContext& ctx) const
   {
     return format_to(ctx.out(), "t={:.1f}us", static_cast<float>(nanoseconds.count()) * 1e-3F);
   }

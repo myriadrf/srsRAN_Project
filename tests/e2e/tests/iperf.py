@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -52,7 +52,6 @@ from .steps.iperf_helpers import (
     assess_iperf_bitrate,
     get_maximum_throughput,
     HIGH_BITRATE,
-    LONG_DURATION,
     LOW_BITRATE,
     MEDIUM_BITRATE,
     SHORT_DURATION,
@@ -71,6 +70,7 @@ from .steps.stub import (
     stop,
     stop_kpm_mon_xapp,
     stop_rc_xapp,
+    UE_STARTUP_TIMEOUT,
 )
 
 ZMQ_ID = "band:%s-scs:%s-bandwidth:%s-bitrate:%s"
@@ -331,7 +331,7 @@ def test_android(
         sample_rate=get_minimum_sample_rate_for_bandwidth(bandwidth),
         iperf_duration=SHORT_DURATION,
         protocol=protocol,
-        bitrate=get_maximum_throughput(bandwidth, band, direction, protocol),
+        bitrate=get_maximum_throughput(bandwidth=bandwidth, band=band, direction=direction, protocol=protocol),
         direction=direction,
         global_timing_advance=-1,
         time_alignment_calibration="auto",
@@ -386,7 +386,7 @@ def test_android_interleaving(
         sample_rate=get_minimum_sample_rate_for_bandwidth(bandwidth),
         iperf_duration=SHORT_DURATION,
         protocol=protocol,
-        bitrate=get_maximum_throughput(bandwidth, band, direction, protocol),
+        bitrate=get_maximum_throughput(bandwidth=bandwidth, band=band, direction=direction, protocol=protocol),
         direction=direction,
         global_timing_advance=-1,
         time_alignment_calibration="auto",
@@ -458,12 +458,13 @@ def test_android_hp(
         sample_rate=None,
         iperf_duration=SHORT_DURATION,
         protocol=protocol,
-        bitrate=get_maximum_throughput(bandwidth, band, direction, protocol),
+        bitrate=get_maximum_throughput(bandwidth=bandwidth, band=band, direction=direction, protocol=protocol),
         direction=direction,
         global_timing_advance=-1,
         time_alignment_calibration="auto",
         always_download_artifacts=True,
         warning_as_errors=False,
+        gnb_post_cmd=("ru_sdr expert_cfg --low_phy_dl_throttling=0.5",),
     )
 
 
@@ -480,7 +481,6 @@ def test_android_hp(
     (param(41, 30, 20, id="band:%s-scs:%s-bandwidth:%s"),),
 )
 @mark.zmq_2x2_mimo
-@mark.flaky(reruns=2, only_rerun=["failed to start", "Attach timeout reached", "5GC crashed"])
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def test_zmq_2x2_mimo(
     retina_manager: RetinaTestManager,
@@ -525,7 +525,16 @@ def test_zmq_2x2_mimo(
 
 
 @mark.zmq
-@mark.flaky(reruns=2, only_rerun=["failed to start", "Attach timeout reached", "5GC crashed"])
+@mark.flaky(
+    reruns=2,
+    only_rerun=[
+        "failed to start",
+        "Attach timeout reached",
+        "5GC crashed",
+        "License unavailable",
+        "Timeout reached while reserving",
+    ],
+)
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def test_zmq_64_ues(
     retina_manager: RetinaTestManager,
@@ -561,6 +570,7 @@ def test_zmq_64_ues(
         nof_antennas_ul=2,
         inter_ue_start_period=1.5,  # Due to uesim
         assess_bitrate=True,
+        parallel_iperfs=64,
     )
 
 
@@ -584,7 +594,16 @@ def test_zmq_64_ues(
     (param(41, 30, 20, id="band:%s-scs:%s-bandwidth:%s"),),
 )
 @mark.zmq_4x4_mimo
-@mark.flaky(reruns=2, only_rerun=["failed to start", "Attach timeout reached", "5GC crashed"])
+@mark.flaky(
+    reruns=2,
+    only_rerun=[
+        "failed to start",
+        "Attach timeout reached",
+        "5GC crashed",
+        "License unavailable",
+        "Timeout reached while reserving",
+    ],
+)
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def test_zmq_4x4_mimo(
     retina_manager: RetinaTestManager,
@@ -635,6 +654,7 @@ def test_zmq_4x4_mimo(
 )
 @mark.zmq
 @mark.smoke
+@mark.flaky(reruns=2, only_rerun=["License unavailable", "Timeout reached while reserving"])
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def test_smoke(
     retina_manager: RetinaTestManager,
@@ -669,6 +689,7 @@ def test_smoke(
         time_alignment_calibration=0,
         always_download_artifacts=False,
         bitrate_threshold=0,
+        ue_startup_timeout=30,
         ue_stop_timeout=30,
         gnb_post_cmd=("", "metrics --enable_log=True"),
     )
@@ -712,6 +733,8 @@ def test_smoke(
         "socket is already closed",
         "failed to connect to all addresses",
         "5GC crashed",
+        "License unavailable",
+        "Timeout reached while reserving",
     ],
 )
 # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -777,7 +800,7 @@ def test_zmq(
 )
 @mark.zmq
 # pylint: disable=too-many-arguments,too-many-positional-arguments
-def test_zmq_transform_precoding(
+def test_zmq_precoding(
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_32: Tuple[UEStub, ...],
@@ -822,67 +845,6 @@ def test_zmq_transform_precoding(
 
 @mark.parametrize(
     "direction",
-    (
-        param(IPerfDir.DOWNLINK, id="downlink", marks=mark.downlink),
-        param(IPerfDir.UPLINK, id="uplink", marks=mark.uplink),
-        param(IPerfDir.BIDIRECTIONAL, id="bidirectional", marks=mark.bidirectional),
-    ),
-)
-@mark.parametrize(
-    "protocol",
-    (
-        param(IPerfProto.UDP, id="udp", marks=mark.udp),
-        param(IPerfProto.TCP, id="tcp", marks=mark.tcp),
-    ),
-)
-@mark.parametrize(
-    "band, common_scs, bandwidth",
-    (
-        param(3, 15, 10, id="band:%s-scs:%s-bandwidth:%s"),
-        param(41, 30, 10, id="band:%s-scs:%s-bandwidth:%s"),
-    ),
-)
-@mark.rf
-# pylint: disable=too-many-arguments,too-many-positional-arguments
-def test_rf(
-    retina_manager: RetinaTestManager,
-    retina_data: RetinaTestData,
-    ue_4: Tuple[UEStub, ...],
-    fivegc: FiveGCStub,
-    gnb: GNBStub,
-    band: int,
-    common_scs: int,
-    bandwidth: int,
-    protocol: IPerfProto,
-    direction: IPerfDir,
-):
-    """
-    RF IPerfs
-    """
-
-    _iperf(
-        retina_manager=retina_manager,
-        retina_data=retina_data,
-        ue_array=ue_4,
-        gnb=gnb,
-        fivegc=fivegc,
-        band=band,
-        common_scs=common_scs,
-        bandwidth=bandwidth,
-        sample_rate=None,  # default from testbed
-        iperf_duration=LONG_DURATION,
-        protocol=protocol,
-        bitrate=MEDIUM_BITRATE,
-        direction=direction,
-        global_timing_advance=-1,
-        time_alignment_calibration="264",
-        always_download_artifacts=False,
-        warning_as_errors=False,
-    )
-
-
-@mark.parametrize(
-    "direction",
     (param(IPerfDir.BIDIRECTIONAL, id="bidirectional", marks=mark.bidirectional),),
 )
 @mark.parametrize(
@@ -899,10 +861,7 @@ def test_rf(
 @mark.s72
 @mark.flaky(
     reruns=2,
-    only_rerun=[
-        "failed to start",
-        "5GC crashed",
-    ],
+    only_rerun=["failed to start", "5GC crashed", "License unavailable", "Timeout reached while reserving"],
 )
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def test_s72(
@@ -937,7 +896,7 @@ def test_s72(
         protocol=protocol,
         direction=direction,
         gnb_post_cmd=(
-            "expert_execution threads non_rt --non_rt_task_queue_size=4096",
+            "expert_execution threads main_pool --task_queue_size=4096",
             "expert_phy --max_proc_delay=4",
         ),
         nof_antennas_dl=4,
@@ -957,6 +916,7 @@ def test_s72(
 
 # pylint: disable=too-many-arguments,too-many-positional-arguments, too-many-locals
 def _iperf(
+    *,  # This enforces keyword-only arguments
     retina_manager: RetinaTestManager,
     retina_data: RetinaTestData,
     ue_array: Sequence[UEStub],
@@ -975,6 +935,7 @@ def _iperf(
     always_download_artifacts: bool,
     warning_as_errors: bool = True,
     bitrate_threshold: float = 0,  # bitrate != 0
+    ue_startup_timeout: int = UE_STARTUP_TIMEOUT,
     gnb_post_cmd: Tuple[str, ...] = tuple(),
     plmn: Optional[PLMN] = None,
     common_search_space_enable: bool = False,
@@ -996,6 +957,7 @@ def _iperf(
     min_dl_bitrate: float = 0,
     min_ul_bitrate: float = 0,
     pdsch_interleaving_bundle_size: int = 0,
+    parallel_iperfs: int = 8,
 ):
     wait_before_power_off = 5
 
@@ -1006,7 +968,9 @@ def _iperf(
         if not is_ntn_channel_emulator(channel_emulator):
             logging.info("The channel emulator is not a NTN emulator.")
             return
-        start_ntn_channel_emulator(ue_array, gnb, channel_emulator, ntn_scenario_def)
+        start_ntn_channel_emulator(
+            ue_array=ue_array, gnb=gnb, channel_emulator=channel_emulator, ntn_scenario_def=ntn_scenario_def
+        )
         ntn_config = get_ntn_configs(channel_emulator)
 
     configure_test_parameters(
@@ -1036,29 +1000,31 @@ def _iperf(
     )
 
     ue_attach_info_dict = start_and_attach(
-        ue_array,
-        gnb,
-        fivegc,
+        ue_array=ue_array,
+        gnb=gnb,
+        fivegc=fivegc,
         gnb_post_cmd=gnb_post_cmd,
         plmn=plmn,
         inter_ue_start_period=inter_ue_start_period,
         ric=ric,
         channel_emulator=channel_emulator,
+        ue_startup_timeout=ue_startup_timeout,
     )
 
     if ric:
-        start_rc_xapp(ric, control_service_style=2, action_id=6)
-        start_kpm_mon_xapp(ric, report_service_style=1, metrics="DRB.UEThpDl,DRB.UEThpUl")
+        start_rc_xapp(ric=ric, control_service_style=2, action_id=6)
+        start_kpm_mon_xapp(ric=ric, report_service_style=1, metrics="DRB.UEThpDl,DRB.UEThpUl")
 
     iperf_parallel(
-        ue_attach_info_dict,
-        fivegc,
-        protocol,
-        direction,
-        iperf_duration,
-        bitrate,
-        packet_length,
-        bitrate_threshold,
+        ue_attach_info_dict=ue_attach_info_dict,
+        fivegc=fivegc,
+        protocol=protocol,
+        direction=direction,
+        iperf_duration=iperf_duration,
+        bitrate=bitrate,
+        packet_length=packet_length,
+        bitrate_threshold_ratio=bitrate_threshold,
+        parallel_iperfs=parallel_iperfs,
     )
 
     if ric:
@@ -1067,13 +1033,13 @@ def _iperf(
 
     sleep(wait_before_power_off)
     if ric:
-        ric_validate_e2_interface(ric, kpm_expected=True, rc_expected=True)
+        ric_validate_e2_interface(ric=ric, kpm_expected=True, rc_expected=True)
 
     stop(
-        ue_array,
-        gnb,
-        fivegc,
-        retina_data,
+        ue_array=ue_array,
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        retina_data=retina_data,
         ue_stop_timeout=ue_stop_timeout,
         warning_as_errors=warning_as_errors,
         ric=ric,

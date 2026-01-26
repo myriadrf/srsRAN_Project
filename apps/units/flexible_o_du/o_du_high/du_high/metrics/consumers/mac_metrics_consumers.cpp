@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,67 +21,10 @@
  */
 
 #include "mac_metrics_consumers.h"
+#include "srsran/support/format/custom_formattable.h"
 #include "srsran/support/format/fmt_to_c_str.h"
 
 using namespace srsran;
-
-namespace {
-
-DECLARE_METRIC("pci", metric_pci, pci_t, "");
-DECLARE_METRIC("average_latency_us", metric_average_latency, double, "us");
-DECLARE_METRIC("min_latency_us", metric_min_latency, double, "us");
-DECLARE_METRIC("max_latency_us", metric_max_latency, double, "us");
-DECLARE_METRIC("cpu_usage_percent", metric_cpu_usage, double, "");
-
-DECLARE_METRIC_SET("cell",
-                   mset_dl_cell,
-                   metric_pci,
-                   metric_average_latency,
-                   metric_min_latency,
-                   metric_max_latency,
-                   metric_cpu_usage);
-
-DECLARE_METRIC_LIST("dl", mlist_dl, std::vector<mset_dl_cell>);
-DECLARE_METRIC_SET("mac", mset_mac, mlist_dl);
-DECLARE_METRIC_SET("du_high", mset_du_high, mset_mac);
-
-/// Metrics root object.
-DECLARE_METRIC("timestamp", metric_timestamp_tag, double, "");
-DECLARE_METRIC_SET("du", mset_du, mset_du_high);
-
-/// Metrics context.
-using metric_context_t = srslog::build_context_type<metric_timestamp_tag, mset_du>;
-
-} // namespace
-
-static double get_time_stamp()
-{
-  auto tp = std::chrono::system_clock::now().time_since_epoch();
-  return std::chrono::duration_cast<std::chrono::milliseconds>(tp).count() * 1e-3;
-}
-
-void mac_metrics_consumer_json::handle_metric(const mac_dl_metric_report& report)
-{
-  metric_context_t ctx("JSON MAC Metrics");
-
-  auto& dl_cells = ctx.get<mset_du>().get<mset_du_high>().get<mset_mac>().get<mlist_dl>();
-
-  for (const auto& cell : report.cells) {
-    double metrics_period = (cell.slot_duration * cell.nof_slots).count();
-    double cpu_usage      = 100.0 * static_cast<double>(cell.wall_clock_latency.average.count()) / metrics_period;
-
-    auto& output = dl_cells.emplace_back();
-    output.write<metric_pci>(static_cast<unsigned>(cell.pci));
-    output.write<metric_average_latency>(static_cast<double>(cell.wall_clock_latency.average.count()) / 1000.0);
-    output.write<metric_min_latency>(static_cast<double>(cell.wall_clock_latency.min.count()) / 1000.0);
-    output.write<metric_max_latency>(static_cast<double>(cell.wall_clock_latency.max.count()) / 1000.0);
-    output.write<metric_cpu_usage>(cpu_usage);
-  }
-
-  // Log the context.
-  ctx.write<metric_timestamp_tag>(get_time_stamp());
-  log_chan(ctx);
-}
 
 static void write_latency_information(fmt::memory_buffer&                              buffer,
                                       const mac_dl_cell_metric_report::latency_report& report,
@@ -107,20 +50,33 @@ void mac_metrics_consumer_log::handle_metric(const mac_dl_metric_report& report)
   for (unsigned i = 0, e = report.cells.size(); i != e; ++i) {
     const mac_dl_cell_metric_report& cell = report.cells[i];
 
-    fmt::format_to(std::back_inserter(buffer),
-                   "MAC cell pci={} metrics: nof_slots={} slot_duration={}usec nof_voluntary_context_switches={} "
-                   "nof_involuntary_context_switches={} ",
-                   static_cast<unsigned>(cell.pci),
-                   cell.nof_slots,
-                   std::round(cell.slot_duration.count() * 1e-3),
-                   cell.count_voluntary_context_switches,
-                   cell.count_involuntary_context_switches);
+    fmt::format_to(
+        std::back_inserter(buffer),
+        "MAC cell pci={} metrics: slots=[{}, {}{}) nof_slots={} slot_duration={}usec nof_voluntary_context_switches={} "
+        "nof_involuntary_context_switches={} ",
+        static_cast<unsigned>(cell.pci),
+        cell.start_slot,
+        cell.start_slot + cell.nof_slots,
+        // Also print the number of HFN wrap-arounds. Useful for long report periods.
+        make_formattable([x = cell.start_slot, n = cell.nof_slots](auto& out) {
+          auto nof_wrap_arounds = (x.count() + n) / x.nof_slots_per_hyper_system_frame();
+          if (nof_wrap_arounds > 0) {
+            return fmt::format_to(out.out(), "(+{} HFNs)", nof_wrap_arounds);
+          }
+          return out.out();
+        }),
+        cell.nof_slots,
+        std::chrono::duration_cast<std::chrono::microseconds>(cell.slot_duration).count(),
+        cell.count_voluntary_context_switches,
+        cell.count_involuntary_context_switches);
 
     write_latency_information(buffer, cell.wall_clock_latency, "wall_clock_latency");
+    write_latency_information(buffer, cell.sched_latency, "sched_latency");
     write_latency_information(buffer, cell.dl_tti_req_latency, "dl_tti_req_latency");
     write_latency_information(buffer, cell.tx_data_req_latency, "tx_data_req_latency");
     write_latency_information(buffer, cell.ul_tti_req_latency, "ul_tti_req_latency");
-    write_latency_information(buffer, cell.slot_ind_handle_latency, "slot_ind_latency", false);
+    write_latency_information(buffer, cell.slot_ind_dequeue_latency, "slot_ind_dequeue_latency");
+    write_latency_information(buffer, cell.slot_ind_msg_time_diff, "slot_ind_msg_time_diff", false);
 
     log_chan("{}", to_c_str(buffer));
     buffer.clear();

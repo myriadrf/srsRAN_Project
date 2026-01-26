@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -24,6 +24,7 @@ add_subdirectory(test_mode)
 add_library(srsran_du_high STATIC
         du_high_impl.cpp
         du_high_factory.cpp
+        du_high_clock_controller_factory.cpp
         du_high_executor_mapper.cpp)
 target_link_libraries(srsran_du_high PUBLIC srsran_du_high_adapters)
 
@@ -31,4 +32,7 @@ add_library(srsran_o_du_high STATIC
         o_du_high_factory.cpp
         o_du_high_impl.cpp
         o_du_high_metrics_notifier_proxy.cpp)
-target_link_libraries(srsran_o_du_high PUBLIC srsran_du_config_validators srsran_du_high srsran_mac_fapi_adaptor srsran_fapi srsran_e2)
+target_link_libraries(srsran_o_du_high PUBLIC srsran_du_config_validators
+                                              srsran_du_high
+                                              srsran_mac_fapi_fastpath_adaptor
+                                              srsran_fapi srsran_e2)

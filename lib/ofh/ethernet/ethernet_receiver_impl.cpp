@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,9 +27,9 @@
 #include "srsran/ofh/ethernet/ethernet_properties.h"
 #include "srsran/support/error_handling.h"
 #include "srsran/support/executors/task_executor.h"
+#include "srsran/support/synchronization/sync_event.h"
 #include <arpa/inet.h>
 #include <cstring>
-#include <future>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <thread>
@@ -61,7 +61,7 @@ receiver_impl::receiver_impl(const receiver_config& config, task_executor& execu
 {
   socket_fd = ::socket(AF_PACKET, SOCK_RAW, htons(ECPRI_ETH_TYPE));
   if (socket_fd < 0) {
-    report_error("Unable to open raw socket for Ethernet receiver: {}", strerror(errno));
+    report_error("Unable to open raw socket for Ethernet receiver: {}", ::strerror(errno));
   }
 
   if (config.interface.size() > (IFNAMSIZ - 1)) {
@@ -100,21 +100,17 @@ void receiver_impl::start(frame_notifier& notifier_)
 {
   logger.info("Starting the ethernet frame receiver");
 
+  stop_manager.reset();
+
   notifier = &notifier_;
 
-  std::promise<void> p;
-  std::future<void>  fut = p.get_future();
-
-  if (!executor.defer([this, &p]() {
-        // Signal to the start() caller thread that the operation is complete.
-        p.set_value();
-        receive_loop();
-      })) {
+  sync_event wait_event;
+  if (!executor.defer([this, token = wait_event.get_token()] { receive_loop(); })) {
     report_error("Unable to start the ethernet frame receiver, fd = '{}'", socket_fd);
   }
 
-  // Block waiting for timing executor to start.
-  fut.wait();
+  // Block waiting for receiver executor to start.
+  wait_event.wait();
 
   logger.info("Started the ethernet frame receiver with fd = '{}'", socket_fd);
 }
@@ -122,27 +118,21 @@ void receiver_impl::start(frame_notifier& notifier_)
 void receiver_impl::stop()
 {
   logger.info("Requesting stop of the ethernet frame receiver with fd = '{}'", socket_fd);
-  rx_status.store(receiver_status::stop_requested, std::memory_order_relaxed);
-
-  // Wait for the receiver thread to stop.
-  while (rx_status.load(std::memory_order_acquire) != receiver_status::stopped) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
-
+  stop_manager.stop();
   logger.info("Stopped the ethernet frame receiver with fd = '{}'", socket_fd);
 }
 
 void receiver_impl::receive_loop()
 {
-  if (rx_status.load(std::memory_order_relaxed) == receiver_status::stop_requested) {
-    rx_status.store(receiver_status::stopped, std::memory_order_release);
+  auto token = stop_manager.get_token();
+  if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
     return;
   }
 
   receive();
 
   // Retry the task deferring when it fails.
-  while (!executor.defer([this]() { receive_loop(); })) {
+  while (!executor.defer([this, tk = std::move(token)]() { receive_loop(); })) {
     std::this_thread::sleep_for(std::chrono::microseconds(10));
   }
 }

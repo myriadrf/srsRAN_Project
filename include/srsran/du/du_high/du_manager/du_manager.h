@@ -48,8 +48,8 @@ public:
   /// \brief Schedule asynchronous task that is specific to a UE.
   virtual void schedule_async_task(du_ue_index_t ue_index, async_task<void>&& task) = 0;
 
-  /// Handle the stop of the DU activity and transition away from the operation stage.
-  virtual void handle_du_stop_request() = 0;
+  /// Handle the F1-C connection loss event.
+  virtual void handle_f1c_connection_loss() = 0;
 
   /// \brief Request a currently unused and unallocated UE index from the DU.
   virtual du_ue_index_t find_unused_du_ue_index() = 0;
@@ -73,7 +73,7 @@ public:
   virtual async_task<void> handle_ue_delete_request(const f1ap_ue_delete_request& request) = 0;
 
   /// \brief Deactivate DRB activity for a given UE.
-  virtual async_task<void> handle_ue_deactivation_request(du_ue_index_t ue_index) = 0;
+  virtual async_task<void> handle_ue_drb_deactivation_request(du_ue_index_t ue_index) = 0;
 
   /// \brief Handle the transfer of resources of old UE to new Reestablishing UE and deletion of the old UE context.
   virtual void handle_ue_reestablishment(du_ue_index_t new_ue_index, du_ue_index_t old_ue_index) = 0;

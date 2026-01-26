@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,6 +24,7 @@
 #include "srsran/phy/lower/lower_phy_rx_symbol_context.h"
 #include "srsran/phy/support/resource_grid_context.h"
 #include "srsran/phy/support/resource_grid_writer.h"
+#include "srsran/srsvec/conversion.h"
 
 using namespace srsran;
 
@@ -41,19 +42,17 @@ bool puxch_processor_impl::process_symbol(const baseband_gateway_buffer_reader& 
     auto request = requests.exchange({context.slot, shared_resource_grid()});
 
     // Handle the returned request.
-    if (!request.grid) {
+    if (!request.resource) {
       // If the request resource grid pointer is invalid, the request is empty.
       current_grid.release();
     } else if (current_slot != request.slot) {
       // If the slot of the request does not match the current slot, then notify a late event.
-      resource_grid_context late_context;
-      late_context.slot   = request.slot;
-      late_context.sector = context.sector;
+      resource_grid_context late_context = {.slot = request.slot, .sector = context.sector};
       notifier->on_puxch_request_late(late_context);
       current_grid.release();
     } else {
       // If the request is valid, then select request grid.
-      current_grid = std::move(request.grid);
+      current_grid = std::move(request.resource);
     }
   }
 
@@ -65,17 +64,23 @@ bool puxch_processor_impl::process_symbol(const baseband_gateway_buffer_reader& 
   // Symbol index within the subframe.
   unsigned symbol_index_subframe = context.nof_symbols + context.slot.subframe_slot_index() * nof_symbols_per_slot;
 
+  // Buffer view holding the float-based complex samples.
+  span<cf_t> channel_buffer_cf;
+  // View over the original int16-based input samples.
+  span<const ci16_t> channel_buffer_ci16;
+
   // Demodulate each of the ports.
   for (unsigned i_port = 0; i_port != nof_rx_ports; ++i_port) {
-    demodulator->demodulate(
-        current_grid.get().get_writer(), samples.get_channel_buffer(i_port), i_port, symbol_index_subframe);
+    channel_buffer_ci16 = samples.get_channel_buffer(i_port);
+    channel_buffer_cf   = cf_buffer.get_view({i_port}).subspan(0, channel_buffer_ci16.size());
+
+    // Convert integer based complex samples to floating-point based.
+    srsvec::convert(channel_buffer_cf, channel_buffer_ci16, scaling_factor_ci16_to_cf);
+    demodulator->demodulate(current_grid.get().get_writer(), channel_buffer_cf, i_port, symbol_index_subframe);
   }
 
   // Notify.
-  lower_phy_rx_symbol_context rx_symbol_context;
-  rx_symbol_context.slot        = current_slot;
-  rx_symbol_context.nof_symbols = context.nof_symbols;
-  notifier->on_rx_symbol(current_grid, context);
+  notifier->on_rx_symbol(current_grid, context, true);
 
   // Release current grid if the slot is completed.
   if (context.nof_symbols == nof_symbols_per_slot - 1) {
@@ -88,7 +93,7 @@ bool puxch_processor_impl::process_symbol(const baseband_gateway_buffer_reader& 
 void puxch_processor_impl::handle_request(const shared_resource_grid& grid, const resource_grid_context& context)
 {
   // Ignore request if the processor has stopped.
-  if (stopped) {
+  if (stopped.load(std::memory_order_relaxed)) {
     return;
   }
 
@@ -98,10 +103,8 @@ void puxch_processor_impl::handle_request(const shared_resource_grid& grid, cons
   auto request = requests.exchange({context.slot, grid.copy()});
 
   // If there was a request at the same request index, notify a late event with the context of the discarded request.
-  if (request.grid) {
-    resource_grid_context late_context;
-    late_context.slot   = request.slot;
-    late_context.sector = context.sector;
+  if (request.resource) {
+    resource_grid_context late_context = {.slot = request.slot, .sector = context.sector};
     notifier->on_puxch_request_late(late_context);
   }
 }

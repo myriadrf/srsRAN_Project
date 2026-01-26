@@ -13,6 +13,47 @@ include:
   - local: .gitlab/ci-shared/build.yml
 
 variables:
+  INFRASTRUCTURE_TAG:
+    description: Computer architecture and supported instruction sets
+    options:
+      - amd64
+      - amd64-avx2
+      - amd64-avx2-avx512
+      - arm64
+      - on-prem-amd64
+      - on-prem-arm64
+      - aws-spot-amd64
+      - aws-spot-arm64
+    value: "amd64-avx2"
+  OS:
+    description: Operating system
+    options:
+      - "ubuntu-24.10"
+      - "ubuntu-24.04"
+      - "ubuntu-22.04"
+      - "debian-12"
+      - "debian-11"
+      - "archlinux-latest"
+      - "rhel-8"
+    value: "ubuntu-24.04"
+  COMPILER:
+    description: Compiler to use
+    options:
+      - "gcc"
+      - "clang"
+    value: "gcc"
+  BUILD_ARGS:
+    description: It will be passed to cmake
+    value: ""
+  UHD_VERSION:
+    description: must be one version supported in the specified OS
+    value: ""
+  DPDK_VERSION:
+    description: must be one version supported in the specified OS
+    value: ""
+  TEST_MODE:
+    description: Run tests with labels matching regular expression. "none" won't run any test at all.
+    value: "default"
   SRSRANDIR: ${CI_PROJECT_DIR}
 
 ################
@@ -39,9 +80,6 @@ variables:
   extends: .build_and_unit_template
   stage: build and unit tests
   needs:
-    - job: builder version
-      optional: false
-      artifacts: true
     - job: trigger builder
       optional: true
       artifacts: false
@@ -228,6 +266,7 @@ variables:
     TEST_MODE: coverage
     ENABLE_GCOV: "True"
     MARCH: x86-64-v3
+    LINKER: mold
     INFRASTRUCTURE_TAG: amd64-avx2
 
 .smoke relwithdeb:
@@ -248,12 +287,13 @@ variables:
     ENABLE_FFTW: "True"
     TEST_MODE: default
     MARCH: x86-64-v3
+    LINKER: mold
     INFRASTRUCTURE_TAG: amd64-avx2
 
 .smoke tsan:
   extends: .build_and_unit
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     COMPILER: clang
     CMAKE_BUILD_TYPE: Debug
     ASSERT_LEVEL: PARANOID
@@ -261,6 +301,7 @@ variables:
     ENABLE_TSAN: "True"
     TEST_MODE: tsan
     MARCH: x86-64-v3
+    LINKER: mold
     INFRASTRUCTURE_TAG: amd64-avx2
 
 .smoke archlinux:
@@ -287,8 +328,9 @@ variables:
     ENABLE_DPDK: "True"
     ASSERT_LEVEL: PARANOID
     ENABLE_FFTW: "True"
-    DPDK_VERSION: "23.11.1_avx2"
+    DPDK_VERSION: "24.11.2_avx2"
     MARCH: x86-64-v3
+    LINKER: mold
     INFRASTRUCTURE_TAG: amd64-avx2
 
 .smoke valgrind:
@@ -301,7 +343,13 @@ variables:
     ENABLE_FFTW: "True"
     TEST_MODE: valgrind
     MARCH: x86-64-v3
+    LINKER: lld
     INFRASTRUCTURE_TAG: amd64-avx2
+  artifacts: &valgrind_artifacts
+    when: on_failure
+    paths:
+      - build/Testing/Temporary
+    expire_in: 5 days
 
 .smoke avx512:
   extends: .build_and_unit
@@ -313,6 +361,7 @@ variables:
     ENABLE_FFTW: "True"
     TEST_MODE: default
     MARCH: x86-64-v4
+    LINKER: mold
     INFRASTRUCTURE_TAG: amd64-avx2-avx512
 
 .smoke arm:
@@ -325,6 +374,7 @@ variables:
     ENABLE_FFTW: "True"
     TEST_MODE: default
     MARCH: armv8-a
+    LINKER: mold
     INFRASTRUCTURE_TAG: arm64
 
 .smoke arm neon:
@@ -337,7 +387,21 @@ variables:
     ENABLE_FFTW: "True"
     TEST_MODE: default
     MARCH: armv8.2-a+crypto+fp16+dotprod
+    LINKER: mold
     INFRASTRUCTURE_TAG: arm64
+
+.smoke printers:
+  extends: .build_and_unit
+  variables: &gdb_printers_variables
+    OS: ubuntu-24.04
+    COMPILER: gcc
+    CMAKE_BUILD_TYPE: Debug
+    ASSERT_LEVEL: PARANOID
+    ENABLE_FFTW: "True"
+    TEST_GDB_PRINTERS: "True"
+    TEST_MODE: pretty_printers
+    MARCH: x86-64-v3
+    INFRASTRUCTURE_TAG: amd64-avx2
 
 # Combinations to use in schedules matrix
 
@@ -483,6 +547,29 @@ smoke arm neon cached:
   cache:
     - *cache_build_get
 
+smoke pretty printers cached:
+  extends: .smoke printers
+  stage: manual
+  timeout: 1 hour
+  rules:
+    - if: $ON_MR == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != $CI_DEFAULT_BRANCH
+      when: never
+    - if: $CI_MERGE_REQUEST_LABELS =~ /ci-no-cache/
+      when: never
+    - if: $ON_MR == "true" && $CI_MERGE_REQUEST_APPROVED == "true"
+      changes: &gdb_printers_changes
+        paths:
+          - include/srsran/adt/**/*
+          - tests/utils/gdb/pretty_printers/*
+          - .gdbinit
+    - if: $ON_MR
+      changes:
+        <<: *gdb_printers_changes
+      when: manual
+      allow_failure: false
+  cache:
+    - *cache_build_get
+
 smoke relwithdeb clean:
   extends: .smoke relwithdeb
   rules:
@@ -541,6 +628,15 @@ smoke arm neon clean:
     - if: $CI_MERGE_REQUEST_LABELS =~ /ci-no-cache/
       changes:
         <<: *instruction_set_changes
+
+smoke pretty printers clean:
+  extends: .smoke printers
+  rules:
+    - if: $ON_MR == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != $CI_DEFAULT_BRANCH
+      when: never
+    - if: $CI_MERGE_REQUEST_LABELS =~ /ci-no-cache/
+      changes:
+        <<: *gdb_printers_changes
 
 # Intermediate commits
 
@@ -629,11 +725,6 @@ valgrind changed tests:
     - launch_tests
   cache:
     - *cache_build_get
-  artifacts: &valgrind_artifacts
-    when: on_failure
-    paths:
-      - build/Testing/Temporary
-    expire_in: 1 day
 
 intermediate commits clean:
   extends: intermediate commits cached
@@ -667,8 +758,6 @@ build on release branch:
     PLUGIN_INDEX_ARRAY: ""
   tags: ["amd64-avx2"]
   needs:
-    - job: builder version
-      artifacts: true
     - job: load build env for release branch
       artifacts: true
 
@@ -758,12 +847,6 @@ smoke valgrind update cache:
       start_in: 45 minutes
   interruptible: false
   retry: 2
-  after_script:
-    - *build_after_script
-  artifacts:
-    <<: *build_artifacts
-    when: on_failure
-    expire_in: 1 day
   cache:
     - *cache_build_set
 
@@ -856,8 +939,8 @@ package:
     matrix:
       - OS_VERSION: "22.04"
       - OS_VERSION: "24.04"
-      - OS_VERSION: "24.10"
       - OS_VERSION: "25.04"
+      - OS_VERSION: "25.10"
   needs: []
 
 install-package:
@@ -875,8 +958,8 @@ install-package:
     matrix:
       - OS_VERSION: "22.04"
       - OS_VERSION: "24.04"
-      - OS_VERSION: "24.10"
       - OS_VERSION: "25.04"
+      - OS_VERSION: "25.10"
   needs:
     - package
 
@@ -904,8 +987,8 @@ export on amd64:
     INFRASTRUCTURE_TAG: amd64-avx2
   parallel:
     matrix:
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04, ubuntu-22.04]
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04, ubuntu-22.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04, ubuntu-22.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04, ubuntu-22.04]
         MARCH: x86-64-v3
 
 export on amd64 avx512:
@@ -914,7 +997,7 @@ export on amd64 avx512:
     INFRASTRUCTURE_TAG: amd64-avx2-avx512
   parallel:
     matrix:
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04, ubuntu-22.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04, ubuntu-22.04]
         MARCH: x86-64-v4
 
 # Build + unit tests combinations
@@ -934,7 +1017,7 @@ ubuntu-25.04 amd64 avx2:
     matrix:
       - <<: *basic_combinations
 
-ubuntu-24.10 amd64 avx2:
+ubuntu-25.10 amd64 avx2:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Nightly Build Unit Tests/
@@ -942,7 +1025,7 @@ ubuntu-24.10 amd64 avx2:
       start_in: 105 minutes
   interruptible: false
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     MARCH: x86-64-v3
     INFRASTRUCTURE_TAG: amd64-avx2
   parallel:
@@ -1055,18 +1138,18 @@ ubuntu dpdk:
     INFRASTRUCTURE_TAG: amd64-avx2
   parallel:
     matrix:
+      - OS: ubuntu-25.10
+        COMPILER: [gcc, clang]
+        DPDK_VERSION: ["24.11.2_avx2"]
       - OS: ubuntu-25.04
         COMPILER: [gcc, clang]
-        DPDK_VERSION: ["24.11.1_avx2"]
-      - OS: ubuntu-24.10
-        COMPILER: [gcc, clang]
-        DPDK_VERSION: ["23.11.1_avx2", "24.11.1_avx2"]
+        DPDK_VERSION: ["24.11.2_avx2"]
       - OS: ubuntu-24.04
         COMPILER: [gcc, clang]
-        DPDK_VERSION: ["23.11.1_avx2", "24.11.1_avx2"]
+        DPDK_VERSION: ["23.11.4_avx2", "24.11.2_avx2"]
       - OS: ubuntu-22.04
         COMPILER: [gcc, clang]
-        DPDK_VERSION: ["22.11.6_avx2", "23.11.1_avx2", "24.11.1_avx2"]
+        DPDK_VERSION: ["22.11.8_avx2", "23.11.4_avx2", "24.11.2_avx2"]
 
 # Nightly Sanitizers
 
@@ -1182,6 +1265,53 @@ debian 12 amd64 avx512:
     matrix:
       - <<: *basic_combinations
 
+debian 13 amd64 native:
+  extends: .build_and_unit
+  rules:
+    - if: $CI_DESCRIPTION =~ /Alternative OSs/
+      when: delayed
+      start_in: 120 minutes
+  interruptible: false
+  variables:
+    OS: debian-13
+    ENABLE_WERROR: "False"
+    INFRASTRUCTURE_TAG: amd64
+  parallel:
+    matrix:
+      - <<: *basic_combinations
+
+debian 13 amd64 avx2:
+  extends: .build_and_unit
+  rules:
+    - if: $CI_DESCRIPTION =~ /Alternative OSs/
+      when: delayed
+      start_in: 150 minutes
+  interruptible: false
+  variables:
+    OS: debian-13
+    ENABLE_WERROR: "False"
+    MARCH: x86-64-v3
+    INFRASTRUCTURE_TAG: amd64-avx2
+  parallel:
+    matrix:
+      - <<: *basic_combinations
+
+debian 13 amd64 avx512:
+  extends: .build_and_unit
+  rules:
+    - if: $CI_DESCRIPTION =~ /Alternative OSs/
+      when: delayed
+      start_in: 90 minutes
+  interruptible: false
+  variables:
+    OS: debian-13
+    ENABLE_WERROR: "False"
+    MARCH: x86-64-v4
+    INFRASTRUCTURE_TAG: amd64-avx2-avx512
+  parallel:
+    matrix:
+      - <<: *basic_combinations
+
 ##########
 # Weekly #
 ##########
@@ -1192,6 +1322,8 @@ debian 12 amd64 avx512:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
+      when: delayed
+      start_in: 30 minutes
   interruptible: false
   variables:
     ASSERT_LEVEL: PARANOID
@@ -1206,7 +1338,7 @@ sanitizers amd64 native:
   parallel:
     matrix:
       # ubuntu-22.04 disabled due to https://github.com/google/sanitizers/issues/1259#issuecomment-642312392
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: tsan
         COMPILER: [gcc, clang]
         ENABLE_TSAN: "True"
@@ -1216,13 +1348,13 @@ sanitizers amd64 native:
         COMPILER: [gcc, clang]
         ENABLE_ASAN: "True"
         TEST_MODE: default
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: asan
         COMPILER: clang
         ENABLE_ASAN: "True"
         TEST_MODE: default
       # Valgrind doesn't support AVX512 instruction set
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: ubsan
         COMPILER: [gcc, clang]
         ENABLE_UBSAN: "True"
@@ -1239,7 +1371,7 @@ sanitizers amd64 avx2:
   parallel:
     matrix:
       # ubuntu-22.04 disabled due to https://github.com/google/sanitizers/issues/1259#issuecomment-642312392
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: tsan
         COMPILER: [gcc, clang]
         ENABLE_TSAN: "True"
@@ -1249,16 +1381,16 @@ sanitizers amd64 avx2:
         COMPILER: [gcc, clang]
         ENABLE_ASAN: "True"
         TEST_MODE: default
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: asan
         COMPILER: clang
         ENABLE_ASAN: "True"
         TEST_MODE: default
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: valgrind
         COMPILER: gcc
         TEST_MODE: valgrind
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: ubsan
         COMPILER: [gcc, clang]
         ENABLE_UBSAN: "True"
@@ -1275,7 +1407,7 @@ sanitizers amd64 avx512:
   parallel:
     matrix:
       # ubuntu-22.04 disabled due to https://github.com/google/sanitizers/issues/1259#issuecomment-642312392
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: tsan
         COMPILER: [gcc, clang]
         ENABLE_TSAN: "True"
@@ -1285,13 +1417,13 @@ sanitizers amd64 avx512:
         COMPILER: [gcc, clang]
         ENABLE_ASAN: "True"
         TEST_MODE: default
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: asan
         COMPILER: clang
         ENABLE_ASAN: "True"
         TEST_MODE: default
       # Valgrind doesn't support AVX512 instruction set
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: ubsan
         COMPILER: [gcc, clang]
         ENABLE_UBSAN: "True"
@@ -1307,7 +1439,7 @@ sanitizers arm native:
   parallel:
     matrix:
       # ubuntu-22.04 disabled due to https://github.com/google/sanitizers/issues/1259#issuecomment-642312392
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: tsan
         COMPILER: [gcc, clang]
         ENABLE_TSAN: "True"
@@ -1317,16 +1449,16 @@ sanitizers arm native:
         COMPILER: [gcc, clang]
         ENABLE_ASAN: "True"
         TEST_MODE: default
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: asan
         COMPILER: clang
         ENABLE_ASAN: "True"
         TEST_MODE: default
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: valgrind
         COMPILER: gcc
         TEST_MODE: valgrind
-      - OS: [ubuntu-25.04, ubuntu-24.10, ubuntu-24.04]
+      - OS: [ubuntu-25.10, ubuntu-25.04, ubuntu-24.04]
         SANITIZER: ubsan
         COMPILER: [gcc, clang]
         ENABLE_UBSAN: "True"
@@ -1346,6 +1478,8 @@ build uhd alt:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
+      when: delayed
+      start_in: 15 minutes
   interruptible: false
   variables:
     TEST_MODE: none
@@ -1354,7 +1488,10 @@ build uhd alt:
     INFRASTRUCTURE_TAG: amd64-avx2
   parallel:
     matrix:
-      - OS: [ubuntu-25.04, ubuntu-24.10]
+      - OS: [ubuntu-25.10]
+        COMPILER: [gcc, clang]
+        UHD_VERSION: ["4.8.0.0"]
+      - OS: [ubuntu-25.04]
         COMPILER: [gcc, clang]
         UHD_VERSION: ["4.8.0.0", "4.7.0.0"]
       - OS: ubuntu-24.04
@@ -1364,6 +1501,18 @@ build uhd alt:
         COMPILER: [gcc, clang]
         UHD_VERSION:
           ["4.8.0.0", "4.7.0.0", "4.6.0.0", "4.4.0.0", "4.3.0.0", "4.1.0.5"]
+
+# Validate test gdb pretty printers
+
+gdb pretty printers:
+  extends: .build_and_unit
+  rules:
+    - if: $CI_DESCRIPTION =~ /Weekly/
+      when: delayed
+      start_in: 300 minutes
+  interruptible: false
+  variables:
+    <<: *gdb_printers_variables
 
 # Build + unit tests combinations
 
@@ -1425,7 +1574,7 @@ ubuntu-25.04 arm neon:
     matrix:
       - <<: *basic_combinations
 
-ubuntu-24.10 amd64 native:
+ubuntu-25.10 amd64 native:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
@@ -1433,13 +1582,13 @@ ubuntu-24.10 amd64 native:
       start_in: 30 minutes
   interruptible: false
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     INFRASTRUCTURE_TAG: amd64
   parallel:
     matrix:
       - <<: *basic_combinations
 
-ubuntu-24.10 amd64 avx512:
+ubuntu-25.10 amd64 avx512:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
@@ -1447,14 +1596,14 @@ ubuntu-24.10 amd64 avx512:
       start_in: 30 minutes
   interruptible: false
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     MARCH: x86-64-v4
     INFRASTRUCTURE_TAG: amd64-avx2-avx512
   parallel:
     matrix:
       - <<: *basic_combinations
 
-ubuntu-24.10 arm native:
+ubuntu-25.10 arm native:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
@@ -1462,13 +1611,13 @@ ubuntu-24.10 arm native:
       start_in: 30 minutes
   interruptible: false
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     INFRASTRUCTURE_TAG: arm64
   parallel:
     matrix:
       - <<: *basic_combinations
 
-ubuntu-24.10 arm neon:
+ubuntu-25.10 arm neon:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
@@ -1476,7 +1625,7 @@ ubuntu-24.10 arm neon:
       start_in: 30 minutes
   interruptible: false
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     MARCH: armv8.2-a+crypto+fp16+dotprod
     INFRASTRUCTURE_TAG: arm64
   parallel:
@@ -1623,7 +1772,7 @@ rhel-8 amd64 native:
     OS: rhel-8
     INFRASTRUCTURE_TAG: amd64
     KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "50G"
-    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"    
+    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"
   parallel:
     matrix:
       - <<: *basic_combinations
@@ -1640,7 +1789,7 @@ rhel-8 amd64 avx512:
     MARCH: x86-64-v4
     INFRASTRUCTURE_TAG: amd64-avx2-avx512
     KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "50G"
-    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"    
+    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"
   parallel:
     matrix:
       - <<: *basic_combinations
@@ -1656,7 +1805,7 @@ rhel-8 arm native:
     OS: rhel-8
     INFRASTRUCTURE_TAG: arm64
     KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "50G"
-    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"    
+    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"
   parallel:
     matrix:
       - <<: *basic_combinations
@@ -1673,7 +1822,7 @@ rhel-8 arm neon:
     MARCH: armv8.2-a+crypto+fp16+dotprod
     INFRASTRUCTURE_TAG: arm64
     KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "50G"
-    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"    
+    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "50G"
   parallel:
     matrix:
       - <<: *basic_combinations
@@ -1701,7 +1850,7 @@ ubuntu-22.04 amd64 avx2 dpdk:
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: ["22.11.6_avx2", "23.11.1_avx2", "24.11.1_avx2"]
+        DPDK_VERSION: ["22.11.8_avx2", "23.11.4_avx2", "24.11.2_avx2"]
 
 ubuntu-22.04 amd64 avx512 dpdk:
   extends: .build_and_unit
@@ -1717,7 +1866,7 @@ ubuntu-22.04 amd64 avx512 dpdk:
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: ["22.11.6_avx512", "23.11.1_avx512", "24.11.1_avx512"]
+        DPDK_VERSION: ["22.11.8_avx512", "23.11.4_avx512", "24.11.2_avx512"]
 
 ubuntu-24.04 amd64 avx2 dpdk:
   extends: .build_and_unit
@@ -1733,15 +1882,15 @@ ubuntu-24.04 amd64 avx2 dpdk:
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "23.11.1_avx2"
+        DPDK_VERSION: "23.11.4_avx2"
       - <<: *basic_combinations
-        DPDK_VERSION: "23.11.1_avx2"
+        DPDK_VERSION: "23.11.4_avx2"
         ENABLE_FFTW: "False"
         ENABLE_MKL: "True"
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "24.11.1_avx2"
+        DPDK_VERSION: "24.11.2_avx2"
       - <<: *basic_combinations
-        DPDK_VERSION: "24.11.1_avx2"
+        DPDK_VERSION: "24.11.2_avx2"
         ENABLE_FFTW: "False"
         ENABLE_MKL: "True"
 
@@ -1759,19 +1908,19 @@ ubuntu-24.04 amd64 avx512 dpdk:
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "23.11.1_avx512"
+        DPDK_VERSION: "23.11.4_avx512"
       - <<: *basic_combinations
-        DPDK_VERSION: "23.11.1_avx512"
+        DPDK_VERSION: "23.11.4_avx512"
         ENABLE_FFTW: "False"
         ENABLE_MKL: "True"
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "24.11.1_avx512"
+        DPDK_VERSION: "24.11.2_avx512"
       - <<: *basic_combinations
-        DPDK_VERSION: "24.11.1_avx512"
+        DPDK_VERSION: "24.11.2_avx512"
         ENABLE_FFTW: "False"
         ENABLE_MKL: "True"
 
-ubuntu-24.10 amd64 avx2 dpdk:
+ubuntu-25.10 amd64 avx2 dpdk:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
@@ -1779,17 +1928,15 @@ ubuntu-24.10 amd64 avx2 dpdk:
       start_in: 360 minutes
   interruptible: false
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     MARCH: x86-64-v3
     INFRASTRUCTURE_TAG: amd64-avx2
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "23.11.1_avx2"
-      - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "24.11.1_avx2"
+        DPDK_VERSION: "24.11.2_avx2"
 
-ubuntu-24.10 amd64 avx512 dpdk:
+ubuntu-25.10 amd64 avx512 dpdk:
   extends: .build_and_unit
   rules:
     - if: $CI_DESCRIPTION =~ /Weekly/
@@ -1797,15 +1944,13 @@ ubuntu-24.10 amd64 avx512 dpdk:
       start_in: 360 minutes
   interruptible: false
   variables:
-    OS: ubuntu-24.10
+    OS: ubuntu-25.10
     MARCH: x86-64-v4
     INFRASTRUCTURE_TAG: amd64-avx2-avx512
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "23.11.1_avx512"
-      - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "24.11.1_avx512"
+        DPDK_VERSION: "24.11.2_avx512"
 
 ubuntu-25.04 amd64 avx2 dpdk:
   extends: .build_and_unit
@@ -1821,7 +1966,7 @@ ubuntu-25.04 amd64 avx2 dpdk:
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "24.11.1_avx2"
+        DPDK_VERSION: "24.11.2_avx2"
 
 ubuntu-25.04 amd64 avx512 dpdk:
   extends: .build_and_unit
@@ -1837,7 +1982,7 @@ ubuntu-25.04 amd64 avx512 dpdk:
   parallel:
     matrix:
       - <<: *basic_combinations_dpdk
-        DPDK_VERSION: "24.11.1_avx512"
+        DPDK_VERSION: "24.11.2_avx512"
 
 ###############
 # E2E Nightly #
@@ -1870,7 +2015,7 @@ basic relwithdeb:
   variables:
     SRS_TARGET: srscu srsdu gnb
     OS: ubuntu-24.04
-    COMPILER: gcc
+    COMPILER: clang
     CMAKE_BUILD_TYPE: RelWithDebInfo
     ASSERT_LEVEL: PARANOID
     TEST_MODE: none
@@ -1980,7 +2125,7 @@ basic ru dummy:
     ENABLE_UHD: "False"
     ENABLE_ZEROMQ: "False"
     ENABLE_DPDK: "True"
-    DPDK_VERSION: "23.11.1_avx512"
+    DPDK_VERSION: "24.11.2_avx512"
     MARCH: x86-64-v4
     FORCE_DEBUG_INFO: "True"
     ASSERT_LEVEL: AUTO
@@ -2012,7 +2157,7 @@ basic avx2 dpdk rtsan:
     ENABLE_DPDK: "True"
     ENABLE_RTSAN: "True"
     ENABLE_WERROR: "False"
-    DPDK_VERSION: "23.11.1_avx2"
+    DPDK_VERSION: "24.11.2_avx2"
     MARCH: x86-64-v3
     FORCE_DEBUG_INFO: "True"
     ASSERT_LEVEL: AUTO
@@ -2047,7 +2192,7 @@ basic avx512 dpdk:
     ENABLE_UHD: "False"
     ENABLE_ZEROMQ: "False"
     ENABLE_DPDK: "True"
-    DPDK_VERSION: "23.11.1_avx512"
+    DPDK_VERSION: "24.11.2_avx512"
     MARCH: x86-64-v4
     FORCE_DEBUG_INFO: "True"
     ASSERT_LEVEL: AUTO

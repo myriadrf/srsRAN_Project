@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -86,6 +86,13 @@ public:
       return queue.enqueue_bulk(batch.begin(), batch.size()) ? batch.size() : 0;
     }
     return queue.enqueue_bulk(std::make_move_iterator(batch.begin()), batch.size()) ? batch.size() : 0;
+  }
+
+  /// \brief Pushes an element to the queue in a blocking fashion.
+  template <typename U>
+  void push_blocking(U&& elem)
+  {
+    queue.enqueue(std::forward<U>(elem));
   }
 
   /// \brief Pops an element from the queue in a non-blocking fashion.

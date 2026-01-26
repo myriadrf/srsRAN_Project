@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -39,7 +39,20 @@ add_library(cu_cp_test_helpers
         du_processor_test_messages.cpp
         test_helpers.cpp)
 target_include_directories(cu_cp_test_helpers PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(cu_cp_test_helpers srsran_cu_cp srsran_support srslog f1ap_test_helpers e1ap_test_helpers f1ap_asn1 ngap_asn1 e1ap_asn1 srsran_e2)
+target_link_libraries(cu_cp_test_helpers
+        srsran_cu_cp
+        srsran_support
+        srslog
+        f1ap_test_helpers
+        f1ap_test_doubles
+        e1ap_test_helpers
+        e1ap_test_doubles
+        rrc_ue_test_helpers
+        ngap_test_helpers
+        ngap_test_doubles
+        f1ap_asn1
+        ngap_asn1
+        e1ap_asn1 srsran_e2)
 
 
 add_executable(cu_cp_test

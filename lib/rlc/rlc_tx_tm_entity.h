@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -67,8 +67,7 @@ public:
     if (not stopped) {
       high_metrics_timer.stop();
       // stop lower timers from cell executor
-      auto stop_low_timers = TRACE_TASK([this]() { low_metrics_timer.stop(); });
-      if (!pcell_executor.execute(std::move(stop_low_timers))) {
+      if (!pcell_executor.execute([this]() { low_metrics_timer.stop(); })) {
         logger.log_error("Unable to stop lower timers.");
       }
       stopped = true;

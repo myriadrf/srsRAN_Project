@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -115,7 +115,7 @@ public:
   constexpr uint32_t slot_index() const { return static_cast<uint32_t>(count_val) % nof_slots_per_frame(); }
 
   /// Radio Frame Number. Value: (0..1023).
-  constexpr uint32_t sfn() const { return static_cast<uint32_t>(count_val) / nof_slots_per_frame(); }
+  constexpr uint32_t sfn() const { return (static_cast<uint32_t>(count_val) / nof_slots_per_frame()) % NOF_SFNS; }
 
   /// Number of slots per hyper system frame. Values: (0..1023).
   constexpr uint32_t nof_slots_per_hyper_system_frame() const { return nof_slots_per_frame() * NOF_SFNS; }
@@ -149,18 +149,18 @@ public:
 
   /// Equality comparison of two slot_point objects. Two slot points are equal if their numerology, SFN and slot index
   /// have the same value.
-  constexpr bool operator==(const slot_point& other) const
+  constexpr bool operator==(slot_point other) const
   {
     return other.count_val == count_val and other.numerology_val == numerology_val;
   }
 
   /// Inequality comparison of two slot_point objects.
-  constexpr bool operator!=(const slot_point& other) const { return not(*this == other); }
+  constexpr bool operator!=(slot_point other) const { return not(*this == other); }
 
   /// Checks if "lhs" slot point is lower than "rhs". It assumes that both "lhs" and "rhs" use the same numerology
   /// This comparison accounts for the wrap-around of both slot index and SFNs. The ambiguity range of the comparison
   /// is equal to half of the total number of slots in a hyperframe.
-  constexpr bool operator<(const slot_point& other) const
+  constexpr bool operator<(slot_point other) const
   {
     srsran_assert(numerology() == other.numerology(), "Comparing slots of different numerologies");
     int v = static_cast<int>(other.count_val) - static_cast<int>(count_val);
@@ -171,13 +171,13 @@ public:
   }
 
   /// Other lower/higher comparisons that build on top of operator== and operator<.
-  constexpr bool operator<=(const slot_point& other) const { return (*this == other) or (*this < other); }
-  constexpr bool operator>=(const slot_point& other) const { return not(*this < other); }
-  constexpr bool operator>(const slot_point& other) const { return (*this != other) and *this >= other; }
+  constexpr bool operator<=(slot_point other) const { return (*this == other) or (*this < other); }
+  constexpr bool operator>=(slot_point other) const { return not(*this < other); }
+  constexpr bool operator>(slot_point other) const { return (*this != other) and *this >= other; }
 
   /// Implements the subtraction of two slot points.
   /// @return a signed integer that is positive if "lhs" is higher than "rhs", zero if equal, and negative otherwise.
-  constexpr slot_difference operator-(const slot_point& other) const
+  constexpr slot_difference operator-(slot_point other) const
   {
     int a = static_cast<int>(count_val) - static_cast<int>(other.count_val);
     if (a >= (int)nof_slots_per_hyper_system_frame() / 2) {
@@ -311,4 +311,5 @@ struct formatter<srsran::slot_point> {
     return format_to(ctx.out(), "{}.{}", slot.sfn(), slot.slot_index());
   }
 };
+
 } // namespace fmt

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #pragma once
 
 #include "srsran/ran/resource_allocation/ofdm_symbol_range.h"
+#include "srsran/ran/rnti.h"
 #include "srsran/ran/srs/srs_configuration.h"
 #include "srsran/scheduler/config/bwp_configuration.h"
 
@@ -44,7 +45,7 @@ struct srs_info {
   uint8_t config_index;
   /// SRS sequence ID or \c sequenceId, as per \c SRS-Resource, in \c SRS-Config, TS 38.331.
   /// Values {0,...,1023}.
-  unsigned sequence_id;
+  uint16_t sequence_id;
   /// Bandwidth index, given by \c b_SRS, as per \c freqHopping, \c SRS-Resource, in \c SRS-Config, TS 38.331.
   /// Values {0,...,3}.
   uint8_t bw_index;

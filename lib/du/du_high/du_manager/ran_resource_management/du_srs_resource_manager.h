@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -110,6 +110,7 @@ private:
     struct srs_cell_common {
       unsigned c_srs;
       unsigned freq_shift;
+      int      p0;
     };
 
     // Maximum number of SRS resources that can be generated in a cell.

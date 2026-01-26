@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -39,6 +39,7 @@
 #include "srsran/srslog/logger.h"
 #include "srsran/support/executors/task_executor.h"
 #include "srsran/support/srsran_assert.h"
+#include "srsran/support/synchronization/stop_event.h"
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -78,14 +79,6 @@ public:
   ru_center_frequency_controller* get_center_frequency_controller() override { return nullptr; }
 
 private:
-  /// State value in idle.
-  static constexpr uint32_t state_idle = 0xffffffff;
-  /// State value while running.
-  static constexpr uint32_t state_running = 0x80000000;
-  /// State value while the RU is stopping.
-  static constexpr uint32_t state_wait_stop = 0x40000000;
-  /// Stopped state, depends on the maximum processing delay number of slots.
-  const uint32_t state_stopped;
   /// Minimum loop time.
   const std::chrono::microseconds minimum_loop_time = std::chrono::microseconds(10);
 
@@ -115,18 +108,18 @@ private:
                   "Sector identifier (i.e., {}) is out-of-bounds {}.",
                   context.sector,
                   sector_range);
-    sectors[context.sector].handle_dl_data(context, grid);
+    sectors[context.sector]->handle_dl_data(context, grid);
   }
 
   // See ru_uplink_plane_handler for documentation.
-  void handle_prach_occasion(const prach_buffer_context& context, prach_buffer& buffer) override
+  void handle_prach_occasion(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
     interval<unsigned> sector_range(0, sectors.size());
     srsran_assert(sector_range.contains(context.sector),
                   "Sector identifier (i.e., {}) is out-of-bounds {}.",
                   context.sector,
                   sector_range);
-    sectors[context.sector].handle_prach_occasion(context, buffer);
+    sectors[context.sector]->handle_prach_occasion(context, std::move(buffer));
   }
 
   // See ru_uplink_plane_handler for documentation.
@@ -137,8 +130,12 @@ private:
                   "Sector identifier (i.e., {}) is out-of-bounds {}.",
                   context.sector,
                   sector_range);
-    sectors[context.sector].handle_new_uplink_slot(context, grid);
+    sectors[context.sector]->handle_new_uplink_slot(context, grid);
   }
+
+  /// Defer loop task if the RU is running.
+  /// \remark A fatal error is triggered if the executor fails to defer the loop task.
+  void defer_loop();
 
   /// Loop execution task.
   void loop();
@@ -151,8 +148,8 @@ private:
   task_executor& executor;
   /// Radio Unit timing notifier.
   ru_timing_notifier& timing_notifier;
-  /// Internal state.
-  std::atomic<uint32_t> internal_state = state_idle;
+  /// Stop control.
+  stop_event_source stop_control;
   /// Slot time in microseconds.
   std::chrono::microseconds slot_duration;
   /// Number of slots is notified in advance of the transmission time.
@@ -160,7 +157,7 @@ private:
   /// Current slot.
   slot_point current_slot;
   /// Radio unit sectors.
-  std::vector<ru_dummy_sector> sectors;
+  std::vector<std::unique_ptr<ru_dummy_sector>> sectors;
   /// RU dummy metrics collector.
   ru_dummy_metrics_collector metrics_collector;
 };

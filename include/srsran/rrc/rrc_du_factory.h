@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,13 +32,8 @@ namespace srs_cu_cp {
 
 struct ue_context;
 
-struct rrc_du_creation_message {
-  const rrc_cfg_t&                    cfg;
-  rrc_du_measurement_config_notifier& rrc_du_cu_cp_notifier;
-};
-
 /// Create an instance of an RRC entity
-std::unique_ptr<rrc_du> create_rrc_du(const rrc_du_creation_message& msg);
+std::unique_ptr<rrc_du> create_rrc_du(const rrc_cfg_t& cfg);
 
 } // namespace srs_cu_cp
 

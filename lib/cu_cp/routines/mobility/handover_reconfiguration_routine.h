@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -65,6 +65,7 @@ private:
 
   // (sub-)routine results
   std::chrono::milliseconds               target_ue_release_timeout;
+  std::chrono::milliseconds               handover_ue_release_timeout;
   rrc_ue_handover_reconfiguration_context ho_reconf_ctxt;
   f1ap_ue_context_modification_response   ue_context_mod_response;
 };

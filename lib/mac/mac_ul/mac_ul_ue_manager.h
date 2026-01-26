@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,7 +24,8 @@
 
 #include "../rnti_value_table.h"
 #include "srsran/adt/slotted_vector.h"
-#include "srsran/mac/mac.h"
+#include "srsran/mac/mac_sdu_handler.h"
+#include "srsran/mac/mac_ue_configurator.h"
 #include "srsran/ran/du_types.h"
 #include "srsran/ran/du_ue_list.h"
 #include "srsran/srslog/logger.h"

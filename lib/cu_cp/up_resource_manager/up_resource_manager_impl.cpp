@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -67,7 +67,7 @@ up_config_update up_resource_manager::calculate_update(const cu_cp_pdu_session_r
   return srsran::srs_cu_cp::calculate_update(pdu, context, cfg, logger);
 }
 
-inline void apply_update_for_new_drbs(up_pdu_session_context&                   pdu_session_context,
+static void apply_update_for_new_drbs(up_pdu_session_context&                   pdu_session_context,
                                       up_context&                               context,
                                       const std::map<drb_id_t, up_drb_context>& drb_to_add)
 {
@@ -77,6 +77,9 @@ inline void apply_update_for_new_drbs(up_pdu_session_context&                   
     // Add to DRB-to-PDU session look-up table.
     context.drb_map.emplace(drb.first, pdu_session_context.id);
 
+    // Mark DRB Id as dirty, until keys are refreshed.
+    context.drb_dirty[get_dirty_drb_index(drb.first)] = true;
+
     // add QoS flows of the DRB to the map.
     for (const auto& flow : drb.second.qos_flows) {
       context.qos_flow_map.insert({flow.first, drb.first});
@@ -84,7 +87,7 @@ inline void apply_update_for_new_drbs(up_pdu_session_context&                   
   }
 }
 
-inline void apply_update_for_removed_drbs(up_pdu_session_context&      pdu_session_context,
+static void apply_update_for_removed_drbs(up_pdu_session_context&      pdu_session_context,
                                           up_context&                  context,
                                           const std::vector<drb_id_t>& drb_to_remove)
 {
@@ -208,6 +211,7 @@ size_t up_resource_manager::get_total_nof_qos_flows() const
 std::vector<drb_id_t> up_resource_manager::get_drbs() const
 {
   std::vector<drb_id_t> drb_ids;
+  drb_ids.reserve(context.drb_map.size());
   for (const auto& drb : context.drb_map) {
     drb_ids.push_back(drb.first);
   }
@@ -229,6 +233,17 @@ std::vector<pdu_session_id_t> up_resource_manager::get_pdu_sessions() const
   }
 
   return pdu_session_ids;
+}
+
+void up_resource_manager::refresh_drb_id_after_key_change()
+{
+  // Clear all DRBs.
+  context.drb_dirty = {};
+
+  // Mark all used DRBs as dirty.
+  for (auto& drb : context.drb_map) {
+    context.drb_dirty[get_dirty_drb_index(drb.first)] = true;
+  }
 }
 
 up_context up_resource_manager::get_up_context() const

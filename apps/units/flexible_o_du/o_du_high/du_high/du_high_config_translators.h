@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -41,9 +41,6 @@ std::vector<srs_du::du_cell_config> generate_du_cell_config(const du_high_unit_c
 
 /// Generates and fills the given DU high configuration from the given DU high unit configuration.
 void generate_du_high_config(srs_du::du_high_configuration& du_hi_cfg, const du_high_unit_config& du_high_unit_cfg);
-
-/// Augments RLC parameters based on NTN configuration.
-void ntn_augment_rlc_parameters(const ntn_config& ntn_cfg, std::map<srb_id_t, srs_du::du_srb_config>& srb_cfgs);
 
 /// Fills the DU high worker manager parameters of the given worker manager configuration.
 void fill_du_high_worker_manager_config(worker_manager_config&     config,

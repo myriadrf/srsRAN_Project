@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -56,16 +56,17 @@ public:
   virtual ~pdxch_processor_factory() = default;
 
   /// Creates a lower PHY PDxCH processor.
-  virtual std::unique_ptr<pdxch_processor> create(const pdxch_processor_configuration& config) = 0;
+  virtual std::unique_ptr<pdxch_processor> create(const pdxch_processor_configuration& config,
+                                                  task_executor&                       modulation_executor) = 0;
 };
 
 /// \brief Creates a software based PDxCH processor factory.
 ///
-/// \param[in] request_queue_size Number of PDxCH processing requests that can be enqueued.
-/// \param[in] ofdm_mod_factory   OFDM modulator factory.
+/// \param[in] ofdm_mod_factory          OFDM modulator factory.
+/// \param[in] amplitude_control_factory Amplitude control factory.
 /// \return A PDxCH processor factory.
 std::shared_ptr<pdxch_processor_factory>
-create_pdxch_processor_factory_sw(unsigned                                request_queue_size,
-                                  std::shared_ptr<ofdm_modulator_factory> ofdm_mod_factory);
+create_pdxch_processor_factory_sw(std::shared_ptr<ofdm_modulator_factory>       ofdm_mod_factory,
+                                  std::shared_ptr<amplitude_controller_factory> amplitude_control_factory);
 
 } // namespace srsran

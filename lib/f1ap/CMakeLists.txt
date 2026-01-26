@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -23,4 +23,4 @@ add_subdirectory(du)
 add_subdirectory(gateways)
 
 add_library(srsran_f1ap_common f1ap_common_messages.cpp asn1_helpers.cpp f1ap_asn1_packer.cpp log_helpers.cpp)
-target_link_libraries(srsran_f1ap_common f1ap_asn1)
+target_link_libraries(srsran_f1ap_common f1ap_asn1 srsran_ran)

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,6 +32,11 @@
 namespace srsran {
 namespace srs_cu_cp {
 
+/// \brief Generate a dummy CU-CP E1 Reset Acknowledge.
+/// \return The CU-CP E1 Reset Acknowledge.
+e1ap_message generate_cu_cp_e1_reset_ack(uint8_t                                                transaction_id,
+                                         const asn1::e1ap::ue_associated_lc_e1_conn_list_res_l& e1_reset_ues);
+
 /// \brief Generate dummy Supported PLMNs Item.
 /// \param[in] nrcell_id The NR Cell Id to use.
 /// \return The dummy Supported PLMNs Item.
@@ -49,6 +54,10 @@ e1ap_message generate_valid_cu_up_e1_setup_request();
 /// \param[in] transaction_id The transaction ID of the Response.
 /// \return The CU-UP E1 Setup Response.
 e1ap_message generate_cu_up_e1_setup_respose(unsigned transaction_id);
+
+/// \brief Generate a valid dummy E1 Release Request.
+/// \return The E1 Release Request.
+e1ap_message generate_valid_e1_release_request();
 
 /// \brief Generate a dummy Bearer Context Setup Request.
 /// \param[in] ue_index The UE Index.
@@ -91,6 +100,15 @@ e1ap_message generate_bearer_context_modification_response(
     const std::map<pdu_session_id_t, drb_id_t>& pdu_sessions_to_modify     = {{pdu_session_id_t::min, drb_id_t::drb1}},
     const std::vector<pdu_session_id_t>&        pdu_sessions_failed_to_modify = {});
 
+/// \brief Generate a dummy Bearer Context Modification Response.
+/// \param[in] cu_cp_ue_e1ap_id The CU-CP UE E1AP ID.
+/// \param[in] cu_up_ue_e1ap_id The CU-UP UE E1AP ID.
+/// \return The Bearer Context Modification Response.
+e1ap_message generate_bearer_context_modification_response_with_pdcp_status(
+    gnb_cu_cp_ue_e1ap_id_t                      cu_cp_ue_e1ap_id,
+    gnb_cu_up_ue_e1ap_id_t                      cu_up_ue_e1ap_id,
+    const std::map<pdu_session_id_t, drb_id_t>& pdu_sessions_to_modify = {{uint_to_pdu_session_id(1), drb_id_t::drb1}});
+
 /// \brief Generate a dummy Bearer Context Modification Failure.
 /// \param[in] cu_cp_ue_e1ap_id The CU-CP UE E1AP ID.
 /// \param[in] cu_up_ue_e1ap_id The CU-UP UE E1AP ID.
@@ -108,6 +126,13 @@ e1ap_bearer_context_release_command generate_bearer_context_release_command(ue_i
 /// \return The Bearer Context Release Complete.
 e1ap_message generate_bearer_context_release_complete(gnb_cu_cp_ue_e1ap_id_t cu_cp_ue_e1ap_id,
                                                       gnb_cu_up_ue_e1ap_id_t cu_up_ue_e1ap_id);
+
+/// \brief Generate a dummy Bearer Context Release Request.
+/// \param[in] cu_cp_ue_e1ap_id The CU-CP UE E1AP ID.
+/// \param[in] cu_up_ue_e1ap_id The CU-UP UE E1AP ID.
+/// \return The Bearer Context Release Request.
+e1ap_message generate_bearer_context_release_request(gnb_cu_cp_ue_e1ap_id_t cu_cp_ue_e1ap_id,
+                                                     gnb_cu_up_ue_e1ap_id_t cu_up_ue_e1ap_id);
 
 /// \brief Generate a dummy Bearer Context Inactivity Notification with UE activity level.
 /// \param[in] cu_cp_ue_e1ap_id The CU-CP UE E1AP ID.

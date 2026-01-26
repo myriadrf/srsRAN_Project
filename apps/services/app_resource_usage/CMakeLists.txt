@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -26,4 +26,4 @@ set(SOURCES
 
 add_library(srsran_resource_usage_app_service STATIC ${SOURCES})
 target_include_directories(srsran_resource_usage_app_service PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(srsran_resource_usage_app_service PRIVATE srsran_metrics_app_helpers)
+target_link_libraries(srsran_resource_usage_app_service PRIVATE srsran_metrics_app_helpers srsran_metrics_json_generators)

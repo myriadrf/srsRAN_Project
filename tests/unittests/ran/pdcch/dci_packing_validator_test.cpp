@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -102,6 +102,10 @@ private:
       false,
       // PDSCH HARQ-ACK codebook type.
       pdsch_harq_ack_codebook::semistatic,
+      // DL HARQ process number field size.
+      4,
+      // UL HARQ process number field size.
+      4,
       // Number of UL BWP configured by higher layers.
       0,
       // Number of UL time domain allocations.

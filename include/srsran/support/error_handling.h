@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "srsran/support/rtsan.h"
 #include "fmt/base.h"
 #include <atomic>
 #include <cstdio>
@@ -47,6 +48,8 @@ inline void set_error_handler(srsran_error_handler handler)
 template <typename... Args>
 [[gnu::noinline, noreturn]] inline bool srsran_terminate(const char* reason_fmt, Args&&... args) noexcept
 {
+  SRSRAN_RTSAN_SCOPED_DISABLER(d);
+
   if (auto handler = error_report_handler.exchange(nullptr)) {
     handler();
   }
@@ -64,6 +67,8 @@ template <typename... Args>
 template <typename... Args>
 [[gnu::noinline, noreturn]] inline void report_error(const char* reason_fmt, Args&&... args) noexcept
 {
+  SRSRAN_RTSAN_SCOPED_DISABLER(d);
+
   if (auto handler = error_report_handler.exchange(nullptr)) {
     handler();
   }

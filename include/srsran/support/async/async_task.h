@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -45,7 +45,7 @@ public:
 
       void await_resume() {}
 
-      /// Points to itself as an awaiter
+      /// Points to itself as an awaiter.
       final_awaiter& get_awaiter() { return *this; }
     };
 
@@ -55,7 +55,7 @@ public:
     /// Final suspension awaiter. Tail-resumes continuation.
     final_awaiter final_suspend() { return {}; }
 
-    async_task<R> get_return_object()
+    [[nodiscard]] async_task<R> get_return_object()
     {
       auto corohandle = coro_handle<promise_type>::from_promise(this);
       corohandle.resume();
@@ -88,7 +88,7 @@ public:
 private:
   friend class detail::common_task_crtp<async_task<R>, R>;
 
-  unique_coroutine<promise_type> handle;
+  detail::unique_coroutine<promise_type> handle;
 };
 
 } // namespace srsran

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -61,8 +61,6 @@ enum class lower_phy_baseband_buffer_size_policy : unsigned {
 struct lower_phy_configuration {
   /// Sector identifier.
   unsigned sector_id;
-  /// Amplitude control logger.
-  srslog::basic_logger* logger;
   /// Subcarrier spacing for the overall PHY.
   subcarrier_spacing scs;
   /// Cyclic prefix.
@@ -103,51 +101,39 @@ struct lower_phy_configuration {
   ///
   /// Set to zero to disable this feature.
   float system_time_throttling;
-  /// Baseband transmit buffer size policy.
-  lower_phy_baseband_buffer_size_policy baseband_tx_buffer_size_policy;
+  /// Maximum number of PRACH concurrent requests.
+  unsigned max_nof_prach_concurrent_requests = 1;
   /// Baseband receive buffer size policy.
   lower_phy_baseband_buffer_size_policy baseband_rx_buffer_size_policy;
   /// Amplitude control parameters, including baseband gain and clipping.
   amplitude_controller_clipping_config amplitude_config;
-  /// Provides the baseband gateway.
-  baseband_gateway* bb_gateway;
-  /// Provides a symbol handler to notify the reception of symbols.
-  lower_phy_rx_symbol_notifier* rx_symbol_notifier;
-  /// Provides the timing handler to notify the timing boundaries.
-  lower_phy_timing_notifier* timing_notifier;
-  /// Provides the error handler to notify runtime errors.
-  lower_phy_error_notifier* error_notifier;
-  /// Provides the metrics handler to notify runtime measurements.
-  lower_phy_metrics_notifier* metric_notifier;
-  /// Receive task executor.
-  task_executor* rx_task_executor;
-  /// Transmit task executor.
-  task_executor* tx_task_executor;
-  /// Downlink task executor.
-  task_executor* dl_task_executor;
-  /// Uplink task executor.
-  task_executor* ul_task_executor;
-  /// PRACH asynchronous task executor.
-  task_executor* prach_async_executor;
 };
 
-/// Converts a string into a baseband buffer size policy.
-inline lower_phy_baseband_buffer_size_policy to_buffer_size_policy(const std::string& str)
-{
-  if (str == "single-packet") {
-    return lower_phy_baseband_buffer_size_policy::single_packet;
-  }
-  if (str == "half-slot") {
-    return lower_phy_baseband_buffer_size_policy::half_slot;
-  }
-  if (str == "slot") {
-    return lower_phy_baseband_buffer_size_policy::slot;
-  }
-  if (str == "optimal-slot") {
-    return lower_phy_baseband_buffer_size_policy::optimal_slot;
-  }
-  report_error("Invalid lower PHY baseband buffer size policy '{}'.", str);
-}
+/// Lower physical layer dependencies.
+struct lower_phy_dependencies {
+  /// Logger.
+  srslog::basic_logger& logger;
+  /// Provides the baseband gateway.
+  baseband_gateway& bb_gateway;
+  /// Provides a symbol handler to notify the reception of symbols.
+  lower_phy_rx_symbol_notifier& rx_symbol_notifier;
+  /// Provides the timing handler to notify the timing boundaries.
+  lower_phy_timing_notifier& timing_notifier;
+  /// Provides the error handler to notify runtime errors.
+  lower_phy_error_notifier& error_notifier;
+  /// Provides the metrics handler to notify runtime measurements.
+  lower_phy_metrics_notifier& metric_notifier;
+  /// Receive task executor.
+  task_executor& rx_task_executor;
+  /// Transmit task executor.
+  task_executor& tx_task_executor;
+  /// Downlink task executor.
+  task_executor& dl_task_executor;
+  /// Uplink task executor.
+  task_executor& ul_task_executor;
+  /// PRACH asynchronous task executor.
+  task_executor& prach_async_executor;
+};
 
 /// Returns true if the given lower PHY configuration is valid, otherwise false.
 inline bool is_valid_lower_phy_config(const lower_phy_configuration& config)

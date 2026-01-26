@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,13 +47,13 @@ public:
   }
 
   // See interface for documentation.
-  void on_new_uplink_symbol(const uplane_rx_symbol_context& context, shared_resource_grid grid) override;
+  void on_new_uplink_symbol(const uplane_rx_symbol_context& context, shared_resource_grid grid, bool is_valid) override;
 
   // See interface for documentation.
-  void on_new_prach_window_data(const prach_buffer_context& context, const prach_buffer& buffer) override
+  void on_new_prach_window_data(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
     // PRACH notifies all symbols at once, no need to reorder.
-    notifier.on_new_prach_window_data(context, buffer);
+    notifier.on_new_prach_window_data(context, std::move(buffer));
   }
 };
 

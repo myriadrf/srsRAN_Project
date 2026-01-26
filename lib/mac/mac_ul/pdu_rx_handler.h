@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -129,7 +129,7 @@ private:
   bool handle_crnti_ce(const decoded_mac_rx_pdu& pdu, const mac_ul_sch_subpdu& subpdu);
 
   /// Handle PDU to PCAP file
-  void write_pcap_rx_pdu(const slot_point& sl_rx, const mac_rx_pdu& pdu);
+  void write_pcap_rx_pdu(slot_point sl_rx, const mac_rx_pdu& pdu);
 
   mac_ul_ccch_notifier&               ccch_notifier;
   srs_du::du_high_ue_executor_mapper& ue_exec_mapper;

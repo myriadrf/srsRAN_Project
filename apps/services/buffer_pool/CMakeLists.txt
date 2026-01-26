@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -19,7 +19,9 @@
 #
 
 set(SOURCES
-        buffer_pool_appconfig_cli11_schema.cpp)
+        buffer_pool_appconfig_cli11_schema.cpp
+        buffer_pool_config_yaml_writer.cpp
+        metrics/buffer_pool_metrics_builder.cpp)
 
 add_library(srsran_buffer_pool_app_service STATIC ${SOURCES})
 target_include_directories(srsran_buffer_pool_app_service PRIVATE ${CMAKE_SOURCE_DIR})

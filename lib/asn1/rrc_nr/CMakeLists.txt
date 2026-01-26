@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -43,9 +43,6 @@ add_library(rrc_nr_asn1 STATIC
         ul_ccch_msg.cpp
         ul_ccch1_msg.cpp
         dl_ccch_msg.cpp
-        ho_prep_info.cpp
-        meas_cfg.cpp
-        meas_timing_cfg.cpp
         rrc_nr.cpp)
 target_compile_options(rrc_nr_asn1 PRIVATE -Os -fno-exceptions)
 target_link_libraries(rrc_nr_asn1 asn1_utils)

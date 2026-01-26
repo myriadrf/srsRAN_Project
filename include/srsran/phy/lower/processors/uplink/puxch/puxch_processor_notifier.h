@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,9 +47,12 @@ public:
   /// \brief Notifies the completion of the PUxCH request processing.
   ///
   /// See \ref lower_phy_error_notifier::on_puxch_request_late for more information.
-  /// \param[in] grid    Received resource grid.
-  /// \param[in] context Received symbol context.
-  virtual void on_rx_symbol(const shared_resource_grid& grid, const lower_phy_rx_symbol_context& context) = 0;
+  /// \param[in] grid     Received resource grid.
+  /// \param[in] context  Received symbol context.
+  /// \param[in] is_valid Set it to true if the resource grid data contains valid information. Otherwise, set it to
+  /// false.
+  virtual void
+  on_rx_symbol(const shared_resource_grid& grid, const lower_phy_rx_symbol_context& context, bool is_valid) = 0;
 };
 
 } // namespace srsran

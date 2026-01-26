@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -38,14 +38,14 @@ static std::string to_string(lower_phy_thread_profile profile)
     case lower_phy_thread_profile::blocking:
       // Blocking is an internal profile for ZMQ. Output 'single' for the configuration.
       return "single";
-    case lower_phy_thread_profile::dual:
-      return "dual";
-    case lower_phy_thread_profile::quad:
-      return "quad";
     case lower_phy_thread_profile::single:
       return "single";
+    case lower_phy_thread_profile::dual:
+      return "dual";
+    case lower_phy_thread_profile::triple:
+      return "triple";
     default:
-      srsran_assert(0, "Invalid low PHY profile");
+      srsran_assert(0, "Invalid lower PHY profile");
       break;
   }
   return {};
@@ -68,20 +68,10 @@ static void fill_ru_sdr_expert_execution_section(YAML::Node node, const ru_sdr_u
   for (auto cell : cell_affinities_node) {
     const auto& expert = config.cell_affinities[index];
 
-    if (expert.l1_dl_cpu_cfg.mask.any()) {
-      cell["l1_dl_cpus"] = fmt::format("{:,}", span<const size_t>(expert.l1_dl_cpu_cfg.mask.get_cpu_ids()));
-    }
-    cell["l1_dl_pinning"] = to_string(expert.l1_dl_cpu_cfg.pinning_policy);
-
-    if (expert.l1_ul_cpu_cfg.mask.any()) {
-      cell["l1_ul_cpus"] = fmt::format("{:,}", span<const size_t>(expert.l1_ul_cpu_cfg.mask.get_cpu_ids()));
-    }
-    cell["l1_ul_pinning"] = to_string(expert.l1_ul_cpu_cfg.pinning_policy);
-
     if (expert.ru_cpu_cfg.mask.any()) {
-      cell["l1_dl_cpus"] = fmt::format("{:,}", span<const size_t>(expert.ru_cpu_cfg.mask.get_cpu_ids()));
+      cell["ru_cpus"] = fmt::format("{:,}", span<const size_t>(expert.ru_cpu_cfg.mask.get_cpu_ids()));
     }
-    cell["l1_dl_pinning"] = to_string(expert.ru_cpu_cfg.pinning_policy);
+    cell["ru_pinning"] = to_string(expert.ru_cpu_cfg.pinning_policy);
 
     ++index;
   }
@@ -101,7 +91,21 @@ static void fill_ru_sdr_section(YAML::Node node, const ru_sdr_unit_config& confi
   node["sync"]          = config.synch_source;
   node["otw_format"]    = config.otw_format;
   if (config.time_alignment_calibration.has_value()) {
-    node["time_alignment_calibration"] = config.time_alignment_calibration.value();
+    node["time_alignment_calibration"] = *config.time_alignment_calibration;
+  } else {
+    node["time_alignment_calibration"] = "na";
+  }
+  if (config.start_time.has_value()) {
+    ::time_t tt = std::chrono::system_clock::to_time_t(*config.start_time);
+    ::tm     utc_time;
+    ::gmtime_r(&tt, &utc_time);
+
+    char buffer[100];
+    ::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &utc_time);
+
+    node["start_time"] = buffer;
+  } else {
+    node["start_time"] = "na";
   }
 
   {
@@ -116,7 +120,6 @@ static void fill_ru_sdr_section(YAML::Node node, const ru_sdr_unit_config& confi
     expert_node["low_phy_dl_throttling"] = config.expert_cfg.lphy_dl_throttling;
     expert_node["tx_mode"]               = config.expert_cfg.transmission_mode;
     expert_node["power_ramping_time_us"] = config.expert_cfg.power_ramping_time_us;
-    expert_node["dl_buffer_size_policy"] = config.expert_cfg.dl_buffer_size_policy;
   }
 }
 

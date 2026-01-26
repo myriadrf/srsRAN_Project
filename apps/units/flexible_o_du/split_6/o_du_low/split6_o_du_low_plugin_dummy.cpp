@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,11 +25,19 @@
 #include "srsran/fapi/error_message_notifier.h"
 #include "srsran/fapi/slot_data_message_notifier.h"
 #include "srsran/fapi/slot_time_message_notifier.h"
-#include "srsran/fapi_adaptor/fapi_operation_controller.h"
+#include "srsran/fapi_adaptor/mac/operation_controller.h"
 
 using namespace srsran;
 
 namespace {
+
+/// FAPI operation controller dummy implementation.
+class operation_controller_dummy : public fapi_adaptor::operation_controller
+{
+public:
+  void start() override {}
+  void stop() override {}
+};
 
 /// FAPI error message notifier dummy implementation.
 class error_message_notifier_dummy : public fapi::error_message_notifier
@@ -56,8 +64,8 @@ public:
   void on_slot_indication(const fapi::slot_indication_message& msg) override {}
 };
 
-/// Split 6 slot messages adaptor dummy implementation.
-class split6_slot_messages_adaptor_dummy : public fapi::slot_messages_adaptor
+/// MAC-FAPI P7 sector adaptor dummy implementation.
+class mac_fapi_p7_sector_adaptor_dummy : public fapi_adaptor::mac_fapi_p7_sector_adaptor
 {
   slot_data_message_notifier_dummy dummy_data_notifier;
   slot_time_message_notifier_dummy dummy_time_notifier;
@@ -74,17 +82,16 @@ public:
   fapi::error_message_notifier& get_error_message_notifier() override { return dummy_error_notifier; }
 };
 
-/// FAPI slot messages adaptor factory dummy implementation.
-class slot_messages_adaptor_factory_dummy : public fapi::slot_messages_adaptor_factory
+/// MAC-FAPI P7 sector adaptor factory dummy implementation.
+class mac_fapi_p7_sector_adaptor_factory_dummy : public fapi_adaptor::mac_fapi_p7_sector_adaptor_factory
 {
   // See interface for documentation.
-  std::unique_ptr<fapi::slot_messages_adaptor>
-  create_slot_messages_adaptor(const fapi::fapi_cell_config&     config,
-                               fapi::slot_message_gateway&       gateway,
-                               fapi::slot_last_message_notifier& last_msg_notifier,
-                               fapi::error_message_notifier&     fapi_error_notifier) override
+  std::unique_ptr<fapi_adaptor::mac_fapi_p7_sector_adaptor> create(const fapi::fapi_cell_config&     fapi_cfg,
+                                                                   fapi::slot_message_gateway&       gateway,
+                                                                   fapi::slot_last_message_notifier& last_msg_notifier,
+                                                                   ru_controller&                    ru_ctrl) override
   {
-    return std::make_unique<split6_slot_messages_adaptor_dummy>();
+    return std::make_unique<mac_fapi_p7_sector_adaptor_dummy>();
   }
 };
 
@@ -97,15 +104,8 @@ public:
   void on_stop_indication(const fapi::stop_indication& msg) override {}
 };
 
-class operation_controller_dummy : public fapi::operation_controller
-{
-public:
-  bool start() override { return false; }
-  bool stop() override { return false; }
-};
-
-/// Configuration messages adaptor dummy implementation.
-class config_messages_adaptor_dummy : public fapi::config_messages_adaptor
+/// MAC-FAPI P5 sector adaptor dummy implementation.
+class mac_fapi_p5_sector_adaptor_dummy : public fapi_adaptor::mac_fapi_p5_sector_adaptor
 {
   operation_controller_dummy    dummy_controller;
   config_message_notifier_dummy dummy_config_notifier;
@@ -119,22 +119,24 @@ public:
   fapi::error_message_notifier& get_error_message_notifier() override { return dummy_error_notifier; }
 
   // See interface for documentation.
-  fapi::operation_controller& get_operation_controller() override { return dummy_controller; }
+  fapi_adaptor::operation_controller& get_operation_controller() override { return dummy_controller; }
 };
 
 } // namespace
 
-std::unique_ptr<fapi::config_messages_adaptor>
-split6_o_du_low_plugin_dummy::create_config_messages_adaptor(fapi::config_message_gateway& gateway,
-                                                             task_executor&                executor)
+std::unique_ptr<fapi_adaptor::mac_fapi_p5_sector_adaptor>
+split6_o_du_low_plugin_dummy::create_fapi_p5_sector_adaptor(fapi::config_message_gateway& gateway,
+                                                            task_executor&                executor,
+                                                            task_executor&                control_executor)
 {
-  return std::make_unique<config_messages_adaptor_dummy>();
+  return std::make_unique<mac_fapi_p5_sector_adaptor_dummy>();
 }
 
-std::unique_ptr<fapi::slot_messages_adaptor_factory>
-split6_o_du_low_plugin_dummy::create_slot_messages_adaptor_factory(task_executor& executor)
+std::unique_ptr<fapi_adaptor::mac_fapi_p7_sector_adaptor_factory>
+split6_o_du_low_plugin_dummy::create_fapi_p7_sector_adaptor_factory(task_executor& executor,
+                                                                    task_executor& control_executor)
 {
-  return std::make_unique<slot_messages_adaptor_factory_dummy>();
+  return std::make_unique<mac_fapi_p7_sector_adaptor_factory_dummy>();
 }
 
 #ifndef SRSRAN_HAS_SPLIT6_ENTERPRISE

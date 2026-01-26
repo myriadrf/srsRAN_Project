@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -44,7 +44,8 @@ std::unique_ptr<timing_manager> srsran::ofh::create_ofh_timing_manager(const con
                                                                        srslog::basic_logger&    logger,
                                                                        task_executor&           executor)
 {
-  realtime_worker_cfg rt_cfg = {config.cp, config.scs, config.gps_Alpha, config.gps_Beta};
+  realtime_worker_cfg rt_cfg = {
+      config.cp, config.scs, config.gps_Alpha, config.gps_Beta, config.enable_log_warnings_for_lates};
 
   return std::make_unique<timing_manager_impl>(logger, executor, rt_cfg);
 }
@@ -65,6 +66,7 @@ static receiver_config generate_receiver_config(const sector_configuration& conf
   rx_config.ignore_ecpri_seq_id_field          = config.ignore_ecpri_seq_id_field;
   rx_config.are_metrics_enabled                = config.are_metrics_enabled;
   rx_config.log_unreceived_ru_frames           = config.log_unreceived_ru_frames;
+  rx_config.enable_log_warnings_for_lates      = config.enable_log_warnings_for_lates;
 
   // For the rx eAxCs, configure only those that will be used, so the other eAxCs can be discarded as soon as possible.
   rx_config.prach_eaxc.assign(config.prach_eaxc.begin(), config.prach_eaxc.begin() + config.nof_antennas_ul);
@@ -112,6 +114,7 @@ static transmitter_config generate_transmitter_config(const sector_configuration
   tx_config.uses_dpdk                            = sector_cfg.uses_dpdk;
   tx_config.are_metrics_enabled                  = sector_cfg.are_metrics_enabled;
   tx_config.c_plane_prach_fft_len                = sector_cfg.c_plane_prach_fft_len;
+  tx_config.enable_log_warnings_for_lates        = sector_cfg.enable_log_warnings_for_lates;
 
   return tx_config;
 }
@@ -228,8 +231,11 @@ std::unique_ptr<sector> srsran::ofh::create_ofh_sector(const sector_configuratio
                                         prach_cp_repo,
                                         ul_grid_symbol_notified_repo);
 
-  return std::make_unique<sector_impl>(
-      sector_impl_config{sector_cfg.sector_id, sector_cfg.are_metrics_enabled},
-      sector_impl_dependencies{
-          std::move(receiver), std::move(transmitter), std::move(ul_data_repo), eth_transmitter, eth_receiver});
+  return std::make_unique<sector_impl>(sector_impl_config{sector_cfg.sector_id, sector_cfg.are_metrics_enabled},
+                                       sector_impl_dependencies{std::move(receiver),
+                                                                std::move(transmitter),
+                                                                std::move(ul_data_repo),
+                                                                std::move(ul_prach_repo),
+                                                                eth_transmitter,
+                                                                eth_receiver});
 }

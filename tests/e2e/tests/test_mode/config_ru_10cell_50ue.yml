@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -47,8 +47,8 @@ cell_cfg:
   tac: 7
   pucch:
     sr_period_ms: 80
-    nof_ue_res_harq_per_set: 8
-    f0_or_f1_nof_cell_res_sr: 2
+    resource_set_size: 8
+    nof_cell_sr_res: 2
     f0_intraslot_freq_hop: false
     f1_enable_occ: true
     f1_nof_cyclic_shifts: 12
@@ -87,9 +87,8 @@ test_mode:
 expert_execution:
   threads:
     upper_phy:
-      nof_dl_threads: 2
-      nof_ul_threads: 1
-      nof_pusch_decoder_threads: 2
+      max_pucch_concurrency: 1
+      max_pusch_and_srs_concurrency: 3
 
 expert_phy:
   max_proc_delay: 6

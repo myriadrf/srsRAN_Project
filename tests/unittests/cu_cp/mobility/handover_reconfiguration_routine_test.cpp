@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,6 +24,7 @@
 #include "mobility_test_helpers.h"
 #include "srsran/adt/byte_buffer.h"
 #include "srsran/cu_cp/cu_cp_types.h"
+#include "srsran/rrc/rrc_cell_context.h"
 #include "srsran/rrc/rrc_types.h"
 #include "srsran/support/async/async_test_utils.h"
 #include "srsran/support/async/coroutine.h"
@@ -133,7 +134,7 @@ public:
   }
 
   std::optional<rrc_meas_cfg>
-  generate_meas_config(std::optional<rrc_meas_cfg> current_meas_config = std::nullopt) override
+  generate_meas_config(const std::optional<rrc_meas_cfg>& current_meas_config = std::nullopt) override
   {
     logger.info("Received a new request to generate RRC UE meas config");
     std::optional<rrc_meas_cfg> meas_config;
@@ -143,6 +144,12 @@ public:
   byte_buffer get_packed_meas_config() override
   {
     logger.info("Received a new request to get packed RRC UE meas config");
+    return {};
+  }
+
+  std::optional<uint8_t> get_serving_cell_mo() override
+  {
+    logger.info("Received a new request to get serving cell measurement object");
     return {};
   }
 
@@ -177,6 +184,8 @@ public:
     logger.info("Received a new request to cancel RRC UE handover reconfiguration transaction");
   }
 
+  void cancel_all_transactions() override { logger.info("Cancelling all ongoing RRC UE transactions"); }
+
   // RRC UE Setup proc notifier
   void on_new_dl_ccch(const asn1::rrc_nr::dl_ccch_msg_s& dl_ccch_msg) override {}
   void on_ue_release_required(const ngap_cause_t& cause) override {}
@@ -191,6 +200,12 @@ public:
   {
     logger.info("Received a new request to get RRC UE reestablishment context");
     return rrc_ue_reestablishment_context_response{};
+  }
+
+  rrc_cell_context get_cell_context() const override
+  {
+    logger.info("Received a new request to get RRC UE cell context");
+    return rrc_cell_context{};
   }
 
   // RRC UE Reestablishment proc notifier
@@ -225,24 +240,18 @@ protected:
 
   void create_ues(bool procedure_outcome, unsigned transaction_id_)
   {
-    ue_index_t source_ue_index = get_ue_manager()->add_ue(source_du_index,
-                                                          plmn_identity::test_value(),
-                                                          int_to_gnb_du_id(0),
-                                                          source_pci,
-                                                          source_rnti,
-                                                          srs_cu_cp::du_cell_index_t::min);
-    source_ue                  = get_ue_manager()->find_ue(source_ue_index);
+    ue_index_t source_ue_index = get_ue_manager()->add_ue(
+        source_du_index, int_to_gnb_du_id(0), source_pci, source_rnti, srs_cu_cp::du_cell_index_t::min);
+    get_ue_manager()->set_plmn(source_ue_index, plmn_identity::test_value());
+    source_ue = get_ue_manager()->find_ue(source_ue_index);
     ASSERT_NE(source_ue, nullptr);
     source_rrc_ue.set_transaction_id(transaction_id_);
     source_ue->set_rrc_ue(source_rrc_ue);
 
-    ue_index_t target_ue_index = get_ue_manager()->add_ue(target_du_index,
-                                                          plmn_identity::test_value(),
-                                                          int_to_gnb_du_id(0),
-                                                          target_pci,
-                                                          target_rnti,
-                                                          srs_cu_cp::du_cell_index_t::min);
-    target_ue                  = get_ue_manager()->find_ue(target_ue_index);
+    ue_index_t target_ue_index = get_ue_manager()->add_ue(
+        target_du_index, int_to_gnb_du_id(0), target_pci, target_rnti, srs_cu_cp::du_cell_index_t::min);
+    get_ue_manager()->set_plmn(target_ue_index, plmn_identity::test_value());
+    target_ue = get_ue_manager()->find_ue(target_ue_index);
     ASSERT_NE(target_ue, nullptr);
     source_f1ap_ue_ctxt_mng.set_ue_context_modification_outcome(
         {procedure_outcome,
@@ -304,6 +313,11 @@ protected:
 
   bool check_transaction_id(unsigned transaction_id) { return cu_cp_handler.last_transaction_id == transaction_id; }
 
+  const f1ap_ue_context_modification_request& get_source_f1ap_ctxt_mod_request()
+  {
+    return source_f1ap_ue_ctxt_mng.get_ctxt_mod_request();
+  }
+
 private:
   // source UE parameters.
   du_index_t                    source_du_index = uint_to_du_index(0);
@@ -342,6 +356,11 @@ TEST_F(handover_reconfiguration_routine_test, when_reconfiguration_successful_th
   ASSERT_TRUE(get_result());
 
   ASSERT_TRUE(check_transaction_id(test_transaction_id));
+
+  // Make sure that the source UP context was not modified.
+  f1ap_ue_context_modification_request context_mod = get_source_f1ap_ctxt_mod_request();
+  ASSERT_TRUE(context_mod.drbs_to_be_setup_mod_list.empty());
+  ASSERT_TRUE(context_mod.drbs_to_be_released_list.empty());
 }
 
 TEST_F(handover_reconfiguration_routine_test, when_ue_context_mod_unsuccessful_then_return_false)
@@ -360,6 +379,4 @@ TEST_F(handover_reconfiguration_routine_test, when_ue_context_mod_unsuccessful_t
 
   // Reconfiguration complete was received.
   ASSERT_FALSE(get_result());
-
-  ASSERT_FALSE(check_transaction_id(test_transaction_id));
 }

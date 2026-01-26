@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,10 +22,8 @@
 
 #pragma once
 
-#include "nr_cgi.h"
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <variant>
 
 namespace srsran {
@@ -71,6 +69,9 @@ struct ta_info_t {
   double ta_common_drift;
   /// Indicate drift rate variation of the common TA. Unit is us/s^2.
   double ta_common_drift_variant;
+  /// Constant offset added to the NTA-common broadcast in SIB19 to model fixed system delays independent of satellite
+  /// position. Unit is us.
+  double ta_common_offset;
 };
 
 /// EpochTime is used to indicate the epoch time for the NTN assistance information, and it is defined as the starting
@@ -159,13 +160,6 @@ struct ntn_config {
   std::optional<ntn_polarization_t> polarization;
   /// When this field is included in SIB19, it indicates reporting of timing advanced is enabled.
   std::optional<bool> ta_report;
-  /// SIB19 scheduling information.
-  unsigned                si_msg_idx;
-  unsigned                si_period_rf;
-  unsigned                si_window_len_slots;
-  std::optional<unsigned> si_window_position;
-  // NR-CGI
-  nr_cell_global_id_t nr_cgi;
 };
 
 } // namespace srsran

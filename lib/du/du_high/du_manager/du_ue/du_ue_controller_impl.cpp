@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,15 +21,14 @@
  */
 
 #include "du_ue_controller_impl.h"
+#include "srsran/mac/mac_ue_configurator.h"
 #include "srsran/support/async/async_no_op_task.h"
 #include "srsran/support/async/execute_on_blocking.h"
 
 using namespace srsran;
 using namespace srs_du;
 
-namespace {
-
-const char* get_rlf_cause_str(rlf_cause cause)
+static const char* get_rlf_cause_str(rlf_cause cause)
 {
   switch (cause) {
     case rlf_cause::max_mac_kos_reached:
@@ -44,51 +43,37 @@ const char* get_rlf_cause_str(rlf_cause cause)
   return "unknown";
 }
 
+namespace {
+
 /// Adapter between MAC and DU manager RLF detection handler.
 class mac_rlf_du_adapter final : public mac_ue_radio_link_notifier
 {
 public:
-  mac_rlf_du_adapter(du_ue_index_t ue_index_, du_ue_manager_repository& ue_db_, task_executor& ctrl_exec_) :
-    ue_index(ue_index_), ue_db(ue_db_), ctrl_exec(ctrl_exec_)
-  {
-  }
+  mac_rlf_du_adapter(du_ue_index_t ue_index_, du_ue_manager_repository& ue_db_) : ue_index(ue_index_), ue_db(ue_db_) {}
 
   void on_rlf_detected() override
   {
-    // Dispatch RLF handling to DU manager execution context.
-    bool dispatched = ctrl_exec.execute(TRACE_TASK([ue_idx = ue_index, ue_db_ptr = &ue_db]() {
-      // Note: The UE might have already been deleted by the time this method is called, so we need to check if it still
-      // exists.
-      du_ue* u = ue_db_ptr->find_ue(ue_idx);
-      if (u == nullptr) {
-        return;
-      }
-      u->handle_rlf_detection(rlf_cause::max_mac_kos_reached);
-    }));
-    if (not dispatched) {
-      logger.warning("ue={}: Failed to dispatch RLF detection handling", fmt::underlying(ue_index));
+    // Note: The UE might have already been deleted by the time this method is called, so we need to check if it still
+    // exists.
+    du_ue* u = ue_db.find_ue(ue_index);
+    if (u == nullptr) {
+      return;
     }
+    u->handle_rlf_detection(rlf_cause::max_mac_kos_reached);
   }
 
   void on_crnti_ce_received() override
   {
-    bool dispatched = ctrl_exec.execute(TRACE_TASK([ue_idx = ue_index, ue_db_ptr = &ue_db]() {
-      du_ue* u = ue_db_ptr->find_ue(ue_idx);
-      if (u == nullptr) {
-        return;
-      }
-      u->handle_crnti_ce_detection();
-    }));
-    if (not dispatched) {
-      logger.warning("ue={}: Failed to dispatch RLF detection handling", fmt::underlying(ue_index));
+    du_ue* u = ue_db.find_ue(ue_index);
+    if (u == nullptr) {
+      return;
     }
+    u->handle_crnti_ce_detection();
   }
 
 private:
   du_ue_index_t             ue_index;
   du_ue_manager_repository& ue_db;
-  task_executor&            ctrl_exec;
-  srslog::basic_logger&     logger = srslog::fetch_basic_logger("DU-MNG");
 };
 
 /// Adapter between RLC and DU manager RLF detection handler.
@@ -112,7 +97,7 @@ private:
       return;
     }
     // Dispatch RLF handling to DU manager execution context.
-    bool dispatched = ctrl_exec.execute(TRACE_TASK([ue_idx = ue_index, ue_db_ptr = &ue_db, cause]() {
+    bool dispatched = ctrl_exec.execute([ue_idx = ue_index, ue_db_ptr = &ue_db, cause]() {
       // Note: The UE might have already been deleted by the time this method is called, so we need to check if it still
       // exists.
       du_ue* u = ue_db_ptr->find_ue(ue_idx);
@@ -120,7 +105,7 @@ private:
         return;
       }
       u->handle_rlf_detection(cause);
-    }));
+    });
     if (not dispatched) {
       logger.warning("ue={}: Failed to dispatch RLF detection handling", fmt::underlying(ue_index));
       rlf_triggered.store(false, std::memory_order_relaxed);
@@ -138,10 +123,10 @@ private:
 
 // -------------
 
-class srsran::srs_du::du_ue_controller_impl::rlf_state_machine
+class du_ue_controller_impl::rlf_state_machine
 {
 public:
-  rlf_state_machine(du_ue_controller_impl& ue_ctx_, const du_manager_params& cfg_, du_ue_manager_repository& ue_db_) :
+  rlf_state_machine(du_ue_controller_impl& ue_ctx_, const du_manager_params& cfg_) :
     ue_ctx(ue_ctx_), cfg(cfg_), release_timer(cfg.services.timers.create_unique_timer(cfg.services.du_mng_exec))
   {
   }
@@ -150,6 +135,16 @@ public:
   {
     if (not is_handling_new_rlfs()) {
       // Either the RLF has been triggered or the UE is already being destroyed.
+      return;
+    }
+
+    if (not cfg.f1ap.ue_mng.has_gnb_cu_ue_f1ap_id(ue_ctx.ue_index)) {
+      // Ignore RLF, because the CU-CP has not yet provided a gNB-CU-UE-F1AP-ID for this UE (we need it for UE
+      // context release request).
+      logger.warning("ue={}, rnti={}: RLF detected but ignored. Cause: The UE still has no assigned "
+                     "gnb-CU-UE-F1AP-ID",
+                     ue_ctx.ue_index,
+                     ue_ctx.rnti);
       return;
     }
 
@@ -167,8 +162,9 @@ public:
     // The release timer is not running yet. We need to store the cause and start the timer.
     current_cause    = cause;
     auto timeout_val = get_release_timeout();
-    logger.warning("ue={}: RLF detected with cause=\"{}\". Timer of {} msec to release UE started...",
-                   fmt::underlying(ue_ctx.ue_index),
+    logger.warning("ue={} rnti={}: RLF detected with cause \"{}\". Timer of {} msec to release UE started...",
+                   ue_ctx.ue_index,
+                   ue_ctx.rnti,
                    get_rlf_cause_str(cause),
                    timeout_val.count());
 
@@ -228,7 +224,7 @@ private:
     // Request UE release to the CU.
     using cause_type = f1ap_ue_context_release_request::cause_type;
     cause_type cause = *current_cause == rlf_cause::max_mac_kos_reached ? cause_type::rlf_mac : cause_type::rlf_rlc;
-    cfg.f1ap.ue_mng.handle_ue_context_release_request(srs_du::f1ap_ue_context_release_request{ue_ctx.ue_index, cause});
+    cfg.f1ap.ue_mng.handle_ue_context_release_request(f1ap_ue_context_release_request{ue_ctx.ue_index, cause});
 
     // Stop handling of RLFs, so that no new RLFs are triggered after the UE is scheduled for release.
     deactivate();
@@ -260,8 +256,8 @@ du_ue_controller_impl::du_ue_controller_impl(const du_ue_context&         contex
   du_ue(context_, std::move(ue_ran_res_)),
   ue_db(ue_db_),
   cfg(cfg_),
-  rlf_handler(std::make_unique<rlf_state_machine>(*this, cfg, ue_db)),
-  mac_rlf_notifier(std::make_unique<mac_rlf_du_adapter>(ue_index, ue_db, cfg.services.du_mng_exec)),
+  rlf_handler(std::make_unique<rlf_state_machine>(*this, cfg)),
+  mac_rlf_notifier(std::make_unique<mac_rlf_du_adapter>(ue_index, ue_db)),
   rlc_rlf_notifier(std::make_unique<rlc_rlf_du_adapter>(ue_index, ue_db, cfg.services.du_mng_exec))
 {
 }
@@ -363,16 +359,20 @@ async_task<void> du_ue_controller_impl::run_in_ue_executor(unique_task task)
     CORO_AWAIT(
         defer_on_blocking(cfg.services.ue_execs.ctrl_executor(ue_index), cfg.services.timers, log_dispatch_retry));
     task();
-    CORO_AWAIT(execute_on_blocking(cfg.services.du_mng_exec, cfg.services.timers, log_dispatch_retry));
 
     // Sync with remaining UE executors, as there might be still pending tasks dispatched to those.
     // TODO: use when_all awaiter
     CORO_AWAIT(defer_on_blocking(
         cfg.services.ue_execs.mac_ul_pdu_executor(ue_index), cfg.services.timers, log_dispatch_retry));
-    CORO_AWAIT(execute_on_blocking(cfg.services.du_mng_exec, cfg.services.timers, log_dispatch_retry));
     CORO_AWAIT(defer_on_blocking(
         cfg.services.ue_execs.f1u_dl_pdu_executor(ue_index), cfg.services.timers, log_dispatch_retry));
-    CORO_AWAIT(execute_on_blocking(cfg.services.du_mng_exec, cfg.services.timers, log_dispatch_retry));
+
+    // Sync with rlc-lower executor, as there might be some timer stop pending.
+    CORO_AWAIT(defer_on_blocking(
+        cfg.services.cell_execs.rlc_lower_executor(pcell_index), cfg.services.timers, log_dispatch_retry));
+
+    // Return back to DU manager executor.
+    CORO_AWAIT(defer_on_blocking(cfg.services.du_mng_exec, cfg.services.timers, log_dispatch_retry));
 
     CORO_RETURN();
   });

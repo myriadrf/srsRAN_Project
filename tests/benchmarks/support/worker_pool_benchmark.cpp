@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,7 +29,7 @@
 using namespace srsran;
 
 struct bench_params {
-  std::chrono::milliseconds duration{10};
+  std::chrono::milliseconds duration{0};
   unsigned                  max_workers = cpu_architecture_info::get().get_host_nof_available_cpus();
   std::string               output_file{"stdout"};
 };
@@ -60,7 +60,7 @@ static void parse_args(int argc, char** argv, bench_params& params)
       case 'h':
       default:
         usage(argv[0], params);
-        exit(0);
+        std::exit(0);
     }
   }
 }
@@ -76,7 +76,8 @@ class benchmark_environment
 public:
   using pool_storage =
       std::variant<std::unique_ptr<task_worker_pool<concurrent_queue_policy::lockfree_mpmc>>,
-                   std::unique_ptr<task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_mpmc>>>;
+                   std::unique_ptr<task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_mpmc>>,
+                   std::unique_ptr<task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc>>>;
 
   benchmark_environment(concurrent_queue_policy   policy,
                         unsigned                  nof_workers_,
@@ -96,6 +97,12 @@ public:
       task_exec   = make_task_worker_pool_executor_ptr(*pool);
       storage     = std::move(pool);
       description = "moodycamel_mpmc";
+    } else if (policy == concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc) {
+      auto pool = std::make_unique<task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc>>(
+          "moodyl_bounded_mpmc", nof_workers, qsize);
+      task_exec   = make_task_worker_pool_executor_ptr(*pool);
+      storage     = std::move(pool);
+      description = "moodycamel_bounded_mpmc";
     } else {
       throw std::invalid_argument("Unsupported queue policy");
     }
@@ -111,8 +118,10 @@ public:
     fmt::print("STATUS: Starting {}...", description);
     unsigned nof_initial_tasks = nof_workers;
     for (unsigned i = 0; i != nof_initial_tasks; ++i) {
-      bool success = task_exec->defer([this]() { run_task(); });
-      report_fatal_error_if_not(success, "Unexpected failure to defer initial task");
+      while (not task_exec->defer([this]() { run_task(); })) {
+        fmt::print("Unexpected failure to defer initial task, retrying...\n");
+        std::this_thread::sleep_for(std::chrono::microseconds{1});
+      }
     }
     reset_counters();
   }
@@ -141,6 +150,11 @@ public:
                        &storage)) {
       (*moody_pool)->wait_pending_tasks();
       (*moody_pool)->stop();
+    } else if (auto* moody_bounded_pool = std::get_if<
+                   std::unique_ptr<task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc>>>(
+                   &storage)) {
+      (*moody_bounded_pool)->wait_pending_tasks();
+      (*moody_bounded_pool)->stop();
     } else {
       report_fatal_error("Unexpected storage type in benchmark_environment");
     }
@@ -211,10 +225,9 @@ void run_benchmarks(const bench_params& params)
     }
     nof_workers_list.push_back(next_nof_workers);
   }
-  std::vector<concurrent_queue_policy> policies = {
-      concurrent_queue_policy::lockfree_mpmc,
-      concurrent_queue_policy::moodycamel_lockfree_mpmc,
-  };
+  std::vector<concurrent_queue_policy>   policies = {concurrent_queue_policy::lockfree_mpmc,
+                                                     concurrent_queue_policy::moodycamel_lockfree_mpmc,
+                                                     concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc};
   std::vector<std::chrono::microseconds> task_durations{std::chrono::microseconds{0}, std::chrono::microseconds{10}};
   const unsigned                         qsize = 8192;
 
@@ -245,7 +258,7 @@ void run_benchmarks(const bench_params& params)
                result.description,
                result.task_count,
                result.duration.count(),
-               result.task_count * 1000000 / result.duration.count());
+               result.duration.count() > 0 ? result.task_count * 1000000 / result.duration.count() : 0);
   }
 
   if (out_file != stdout) {

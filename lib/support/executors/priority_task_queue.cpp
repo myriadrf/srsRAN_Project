@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,6 +21,7 @@
  */
 
 #include "srsran/support/executors/detail/priority_task_queue.h"
+#include "srsran/adt/moodycamel_bounded_mpmc_queue.h"
 #include "srsran/adt/moodycamel_mpmc_queue.h"
 #include "srsran/adt/mpmc_queue.h"
 #include "srsran/adt/mutexed_mpmc_queue.h"
@@ -51,8 +52,8 @@ public:
   concurrent_queue_wait_policy wait_policy() const { return wpolicy; }
 
   virtual void                               request_stop()                    = 0;
-  virtual bool                               push_blocking(unique_task task)   = 0;
   virtual bool                               try_push(unique_task task)        = 0;
+  virtual void                               push_blocking(unique_task task)   = 0;
   virtual bool                               try_pop(unique_task& t)           = 0;
   virtual size_t                             try_pop_bulk(span<unique_task> t) = 0;
   virtual size_t                             size() const                      = 0;
@@ -86,14 +87,7 @@ public:
       q.request_stop();
     }
   }
-  bool push_blocking(unique_task task) override
-  {
-    if constexpr (WaitPolicy != concurrent_queue_wait_policy::non_blocking) {
-      return q.push_blocking(std::move(task));
-    }
-    report_fatal_error("Blocking API not supported for this type");
-    return false;
-  }
+  void   push_blocking(unique_task task) override { q.push_blocking(std::move(task)); }
   bool   try_push(unique_task task) override { return q.try_push(std::move(task)); }
   bool   try_pop(unique_task& t) override { return q.try_pop(t); }
   size_t try_pop_bulk(span<unique_task> batch) override { return q.try_pop_bulk(batch); }
@@ -118,7 +112,9 @@ protected:
   queue_impl q;
 };
 
-std::unique_ptr<detail::any_task_queue> make_any_task_queue(const concurrent_queue_params& params)
+} // namespace
+
+static std::unique_ptr<detail::any_task_queue> make_any_task_queue(const concurrent_queue_params& params)
 {
   switch (params.policy) {
     case concurrent_queue_policy::lockfree_mpmc:
@@ -134,13 +130,14 @@ std::unique_ptr<detail::any_task_queue> make_any_task_queue(const concurrent_que
     case concurrent_queue_policy::moodycamel_lockfree_mpmc:
       return std::make_unique<any_task_queue_impl<concurrent_queue_policy::moodycamel_lockfree_mpmc>>(
           params.size, params.nof_prereserved_producers);
+    case concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc:
+      return std::make_unique<any_task_queue_impl<concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc>>(
+          params.size, params.nof_prereserved_producers);
     default:
       report_fatal_error("Unknown concurrent_queue_policy");
   }
   return nullptr;
 }
-
-} // namespace
 
 detail::priority_task_queue::priority_task_queue(span<const concurrent_queue_params> queue_params,
                                                  std::chrono::microseconds           wait_if_empty) :
@@ -162,10 +159,10 @@ void detail::priority_task_queue::request_stop()
   }
 }
 
-bool detail::priority_task_queue::push_blocking(task_priority prio, unique_task task)
+void detail::priority_task_queue::push_blocking(task_priority prio, unique_task task)
 {
   const size_t idx = get_queue_idx(prio);
-  return queues[idx]->push_blocking(std::move(task));
+  queues[idx]->push_blocking(std::move(task));
 }
 
 bool detail::priority_task_queue::try_push(task_priority prio, unique_task task)

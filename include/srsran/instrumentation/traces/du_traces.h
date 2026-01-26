@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -59,12 +59,5 @@ extern file_event_tracer<L1_UL_TRACE_ENABLED> l1_ul_tracer;
 
 /// L2 event tracing. This tracer is used to analyze latencies in the L2 processing of slot indications.
 extern file_event_tracer<L2_TRACE_ENABLED> l2_tracer;
-
-/// Set to true for enabling layer 2 tracing when slowdowns are detected.
-#ifndef SRSRAN_L2_LATE_TRACE
-constexpr bool L2_LATE_TRACE_ENABLED = false;
-#else
-constexpr bool L2_LATE_TRACE_ENABLED = true;
-#endif
 
 } // namespace srsran

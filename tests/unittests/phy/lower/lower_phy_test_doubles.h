@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -119,12 +119,13 @@ private:
   struct rx_symbol_event {
     lower_phy_rx_symbol_context context;
     const resource_grid_reader* grid;
+    bool                        is_valid;
   };
   std::vector<rx_symbol_event> rx_symbol_events;
 
   struct rx_prach_event {
     prach_buffer_context context;
-    const prach_buffer*  buffer;
+    prach_buffer*        buffer;
   };
   std::vector<rx_prach_event> rx_prach_events;
 
@@ -138,7 +139,8 @@ public:
   }
 
   // See interface for documentation.
-  void on_rx_symbol(const lower_phy_rx_symbol_context& context, const shared_resource_grid& grid) override
+  void
+  on_rx_symbol(const lower_phy_rx_symbol_context& context, const shared_resource_grid& grid, bool is_valid) override
   {
     logger.debug(context.slot.sfn(),
                  context.slot.slot_index(),
@@ -149,16 +151,17 @@ public:
     rx_symbol_event& event = rx_symbol_events.back();
     event.context          = context;
     event.grid             = &grid.get_reader();
+    event.is_valid         = is_valid;
   }
 
   // See interface for documentation.
-  void on_rx_prach_window(const prach_buffer_context& context, const prach_buffer& buffer) override
+  void on_rx_prach_window(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
     logger.debug(context.slot.sfn(), context.slot.slot_index(), "Sector {} - On Rx PRACH Window.", context.sector);
     rx_prach_events.emplace_back();
     rx_prach_event& event = rx_prach_events.back();
     event.context         = context;
-    event.buffer          = &buffer;
+    event.buffer          = buffer.get();
   }
 
   /// \brief Gets the total number of events of any kind.

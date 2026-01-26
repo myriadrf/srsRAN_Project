@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,7 +25,7 @@
 #include "srsran/phy/upper/channel_processors/pdcch/pdcch_encoder.h"
 #include "srsran/phy/upper/channel_processors/pdcch/pdcch_modulator.h"
 #include "srsran/phy/upper/channel_processors/pdcch/pdcch_processor.h"
-#include "srsran/phy/upper/signal_processors/dmrs_pdcch_processor.h"
+#include "srsran/phy/upper/signal_processors/pdcch/dmrs_pdcch_processor.h"
 #include "srsran/ran/resource_allocation/rb_bitmap.h"
 
 namespace srsran {

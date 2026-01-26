@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "prach_configuration.h"
 #include "srsran/adt/bounded_integer.h"
 #include "srsran/ran/prach/restricted_set_config.h"
 #include "srsran/ran/subcarrier_spacing.h"
@@ -30,7 +31,7 @@
 namespace srsran {
 
 /// Maximum number of RA preambles used per occasion as per TS 38.331.
-static constexpr unsigned MAX_NOF_RA_PREAMBLES_PER_OCCASION = 64;
+constexpr unsigned MAX_NOF_RA_PREAMBLES_PER_OCCASION = 64;
 
 /// \remark See TS 38.331, RACH-ConfigGeneric.
 struct rach_config_generic {
@@ -84,9 +85,9 @@ struct rach_config_common {
   /// Enables the transform precoder for Msg3 transmission according to clause 6.1.3 of TS 38.214.
   bool msg3_transform_precoder = false;
   /// Indicates the number of SSBs per RACH occasion (L1 parameter 'SSB-per-rach-occasion'). See TS 38.331, \c
-  /// ssb-perRACH-OccasionAndCB-PreamblesPerSSB. Values {1/8, 1/4, 1/2, 1, 2, 4, 8, 16}.
+  /// ssb-perRACH-OccasionAndCB-PreamblesPerSSB.
   /// Value 1/8 corresponds to one SSB associated with 8 RACH occasions and so on so forth.
-  float nof_ssb_per_ro = 1;
+  ssb_per_rach_occasions nof_ssb_per_ro = ssb_per_rach_occasions::one;
   /// Indicates the number of Contention Based preambles per SSB (L1 parameter 'CB-preambles-per-SSB'). See TS 38.331,
   /// \c ssb-perRACH-OccasionAndCB-PreamblesPerSSB.
   /// \remark Values of \c cb_preambles_per_ssb depends on value of \c ssb_per_ro.

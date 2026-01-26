@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -54,13 +54,13 @@ inline dmrs_additional_positions uint_to_dmrs_additional_positions(uint8_t dmrs_
 enum class dmrs_max_length { len1 = 1, len2, not_set };
 
 /// Gets the number of resource elements occupied by DM-RS per PRB and symbol for a given type of DM-RS.
-static constexpr unsigned get_nof_re_per_prb(dmrs_config_type type)
+constexpr unsigned get_nof_re_per_prb(dmrs_config_type type)
 {
   return type == dmrs_config_type::type1 ? 6 : 4;
 }
 
 /// Gets the maximum number of CDM groups without data for a given type of DM-RS.
-static constexpr unsigned get_max_nof_cdm_groups_without_data(dmrs_config_type type)
+constexpr unsigned get_max_nof_cdm_groups_without_data(dmrs_config_type type)
 {
   return type == dmrs_config_type::type1 ? 2 : 3;
 }

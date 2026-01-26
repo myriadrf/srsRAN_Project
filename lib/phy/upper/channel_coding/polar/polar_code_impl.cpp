@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -413,7 +413,7 @@ srsran::polar_code_impl::polar_code_impl()
 }
 
 // Compares two unsigned
-bool cmpfunc(unsigned ai, unsigned bi)
+static bool cmpfunc(unsigned ai, unsigned bi)
 {
   return (ai < bi);
 }

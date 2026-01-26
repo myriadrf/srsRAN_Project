@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -34,10 +34,14 @@ from google.protobuf.empty_pb2 import Empty
 from google.protobuf.text_format import MessageToString
 from google.protobuf.wrappers_pb2 import StringValue, UInt32Value
 from retina.client.exception import ErrorReportedByAgent
+from retina.client.manager import RetinaTestManager
 from retina.launcher.artifacts import RetinaTestData
+from retina.launcher.public import MetricsSummary
+from retina.launcher.utils import configure_artifacts
 from retina.protocol import RanStub
 from retina.protocol.base_pb2 import (
     ChannelEmulatorType,
+    DUDefinition,
     Metrics,
     PingRequest,
     PingResponse,
@@ -51,8 +55,8 @@ from retina.protocol.channel_emulator_pb2_grpc import ChannelEmulatorStub
 from retina.protocol.exit_codes import exit_code_to_message
 from retina.protocol.fivegc_pb2 import FiveGCStartInfo, IPerfResponse
 from retina.protocol.fivegc_pb2_grpc import FiveGCStub
-from retina.protocol.gnb_pb2 import GNBStartInfo
-from retina.protocol.gnb_pb2_grpc import DUStub, GNBStub
+from retina.protocol.gnb_pb2 import CUStartInfo, DUStartInfo, GNBStartInfo
+from retina.protocol.gnb_pb2_grpc import CUStub, DUStub, GNBStub
 from retina.protocol.ric_pb2 import KpmMonXappRequest, NearRtRicStartInfo, RcXappRequest
 from retina.protocol.ric_pb2_grpc import NearRtRicStub
 from retina.protocol.ue_pb2 import (
@@ -68,6 +72,10 @@ from retina.protocol.ue_pb2 import (
 )
 from retina.protocol.ue_pb2_grpc import UEStub
 
+from .configuration import configure_test_parameters
+from .kpis import get_kpis
+
+BITRATE_THRESHOLD: float = 0.1
 RF_MAX_TIMEOUT: int = 5 * 60  # Time enough in RF when loading a new image in the sdr
 UE_STARTUP_TIMEOUT: int = RF_MAX_TIMEOUT
 GNB_STARTUP_TIMEOUT: int = 2  # GNB delay (we wait x seconds and check it's still alive). UE later and has a big timeout
@@ -86,6 +94,7 @@ def is_ntn_channel_emulator(channel_emulator: ChannelEmulatorStub):
 
 
 def start_ntn_channel_emulator(
+    *,  # This enforces keyword-only arguments
     ue_array: Sequence[UEStub],
     gnb: GNBStub,
     channel_emulator: ChannelEmulatorStub,
@@ -100,9 +109,9 @@ def start_ntn_channel_emulator(
         if ue_def.zmq_ip is not None:
             ue_def_for_gnb = ue_def
 
-    gnb_definition = gnb.GetDefinition(Empty())
+    du_definition = gnb.GetDefinition(UInt32Value(value=0))
     channel_emulator_start_info = ChannelEmulatorStartInfo(
-        gnb_definition=gnb_definition,
+        du_definition=du_definition,
         ue_definition=ue_def_for_gnb,
         ntn_scenario=ntn_scenario_def,
         start_info=StartInfo(timeout=20),
@@ -123,6 +132,7 @@ def get_ntn_configs(channel_emulator: ChannelEmulatorStub):
 
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
 def start_and_attach(
+    *,  # This enforces keyword-only arguments
     ue_array: Sequence[UEStub],
     gnb: GNBStub,
     fivegc: FiveGCStub,
@@ -141,22 +151,22 @@ def start_and_attach(
     Start stubs & wait until attach
     """
     start_network(
-        ue_array,
-        gnb,
-        fivegc,
-        gnb_startup_timeout,
-        fivegc_startup_timeout,
-        gnb_pre_cmd,
-        gnb_post_cmd,
+        ue_array=ue_array,
+        gnb_array=[gnb],
+        fivegc=fivegc,
+        gnb_startup_timeout=gnb_startup_timeout,
+        fivegc_startup_timeout=fivegc_startup_timeout,
+        gnb_pre_cmd=gnb_pre_cmd,
+        gnb_post_cmd=gnb_post_cmd,
         plmn=plmn,
         ric=ric,
         channel_emulator=channel_emulator,
     )
 
     return ue_start_and_attach(
-        ue_array,
-        gnb,
-        fivegc,
+        ue_array=ue_array,
+        du_definition=[gnb.GetDefinition(UInt32Value(value=0))],
+        fivegc=fivegc,
         ue_startup_timeout=ue_startup_timeout,
         attach_timeout=attach_timeout,
         inter_ue_start_period=inter_ue_start_period,
@@ -174,22 +184,35 @@ def _get_hplmn(imsi: str) -> PLMN:
     return hplmn
 
 
-# pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches
 def start_network(
+    *,  # This enforces keyword-only arguments
     ue_array: Sequence[UEStub],
-    gnb: GNBStub,
     fivegc: FiveGCStub,
+    gnb_array: Optional[Sequence[GNBStub]] = None,
+    cu: Optional[CUStub] = None,
+    du_array: Optional[Sequence[DUStub]] = None,
     gnb_startup_timeout: int = GNB_STARTUP_TIMEOUT,
     fivegc_startup_timeout: int = FIVEGC_STARTUP_TIMEOUT,
     gnb_pre_cmd: Tuple[str, ...] = tuple(),
     gnb_post_cmd: Tuple[str, ...] = tuple(),
+    cu_pre_cmd: Tuple[str, ...] = tuple(),
+    cu_post_cmd: Tuple[str, ...] = tuple(),
+    du_pre_cmd: Tuple[str, ...] = tuple(),
+    du_post_cmd: Tuple[str, ...] = tuple(),
     plmn: Optional[PLMN] = None,
     ric: Optional[NearRtRicStub] = None,
     channel_emulator: Optional[ChannelEmulatorStub] = None,
 ):
     """
-    Start Network (5GC + gNB + RIC(optional))
+    Start Network (5GC + gNB/CU+DU + RIC(optional))
     """
+
+    if gnb_array and (cu or du_array):
+        pytest.fail("Either gNB or CU and DU array must be provided, not both")
+
+    if (cu and not du_array) or (not cu and du_array):
+        pytest.fail("CU and DU must be provided together")
 
     ue_def_for_gnb = UEDefinition()
     for ue_stub in ue_array:
@@ -240,26 +263,69 @@ def start_network(
             ric_definition = ric.GetDefinition(Empty())
             logging.info("RIC: %s", MessageToString(ric_definition, indent=2))
 
-    with handle_start_error(name=f"GNB [{id(gnb)}]"):
-        # GNB Start
-        gnb.Start(
-            GNBStartInfo(
-                plmn=plmn,
-                ue_definition=ue_def_for_gnb,
-                fivegc_definition=fivegc.GetDefinition(Empty()),
-                ric_definition=ric_definition,
-                start_info=StartInfo(
-                    timeout=gnb_startup_timeout,
-                    pre_commands=gnb_pre_cmd,
-                    post_commands=gnb_post_cmd,
-                ),
+    if gnb_array:
+        for gnb in gnb_array:
+            with handle_start_error(name=f"GNB [{id(gnb)}]"):
+                # GNB Start
+                gnb.Start(
+                    GNBStartInfo(
+                        plmn=plmn,
+                        ue_definition=ue_def_for_gnb,
+                        fivegc_definition=fivegc.GetDefinition(Empty()),
+                        ric_definition=ric_definition,
+                        start_info=StartInfo(
+                            timeout=gnb_startup_timeout,
+                            pre_commands=gnb_pre_cmd,
+                            post_commands=gnb_post_cmd,
+                        ),
+                    )
+                )
+        return
+
+    if cu and du_array:
+        cu_def_for_du = cu.GetDefinition(Empty())
+        with handle_start_error(name=f"CU [{id(cu)}]"):
+            # CU Start
+            cu.Start(
+                CUStartInfo(
+                    plmn=plmn,
+                    fivegc_definition=fivegc.GetDefinition(Empty()),
+                    start_info=StartInfo(
+                        timeout=gnb_startup_timeout,
+                        pre_commands=cu_pre_cmd,
+                        post_commands=cu_post_cmd,
+                    ),
+                )
             )
-        )
+
+        du_id = 0
+        for du_stub in du_array:
+            with handle_start_error(name=f"DU [{id(du_stub)}]"):
+                # DU Start
+                du_stub.Start(
+                    DUStartInfo(
+                        gnb_du_id=du_id,
+                        plmn=plmn,
+                        num_cells=1,
+                        cell_offset=du_id,
+                        cu_definition=cu_def_for_du,
+                        ue_definition=ue_def_for_gnb,
+                        ric_definition=ric_definition,
+                        start_info=StartInfo(
+                            timeout=gnb_startup_timeout,
+                            pre_commands=du_pre_cmd,
+                            post_commands=du_post_cmd,
+                        ),
+                    )
+                )
+
+            du_id += 1
 
 
 def ue_start_and_attach(
+    *,  # This enforces keyword-only arguments
     ue_array: Sequence[UEStub],
-    gnb: Union[GNBStub, DUStub],
+    du_definition: Sequence[DUDefinition],
     fivegc: FiveGCStub,
     ue_startup_timeout: int = UE_STARTUP_TIMEOUT,
     attach_timeout: int = ATTACH_TIMEOUT,
@@ -270,18 +336,17 @@ def ue_start_and_attach(
     Start an array of UEs and wait until attached to already running gnb and 5gc
     """
 
-    gnb_definition = gnb.GetDefinition(Empty())
-    if channel_emulator and gnb_definition.zmq_ip is not None:
+    if channel_emulator and du_definition[0].zmq_ip is not None:
         # Overwrite the ZMQ IP and port, so the UE connects to the channel emulator.
         channel_emulator_definition = channel_emulator.GetDefinition(Empty())
-        gnb_definition.zmq_ip = channel_emulator_definition.zmq_ip
-        gnb_definition.zmq_port_array[0] = channel_emulator_definition.dl_zmq_port
+        du_definition[0].zmq_ip = channel_emulator_definition.zmq_ip
+        du_definition[0].zmq_port_array[0] = channel_emulator_definition.dl_zmq_port
 
     for ue_stub in ue_array:
         with handle_start_error(name=f"UE [{id(ue_stub)}]"):
             ue_stub.Start(
                 UEStartInfo(
-                    gnb_definition=gnb_definition,
+                    du_definition=du_definition,
                     fivegc_definition=fivegc.GetDefinition(Empty()),
                     start_info=StartInfo(timeout=ue_startup_timeout),
                 )
@@ -308,6 +373,7 @@ def ue_start_and_attach(
 
 
 def ue_await_release(
+    *,  # This enforces keyword-only arguments
     ue: UEStub,
     release_timeout: int = RELEASE_TIMEOUT,
 ) -> bool:
@@ -328,7 +394,12 @@ def ue_await_release(
     return ue_release_result
 
 
-def start_kpm_mon_xapp(ric: NearRtRicStub, report_service_style: int = 1, metrics: str = "DRB.UEThpDl") -> None:
+def start_kpm_mon_xapp(
+    *,  # This enforces keyword-only arguments
+    ric: NearRtRicStub,
+    report_service_style: int = 1,
+    metrics: str = "DRB.UEThpDl",
+) -> None:
     """
     Start KPM Monitor xAPP in RIC
     """
@@ -345,7 +416,9 @@ def stop_kpm_mon_xapp(ric: NearRtRicStub) -> None:
     ric.StopKpmMonXapp(Empty())
 
 
-def start_rc_xapp(ric: NearRtRicStub, control_service_style: int = 2, action_id: int = 6) -> None:
+def start_rc_xapp(
+    *, ric: NearRtRicStub, control_service_style: int = 2, action_id: int = 6  # The "*" enforces keyword-only arguments
+) -> None:
     """
     Start RC xAPP in RIC, currently only Slice-level PRB quota (Control Style 2, Action Id 6) is supported in Flexric.
     Also, Flexric does not parse the control parameters.
@@ -405,6 +478,7 @@ def _log_attached_ue(future: grpc.Future, ue_stub: UEStub):
 
 
 def ping(
+    *,  # This enforces keyword-only arguments
     ue_attach_info_dict: Dict[UEStub, UEAttachedInfo],
     fivegc: FiveGCStub,
     ping_count,
@@ -414,11 +488,18 @@ def ping(
     """
     Ping command between an UE and a 5GC
     """
-    ping_task_array = ping_start(ue_attach_info_dict, fivegc, ping_count, time_step, ping_interval)
+    ping_task_array = ping_start(
+        ue_attach_info_dict=ue_attach_info_dict,
+        fivegc=fivegc,
+        ping_count=ping_count,
+        time_step=time_step,
+        ping_interval=ping_interval,
+    )
     ping_wait_until_finish(ping_task_array)
 
 
 def ping_start(
+    *,  # This enforces keyword-only arguments
     ue_attach_info_dict: Dict[UEStub, UEAttachedInfo],
     fivegc: FiveGCStub,
     ping_count,
@@ -477,17 +558,27 @@ def _print_ping_result(msg: str, task: grpc.Future):
 
 
 def ping_from_5gc(
-    ue_attach_info_dict: Dict[UEStub, UEAttachedInfo], fivegc: FiveGCStub, ping_count, time_step: int = 0
+    *,  # This enforces keyword-only arguments
+    ue_attach_info_dict: Dict[UEStub, UEAttachedInfo],
+    fivegc: FiveGCStub,
+    ping_count,
+    time_step: int = 0,
 ):
     """
     Ping command from a 5GC to a UE
     """
-    ping_task_array = ping_start_from_5gc(ue_attach_info_dict, fivegc, ping_count, time_step)
+    ping_task_array = ping_start_from_5gc(
+        ue_attach_info_dict=ue_attach_info_dict, fivegc=fivegc, ping_count=ping_count, time_step=time_step
+    )
     ping_wait_until_finish(ping_task_array)
 
 
 def ping_start_from_5gc(
-    ue_attach_info_dict: Dict[UEStub, UEAttachedInfo], fivegc: FiveGCStub, ping_count, time_step: float = 0
+    *,  # This enforces keyword-only arguments
+    ue_attach_info_dict: Dict[UEStub, UEAttachedInfo],
+    fivegc: FiveGCStub,
+    ping_count,
+    time_step: float = 0,
 ) -> List[grpc.Future]:
     """
     Ping command between a 5GC and an UE
@@ -508,6 +599,7 @@ def ping_start_from_5gc(
 
 
 def iperf_parallel(
+    *,  # This enforces keyword-only arguments
     ue_attach_info_dict: Dict[UEStub, UEAttachedInfo],
     fivegc: FiveGCStub,
     protocol: IPerfProto,
@@ -528,15 +620,15 @@ def iperf_parallel(
         future_array = (
             executor.submit(
                 iperf_sequentially,
-                ue_stub,
-                ue_attached_info,
-                fivegc,
-                protocol,
-                direction,
-                iperf_duration,
-                bitrate,
-                packet_length,
-                bitrate_threshold_ratio,
+                ue_stub=ue_stub,
+                ue_attached_info=ue_attached_info,
+                fivegc=fivegc,
+                protocol=protocol,
+                direction=direction,
+                iperf_duration=iperf_duration,
+                bitrate=bitrate,
+                packet_length=packet_length,
+                bitrate_threshold_ratio=bitrate_threshold_ratio,
             )
             for ue_stub, ue_attached_info in ue_attach_info_dict.items()
         )
@@ -554,6 +646,7 @@ def iperf_parallel(
 
 
 def iperf_sequentially(
+    *,  # This enforces keyword-only arguments
     ue_stub: UEStub,
     ue_attached_info: UEAttachedInfo,
     fivegc: FiveGCStub,
@@ -573,18 +666,22 @@ def iperf_sequentially(
     for _ in range(max_retries):
         try:
             task, iperf_request = iperf_start(
-                ue_stub,
-                ue_attached_info,
-                fivegc,
-                protocol,
-                direction,
-                iperf_duration,
-                bitrate,
-                packet_length,
+                ue_stub=ue_stub,
+                ue_attached_info=ue_attached_info,
+                fivegc=fivegc,
+                protocol=protocol,
+                direction=direction,
+                duration=iperf_duration,
+                bitrate=bitrate,
+                packet_length=packet_length,
             )
             sleep(iperf_duration)
             iperf_success, iperf_data = iperf_wait_until_finish(
-                ue_attached_info, fivegc, task, iperf_request, bitrate_threshold_ratio
+                ue_attached_info=ue_attached_info,
+                fivegc=fivegc,
+                task=task,
+                iperf_request=iperf_request,
+                bitrate_threshold_ratio=bitrate_threshold_ratio,
             )
             if iperf_success:
                 return iperf_success, iperf_data
@@ -602,6 +699,7 @@ def iperf_sequentially(
 
 
 def iperf_start(
+    *,  # This enforces keyword-only arguments
     ue_stub: UEStub,
     ue_attached_info: UEAttachedInfo,
     fivegc: FiveGCStub,
@@ -638,6 +736,7 @@ def iperf_start(
 
 
 def iperf_wait_until_finish(
+    *,  # This enforces keyword-only arguments
     ue_attached_info: UEAttachedInfo,
     fivegc: FiveGCStub,
     task: grpc.Future,
@@ -709,6 +808,7 @@ def _iperf_dir_to_str(direction):
 
 
 def ue_reestablishment(
+    *,  # This enforces keyword-only arguments
     ue_stub: UEStub,
     reestablishment_interval: int,
 ):
@@ -716,7 +816,7 @@ def ue_reestablishment(
     Reestablishment one UE from already running gnb and 5gc
     """
     t_before = time()
-    task = _ue_reestablishment_future(ue_stub, reestablishment_interval)
+    task = _ue_reestablishment_future(ue_stub=ue_stub, reestablishment_interval=reestablishment_interval)
     result: ReestablishmentInfo = task.result()
     if not result.status:
         pytest.fail("Reestablishment failed")
@@ -725,6 +825,7 @@ def ue_reestablishment(
 
 
 def ue_reestablishment_parallel(
+    *,  # This enforces keyword-only arguments
     ue_array: Tuple[UEStub, ...],
     reestablishment_interval: int,
 ):
@@ -732,12 +833,16 @@ def ue_reestablishment_parallel(
     Reestablishment multiple UEs in from already running gnb and 5gc
     """
 
-    reest_task_array = [_ue_reestablishment_future(ue_stub, reestablishment_interval) for ue_stub in ue_array]
+    reest_task_array = [
+        _ue_reestablishment_future(ue_stub=ue_stub, reestablishment_interval=reestablishment_interval)
+        for ue_stub in ue_array
+    ]
     if not all((task.result().status for task in reest_task_array)):
         pytest.fail("Reestablishment failed.")
 
 
 def _ue_reestablishment_future(
+    *,  # This enforces keyword-only arguments
     ue_stub: UEStub,
     reestablishment_interval: int,
 ) -> grpc.Future:
@@ -756,7 +861,13 @@ def _log_reestablishment(future: grpc.Future, ue_stub: UEStub):
         logging.error("Reestablishment UE [%s] failed: %s", id(ue_stub), ErrorReportedByAgent(err))
 
 
-def ue_move(ue_stub: UEStub, x_coordinate: float, y_coordinate: float = 0, z_coordinate: float = 0):
+def ue_move(
+    *,  # This enforces keyword-only arguments
+    ue_stub: UEStub,
+    x_coordinate: float,
+    y_coordinate: float = 0,
+    z_coordinate: float = 0,
+):
     """
     Simulated UEs can change its position
     """
@@ -764,7 +875,173 @@ def ue_move(ue_stub: UEStub, x_coordinate: float, y_coordinate: float = 0, z_coo
     logging.info("UE [%s] moved to position %s, %s, %s", id(ue_stub), x_coordinate, y_coordinate, z_coordinate)
 
 
-def ue_expect_handover(ue_stub: UEStub, timeout: int) -> grpc.Future:
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+@contextmanager
+def multi_ue_mobility_iperf(
+    *,  # This enforces keyword-only arguments
+    retina_manager: RetinaTestManager,
+    retina_data: RetinaTestData,
+    ue_array: Sequence[UEStub],
+    fivegc: FiveGCStub,
+    gnb_array: Sequence[GNBStub],
+    metrics_summary: Optional[MetricsSummary],
+    band: int,
+    common_scs: int,
+    bandwidth: int,
+    bitrate: int,
+    protocol: IPerfProto,
+    direction: IPerfDir,
+    sample_rate: Optional[int],
+    global_timing_advance: int,
+    time_alignment_calibration: Union[int, str],
+    always_download_artifacts: bool,
+    noise_spd: int,
+    warning_as_errors: bool = True,
+    movement_steps: int = 10,
+    sleep_between_movement_steps: int = 2,
+    cell_position_offset: Tuple[float, float, float] = (1000, 0, 0),
+    nof_movements: int = 2,
+    allow_failure: bool = False,
+) -> Generator[
+    Tuple[
+        Dict[UEStub, UEAttachedInfo],
+        Tuple[Tuple[Tuple[float, float, float], Tuple[float, float, float], int, int], ...],
+        int,
+    ],
+    None,
+    None,
+]:
+    """
+    Do mobility with multiple UEs
+    """
+
+    logging.info(
+        "%s-CU Mobility Test (iPerf%s)",
+        "Inter" if len(gnb_array) == 2 else "Intra",
+        ", allowing failure" if allow_failure else "",
+    )
+
+    original_position = (0, 0, 0)
+
+    warning_allowlist = []
+    if allow_failure:
+        warning_allowlist = [
+            "MAC max KOs reached",
+            "Reached maximum number of RETX",
+            "UL buffering timed out",
+            'RRC Setup Procedure" timed out',
+            'RRC Reconfiguration Procedure" timed out',
+            'Intra CU Handover Target Routine" failed',
+            "RRC reconfiguration failed",
+            "Some or all PDUSessionResourceSetupItems failed to setup",
+            "UL buffering timed out",
+            "Discarding SDU",
+            "Discarding PDU",
+            "PDCP unpacking did not provide any SDU",
+            "Could not allocate Paging's DCI in PDCCH",
+        ]
+
+    configure_test_parameters(
+        retina_manager=retina_manager,
+        retina_data=retina_data,
+        band=band,
+        common_scs=common_scs,
+        bandwidth=bandwidth,
+        sample_rate=sample_rate,
+        global_timing_advance=global_timing_advance,
+        time_alignment_calibration=time_alignment_calibration,
+        noise_spd=noise_spd,
+        num_cells=2,
+        cell_position_offset=cell_position_offset,
+        log_ip_level="debug",
+        warning_allowlist=warning_allowlist,
+        enable_2gnbs=(gnb_array is not None and len(gnb_array) == 2),
+    )
+
+    configure_artifacts(
+        retina_data=retina_data,
+        always_download_artifacts=always_download_artifacts,
+    )
+
+    start_network(
+        ue_array=ue_array,
+        gnb_array=gnb_array,
+        fivegc=fivegc,
+        gnb_post_cmd=(
+            "log --cu_level=debug  --f1ap_level=debug --ngap_level=debug --hex_max_size=32",
+            "log --du_level=debug",
+        ),
+    )
+
+    ue_attach_info_dict = ue_start_and_attach(
+        ue_array=ue_array,
+        du_definition=[gnb.GetDefinition(UInt32Value(value=idx)) for idx, gnb in enumerate(gnb_array)],
+        fivegc=fivegc,
+    )
+
+    try:
+        # HO while iPerf
+        movement_duration = (movement_steps + 1) * sleep_between_movement_steps
+        movements: Tuple[Tuple[Tuple[float, float, float], Tuple[float, float, float], int, int], ...] = (
+            (original_position, cell_position_offset, movement_steps, sleep_between_movement_steps),
+            (cell_position_offset, original_position, movement_steps, sleep_between_movement_steps),
+        ) * nof_movements
+
+        traffic_seconds = (len(movements) * movement_duration) + len(ue_array)
+
+        # Starting iperf in the UEs
+        iperf_array = []
+        for ue_stub in ue_array:
+            iperf_array.append(
+                (
+                    ue_attach_info_dict[ue_stub],
+                    *iperf_start(
+                        ue_stub=ue_stub,
+                        ue_attached_info=ue_attach_info_dict[ue_stub],
+                        fivegc=fivegc,
+                        protocol=protocol,
+                        direction=direction,
+                        duration=traffic_seconds,
+                        bitrate=bitrate,
+                    ),
+                )
+            )
+
+        yield ue_attach_info_dict, movements, traffic_seconds
+
+        # Stop and validate iperfs.
+        if allow_failure:
+            # The BITRATE_THRESHOLD is reduced because of noise and possible handover failures
+            bitrate_threshold = BITRATE_THRESHOLD * 0.05
+        else:
+            bitrate_threshold = BITRATE_THRESHOLD
+
+        for ue_attached_info, task, iperf_request in iperf_array:
+            iperf_wait_until_finish(
+                ue_attached_info=ue_attached_info,
+                fivegc=fivegc,
+                task=task,
+                iperf_request=iperf_request,
+                bitrate_threshold_ratio=bitrate_threshold,
+            )
+
+        if not allow_failure:
+            for ue_stub in ue_array:
+                ue_validate_no_reattaches(ue_stub)
+
+        stop(
+            ue_array=ue_array,
+            gnb_array=gnb_array,
+            fivegc=fivegc,
+            retina_data=retina_data,
+            ue_stop_timeout=16,
+            warning_as_errors=warning_as_errors,
+        )
+    finally:
+        get_kpis(du_or_gnb_array=gnb_array, ue_array=ue_array, metrics_summary=metrics_summary)
+
+
+def ue_expect_handover(*, ue_stub: UEStub, timeout: int) -> grpc.Future:  # The "*" enforces keyword-only arguments
     """
     Creates a future object that will finish when a HO takes places or when the timeout is reached
     """
@@ -779,7 +1056,7 @@ def _log_handover(future: grpc.Future, ue_stub: UEStub):
         log_fn = logging.info if result.status else logging.error
         log_fn("Handover UE [%s]:\n%s", id(ue_stub), MessageToString(result, indent=2))
     except grpc.RpcError as err:
-        logging.error("Handover UE [%s] failed: %s", id(ue_stub), ErrorReportedByAgent(err))
+        logging.error("Handover UE [%s] failed: %s\n", id(ue_stub), ErrorReportedByAgent(err))
 
 
 def ue_validate_no_reattaches(ue_stub: UEStub):
@@ -791,7 +1068,9 @@ def ue_validate_no_reattaches(ue_stub: UEStub):
         logging.error("UE [%s] had multiples rrc setups:\n%s", id(ue_stub), MessageToString(messages, indent=2))
 
 
-def validate_ue_registered_via_ims(ue_stub_array: Sequence[UEStub], core: FiveGCStub) -> None:
+def validate_ue_registered_via_ims(
+    *, ue_stub_array: Sequence[UEStub], core: FiveGCStub  # The "*" enforces keyword-only arguments
+) -> None:
     """
     Fails if the UEs are not registered in IMS
     """
@@ -807,7 +1086,12 @@ def validate_ue_registered_via_ims(ue_stub_array: Sequence[UEStub], core: FiveGC
         pytest.fail("IMS Registered Subscriber array mismatch!")
 
 
-def ric_validate_e2_interface(ric: NearRtRicStub, kpm_expected: bool = False, rc_expected: bool = False) -> None:
+def ric_validate_e2_interface(
+    *,
+    ric: NearRtRicStub,
+    kpm_expected: bool = False,
+    rc_expected: bool = False,  # The "*" enforces keyword-only arguments
+) -> None:
     """
     Fails if E2 was not operating correctly
     """
@@ -841,11 +1125,15 @@ def ric_validate_e2_interface(ric: NearRtRicStub, kpm_expected: bool = False, rc
             pytest.fail("Different number of RIC Control Request and Replies.")
 
 
+# pylint: disable=too-many-branches
 def stop(
+    *,  # This enforces keyword-only arguments
     ue_array: Sequence[UEStub],
-    gnb: Optional[GNBStub],
-    fivegc: Optional[FiveGCStub],
     retina_data: RetinaTestData,
+    gnb_array: Optional[Sequence[GNBStub]] = None,
+    cu: Optional[CUStub] = None,
+    du_array: Optional[Sequence[DUStub]] = None,
+    fivegc: Optional[FiveGCStub] = None,
     ue_stop_timeout: int = 0,  # Auto
     gnb_stop_timeout: int = 0,
     fivegc_stop_timeout: int = 0,
@@ -861,43 +1149,94 @@ def stop(
     """
     # Stop
     error_msg_array = []
-    if (stop_gnb_first is True) and (gnb is not None):
-        error_message, _ = _stop_stub(gnb, "GNB", retina_data, gnb_stop_timeout, log_search, warning_as_errors)
+    if (stop_gnb_first is True) and (gnb_array is not None):
+        for index, gnb in enumerate(gnb_array):
+            error_message, _ = _stop_stub(
+                stub=gnb,
+                name=f"GNB_{index+1}",
+                retina_data=retina_data,
+                timeout=gnb_stop_timeout,
+                log_search=log_search,
+                warning_as_errors=warning_as_errors,
+            )
         error_msg_array.append(error_message)
 
     for index, ue_stub in enumerate(ue_array):
         error_message, _ = _stop_stub(
-            ue_stub,
-            f"UE_{index+1}",
-            retina_data,
-            ue_stop_timeout,
-            log_search,
-            warning_as_errors,
+            stub=ue_stub,
+            name=f"UE_{index+1}",
+            retina_data=retina_data,
+            timeout=ue_stop_timeout,
+            log_search=log_search,
+            warning_as_errors=warning_as_errors,
         )
         error_msg_array.append(error_message)
 
-    if (stop_gnb_first is False) and (gnb is not None):
-        error_message, _ = _stop_stub(gnb, "GNB", retina_data, gnb_stop_timeout, log_search, warning_as_errors)
+    if (stop_gnb_first is False) and (gnb_array is not None):
+        for index, gnb in enumerate(gnb_array):
+            error_message, _ = _stop_stub(
+                stub=gnb,
+                name=f"GNB_{index+1}",
+                retina_data=retina_data,
+                timeout=gnb_stop_timeout,
+                log_search=log_search,
+                warning_as_errors=warning_as_errors,
+            )
+            error_msg_array.append(error_message)
+
+    if du_array is not None:
+        for index, du_stub in enumerate(du_array):
+            error_message, _ = _stop_stub(
+                stub=du_stub,
+                name=f"DU_{index+1}",
+                retina_data=retina_data,
+                timeout=gnb_stop_timeout,
+                log_search=log_search,
+                warning_as_errors=warning_as_errors,
+            )
+            error_msg_array.append(error_message)
+
+    if cu is not None:
+        error_message, _ = _stop_stub(
+            stub=cu,
+            name="CU",
+            retina_data=retina_data,
+            timeout=gnb_stop_timeout,
+            log_search=log_search,
+            warning_as_errors=warning_as_errors,
+        )
         error_msg_array.append(error_message)
 
     if fivegc is not None:
         error_message, _ = _stop_stub(
-            fivegc,
-            "5GC",
-            retina_data,
-            fivegc_stop_timeout,
-            log_search,
-            warning_as_errors,
+            stub=fivegc,
+            name="5GC",
+            retina_data=retina_data,
+            timeout=fivegc_stop_timeout,
+            log_search=log_search,
+            warning_as_errors=warning_as_errors,
         )
         error_msg_array.append(error_message)
 
     if ric is not None:
-        error_message, _ = _stop_stub(ric, "RIC", retina_data, gnb_stop_timeout, log_search, warning_as_errors)
+        error_message, _ = _stop_stub(
+            stub=ric,
+            name="RIC",
+            retina_data=retina_data,
+            timeout=gnb_stop_timeout,
+            log_search=log_search,
+            warning_as_errors=warning_as_errors,
+        )
         error_msg_array.append(error_message)
 
     if channel_emulator is not None:
         error_message, _ = _stop_stub(
-            ric, "CHANNEL_EMULATOR", retina_data, gnb_stop_timeout, log_search, warning_as_errors
+            stub=ric,
+            name="CHANNEL_EMULATOR",
+            retina_data=retina_data,
+            timeout=gnb_stop_timeout,
+            log_search=log_search,
+            warning_as_errors=warning_as_errors,
         )
         error_msg_array.append(error_message)
 
@@ -912,11 +1251,12 @@ def stop(
     # Metrics after Stop
     metrics_msg_array = []
     for index, ue_stub in enumerate(ue_array):
-        metrics_msg_array.append(_get_metrics_msg(ue_stub, f"UE_{index+1}", fail_if_kos=fail_if_kos))
-    if gnb is not None:
-        metrics_msg_array.append(_get_metrics_msg(gnb, "GNB", fail_if_kos=fail_if_kos))
+        metrics_msg_array.append(_get_metrics_msg(stub=ue_stub, name=f"UE_{index+1}", fail_if_kos=fail_if_kos))
+    if gnb_array is not None:
+        for index, gnb in enumerate(gnb_array):
+            metrics_msg_array.append(_get_metrics_msg(stub=gnb, name=f"GNB_{index+1}", fail_if_kos=fail_if_kos))
     if fivegc is not None:
-        metrics_msg_array.append(_get_metrics_msg(fivegc, "5GC", fail_if_kos=fail_if_kos))
+        metrics_msg_array.append(_get_metrics_msg(stub=fivegc, name="5GC", fail_if_kos=fail_if_kos))
 
     # Fail if metric errors
     metrics_msg_array = list(filter(bool, metrics_msg_array))
@@ -928,6 +1268,7 @@ def stop(
 
 
 def ue_stop(
+    *,  # This enforces keyword-only arguments
     ue_array: Sequence[UEStub],
     retina_data: RetinaTestData,
     ue_stop_timeout: int = 0,  # Auto
@@ -940,12 +1281,12 @@ def ue_stop(
     error_msg_array = []
     for index, ue_stub in enumerate(ue_array):
         error_message, _ = _stop_stub(
-            ue_stub,
-            f"UE_{index+1}",
-            retina_data,
-            ue_stop_timeout,
-            log_search,
-            warning_as_errors,
+            stub=ue_stub,
+            name=f"UE_{index+1}",
+            retina_data=retina_data,
+            timeout=ue_stop_timeout,
+            log_search=log_search,
+            warning_as_errors=warning_as_errors,
         )
         error_msg_array.append(error_message)
     error_msg_array = list(filter(bool, error_msg_array))
@@ -957,6 +1298,7 @@ def ue_stop(
 
 
 def _stop_stub(
+    *,  # This enforces keyword-only arguments
     stub: RanStub,
     name: str,
     retina_data: RetinaTestData,
@@ -1006,7 +1348,9 @@ def _stop_stub(
     return error_msg, error_count
 
 
-def _get_metrics_msg(stub: RanStub, name: str, fail_if_kos: bool = False) -> str:
+def _get_metrics_msg(
+    *, stub: RanStub, name: str, fail_if_kos: bool = False  # The "*" enforces keyword-only arguments
+) -> str:
     if fail_if_kos:
         with suppress(grpc.RpcError):
             metrics: Metrics = stub.GetMetrics(Empty())

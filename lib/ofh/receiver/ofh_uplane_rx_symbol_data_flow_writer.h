@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -49,8 +49,9 @@ public:
     srsran_assert(ul_context_repo, "Invalid uplink context repository");
   }
 
-  /// Writes the given decoder results in the corresponding resource grid using the given eAxC.
-  void write_to_resource_grid(unsigned eaxc, const uplane_message_decoder_results& results);
+  /// Writes the given decoder results in the corresponding resource grid using the given eAxC. Returns true on success,
+  /// otherwise false.
+  bool write_to_resource_grid(unsigned eaxc, const uplane_message_decoder_results& results);
 
 private:
   const static_vector<unsigned, MAX_NOF_SUPPORTED_EAXC> ul_eaxc;

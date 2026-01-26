@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,7 +27,6 @@
 namespace srsran {
 
 /// Validates the given dynamic O-RAN DU unit configuration. Returns true on success, false otherwise.
-bool validate_dynamic_o_du_unit_config(const dynamic_o_du_unit_config&  config,
-                                       const os_sched_affinity_bitmask& available_cpus);
+bool validate_dynamic_o_du_unit_config(const dynamic_o_du_unit_config& config);
 
 } // namespace srsran

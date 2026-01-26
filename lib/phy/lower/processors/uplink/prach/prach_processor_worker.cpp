@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,12 +24,14 @@
 #include "srsran/gateways/baseband/buffer/baseband_gateway_buffer_reader_view.h"
 #include "srsran/instrumentation/traces/ru_traces.h"
 #include "srsran/ran/prach/prach_preamble_information.h"
+#include "srsran/srsvec/conversion.h"
 #include "srsran/srsvec/copy.h"
 
 using namespace srsran;
 
 void prach_processor_worker::run_state_wait(const baseband_gateway_buffer_reader&           samples,
-                                            const prach_processor_baseband::symbol_context& context)
+                                            const prach_processor_baseband::symbol_context& context,
+                                            stop_event_token                                token)
 {
   // Check if the context slot is in the past even if the sector/port does not match.
   if ((context.slot > prach_context.slot) || (context.slot == prach_context.slot && context.symbol > 0)) {
@@ -60,11 +62,12 @@ void prach_processor_worker::run_state_wait(const baseband_gateway_buffer_reader
   state = states::collecting;
 
   // Accumulate the samples for the first segment.
-  accumulate_samples(samples);
+  accumulate_samples(samples, std::move(token));
 }
 
 void prach_processor_worker::run_state_collecting(const baseband_gateway_buffer_reader&           samples,
-                                                  const prach_processor_baseband::symbol_context& context)
+                                                  const prach_processor_baseband::symbol_context& context,
+                                                  stop_event_token                                token)
 {
   // Ignore symbol if the sector and port do not match with the prach_context.
   if (context.sector != prach_context.sector) {
@@ -72,13 +75,13 @@ void prach_processor_worker::run_state_collecting(const baseband_gateway_buffer_
   }
 
   // Accumulate samples of the n-th segment.
-  accumulate_samples(samples);
+  accumulate_samples(samples, std::move(token));
 }
 
-void prach_processor_worker::accumulate_samples(const baseband_gateway_buffer_reader& samples)
+void prach_processor_worker::accumulate_samples(const baseband_gateway_buffer_reader& samples, stop_event_token token)
 {
   // Select number of samples to append.
-  unsigned count = std::min(window_length - nof_samples, static_cast<unsigned>(samples.get_nof_samples()));
+  unsigned count = std::min(window_length - nof_samples, samples.get_nof_samples());
 
   unsigned nof_ports = prach_context.ports.size();
   for (uint8_t i_channel = 0; i_channel != nof_ports; ++i_channel) {
@@ -90,7 +93,8 @@ void prach_processor_worker::accumulate_samples(const baseband_gateway_buffer_re
                   samples.get_nof_channels());
 
     // PRACH buffer destination buffer view.
-    span<cf_t> dst_prach_buffer = temp_baseband.get_writer().get_channel_buffer(i_channel).subspan(nof_samples, count);
+    span<ci16_t> dst_prach_buffer =
+        temp_baseband.get_writer().get_channel_buffer(i_channel).subspan(nof_samples, count);
 
     // Append samples in temporary buffer.
     srsvec::copy(dst_prach_buffer, samples.get_channel_buffer(i_port).first(count));
@@ -107,32 +111,36 @@ void prach_processor_worker::accumulate_samples(const baseband_gateway_buffer_re
   // Otherwise, transition to processing.
   state = states::processing;
 
-  if (!async_task_executor.execute([this, nof_ports]() {
+  if (!async_task_executor.defer([this, nof_ports, moved_token = std::move(token)]() {
         trace_point tp = ru_tracer.now();
 
         for (unsigned i_port = 0; i_port != nof_ports; ++i_port) {
           // Prepare PRACH demodulator configuration.
-          ofdm_prach_demodulator::configuration config;
-          config.slot             = prach_context.slot;
-          config.format           = prach_context.format;
-          config.nof_td_occasions = prach_context.nof_td_occasions;
-          config.nof_fd_occasions = prach_context.nof_fd_occasions;
-          config.start_symbol     = prach_context.start_symbol;
-          config.rb_offset        = prach_context.rb_offset;
-          config.nof_prb_ul_grid  = prach_context.nof_prb_ul_grid;
-          config.port             = i_port;
+          ofdm_prach_demodulator::configuration config = {.slot             = prach_context.slot,
+                                                          .format           = prach_context.format,
+                                                          .nof_td_occasions = prach_context.nof_td_occasions,
+                                                          .nof_fd_occasions = prach_context.nof_fd_occasions,
+                                                          .start_symbol     = prach_context.start_symbol,
+                                                          .rb_offset        = prach_context.rb_offset,
+                                                          .nof_prb_ul_grid  = prach_context.nof_prb_ul_grid,
+                                                          .port             = i_port};
 
           // Make a view of the first samples in the buffer.
           baseband_gateway_buffer_reader_view buffered_samples(temp_baseband.get_reader(), 0, nof_samples);
+          // Get a view over the temporary buffer holding float-based complex samples.
+          span<cf_t> cf_buf = temp_cf_baseband.get_view({i_port}).subspan(0, nof_samples);
+
+          // Convert them into floating-point samples using the temporary buffer.
+          srsvec::convert(cf_buf, buffered_samples.get_channel_buffer(i_port), scaling_factor_ci16_to_cf);
 
           // Demodulate all candidates.
-          demodulator->demodulate(*buffer, buffered_samples.get_channel_buffer(i_port), config);
+          demodulator->demodulate(*buffer, cf_buf, config);
         }
 
         ru_tracer << trace_event("prach_demodulate", tp);
 
         // Notify PRACH window reception.
-        notifier->on_rx_prach_window(*buffer, prach_context);
+        notifier->on_rx_prach_window(std::move(buffer), prach_context);
 
         // Transition to idle.
         state = states::idle;
@@ -142,12 +150,18 @@ void prach_processor_worker::accumulate_samples(const baseband_gateway_buffer_re
   }
 }
 
-void prach_processor_worker::handle_request(prach_buffer& buffer_, const prach_buffer_context& context)
+void prach_processor_worker::handle_request(shared_prach_buffer request_buffer, const prach_buffer_context& context)
 {
   srsran_assert(state == states::idle, "Invalid state.");
 
+  auto token = stop_manager.get_token();
+
+  if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
+    return;
+  }
+
   prach_context = context;
-  buffer        = &buffer_;
+  buffer        = std::move(request_buffer);
 
   // Calculate the PRACH window size starting at the beginning of the slot.
   window_length =
@@ -164,19 +178,31 @@ void prach_processor_worker::handle_request(prach_buffer& buffer_, const prach_b
 void prach_processor_worker::process_symbol(const baseband_gateway_buffer_reader&           samples,
                                             const prach_processor_baseband::symbol_context& context)
 {
+  auto token = stop_manager.get_token();
+
+  if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
+    return;
+  }
+
   // Run FSM.
   switch (state) {
     case states::idle:
       // Do nothing.
       break;
     case states::wait:
-      run_state_wait(samples, context);
+      run_state_wait(samples, context, std::move(token));
       break;
     case states::collecting:
-      run_state_collecting(samples, context);
+      run_state_collecting(samples, context, std::move(token));
       break;
     case states::processing:
       // Do nothing.
       break;
   }
+}
+
+void prach_processor_worker::stop()
+{
+  stop_manager.stop();
+  buffer.reset();
 }

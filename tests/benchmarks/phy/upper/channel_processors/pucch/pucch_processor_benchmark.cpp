@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,6 +33,7 @@
 #include "srsran/support/srsran_test.h"
 #include <getopt.h>
 #include <random>
+#include <variant>
 
 using namespace srsran;
 
@@ -270,7 +271,7 @@ static int parse_args(int argc, char** argv)
       case 'h':
       default:
         usage(argv[0]);
-        exit(0);
+        std::exit(0);
     }
   }
 

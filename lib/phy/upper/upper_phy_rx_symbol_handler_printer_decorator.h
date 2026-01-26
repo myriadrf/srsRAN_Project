@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,10 +22,15 @@
 
 #pragma once
 
+#include "srsran/phy/support/prach_buffer.h"
+#include "srsran/phy/support/prach_buffer_context.h"
 #include "srsran/phy/support/resource_grid_reader.h"
 #include "srsran/phy/support/shared_resource_grid.h"
+#include "srsran/phy/upper/upper_phy_rx_symbol_handler.h"
+#include "srsran/ran/cyclic_prefix.h"
+#include "srsran/ran/prach/prach_constants.h"
+#include "srsran/ran/prach/prach_preamble_information.h"
 #include "srsran/srsvec/conversion.h"
-#include "srsran/support/error_handling.h"
 #include "srsran/support/executors/task_worker.h"
 #include <fstream>
 
@@ -65,10 +70,11 @@ public:
     }
   }
 
-  void handle_rx_symbol(const upper_phy_rx_symbol_context& context, const shared_resource_grid& grid) override
+  void
+  handle_rx_symbol(const upper_phy_rx_symbol_context& context, const shared_resource_grid& grid, bool is_valid) override
   {
     // Handle Rx symbol.
-    handler->handle_rx_symbol(context, grid);
+    handler->handle_rx_symbol(context, grid, is_valid);
 
     // Early return if the number of symbols does not reach the configured one or the file is not open.
     if ((context.symbol != (nof_symbols - 1)) || !file.is_open()) {
@@ -106,19 +112,27 @@ public:
     }
   }
 
-  void handle_rx_prach_window(const prach_buffer_context& context, const prach_buffer& buffer) override
+  void handle_rx_prach_window(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
-    handler->handle_rx_prach_window(context, buffer);
+    handler->handle_rx_prach_window(context, buffer.clone());
 
     // Queue write request.
-    if (print_prach && !worker.push_task([this, context, &buffer]() {
-          unsigned nof_replicas = buffer.get_max_nof_symbols();
+    if (print_prach && !worker.push_task([this, context, prach_buff = std::move(buffer)]() {
+          // Retrieve preamble information.
+          prach_preamble_information prach_info;
+          if (is_long_preamble(context.format)) {
+            prach_info = get_prach_preamble_long_info(context.format);
+          } else {
+            prach_info = get_prach_preamble_short_info(
+                context.format, to_ra_subcarrier_spacing(context.pusch_scs), /*last_occasion=*/false);
+          }
+          unsigned nof_replicas = prach_info.nof_symbols;
           unsigned prach_start  = 0;
-          unsigned prach_stop   = buffer.get_max_nof_ports();
+          unsigned prach_stop   = prach_buff->get_max_nof_ports();
           for (unsigned i_port = prach_start; i_port != prach_stop; ++i_port) {
             for (unsigned i_replica = 0; i_replica != nof_replicas; ++i_replica) {
               // Select view of the replica.
-              span<const cbf16_t> samples = buffer.get_symbol(i_port, 0, 0, i_replica);
+              span<const cbf16_t> samples = prach_buff->get_symbol(i_port, 0, 0, i_replica);
 
               // Convert samples to complex float.
               span<cf_t> samples_cf = span<cf_t>(temp_prach_buffer).first(samples.size());
@@ -129,7 +143,7 @@ public:
             }
           }
 
-          unsigned nof_complex_floats = buffer.get_sequence_length() * nof_replicas * (prach_stop - prach_start);
+          unsigned nof_complex_floats = prach_buff->get_sequence_length() * nof_replicas * (prach_stop - prach_start);
           // Log the resource grid information.
           logger.info(context.slot.sfn(),
                       context.slot.slot_index(),

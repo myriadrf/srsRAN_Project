@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,7 +21,7 @@
  */
 
 #include "rrc_ue_context.h"
-#include "srsran/asn1/rrc_nr/ho_prep_info.h"
+#include "srsran/asn1/rrc_nr/rrc_nr.h"
 
 using namespace srsran;
 using namespace srs_cu_cp;

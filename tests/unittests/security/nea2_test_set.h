@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -121,5 +121,60 @@ std::vector<nea_test_set> nea2_test_set = {
             "80eb6465f121dce9cb88d85b96cf23ccccd4280767bee8eeb23d8652461db6493103003baf89f5e18261ea43c84a92ebffffe4909d"
             "c46c5192f825f770600b9602c557b5f8b431a79d45977dd9c41b863da9e142e90020cfd074d6927b7ab3b6725d1a6f3f98b9c9daa8"
             "982aff067828",
+    },
+};
+
+/// 128-NEA2 Test Set Extra
+/// This set contains additional custom test cases
+std::vector<nea_test_set> nea2_test_set_extra = {
+    nea_test_set{
+        .name            = "128_NEA2_Test_Set_Extra_Len_0",
+        .key_cstr        = "00112233445566778899AABBCCDDEEFF",
+        .count           = 0x55555555,
+        .bearer          = 0x11,
+        .direction       = 1,
+        .length          = 0,
+        .plaintext_cstr  = "",
+        .ciphertext_cstr = "",
+    },
+    nea_test_set{
+        .name            = "128_NEA2_Test_Set_Extra_Len_1",
+        .key_cstr        = "00112233445566778899AABBCCDDEEFF",
+        .count           = 0x55555555,
+        .bearer          = 0x11,
+        .direction       = 1,
+        .length          = 8,
+        .plaintext_cstr  = "AA",
+        .ciphertext_cstr = "7A",
+    },
+    nea_test_set{
+        .name            = "128_NEA2_Test_Set_Extra_Len_2",
+        .key_cstr        = "00112233445566778899AABBCCDDEEFF",
+        .count           = 0x55555555,
+        .bearer          = 0x11,
+        .direction       = 1,
+        .length          = 16,
+        .plaintext_cstr  = "AABB",
+        .ciphertext_cstr = "7A8A",
+    },
+    nea_test_set{
+        .name            = "128_NEA2_Test_Set_Extra_Len_4",
+        .key_cstr        = "00112233445566778899AABBCCDDEEFF",
+        .count           = 0x55555555,
+        .bearer          = 0x11,
+        .direction       = 1,
+        .length          = 32,
+        .plaintext_cstr  = "AABBCCDD",
+        .ciphertext_cstr = "7A8AC697",
+    },
+    nea_test_set{
+        .name            = "128_NEA2_Test_Set_Extra_Len_8",
+        .key_cstr        = "00112233445566778899AABBCCDDEEFF",
+        .count           = 0x55555555,
+        .bearer          = 0x11,
+        .direction       = 1,
+        .length          = 64,
+        .plaintext_cstr  = "AABBCCDDEEFF0011",
+        .ciphertext_cstr = "7A8AC697468F4058",
     },
 };

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,7 +29,7 @@ using namespace asn1::e2ap;
 using namespace asn1::e2sm;
 using namespace srsran;
 
-uint64_t get_ntp_timestamp()
+static uint64_t get_ntp_timestamp()
 {
   // Offset between Unix and NTP epochs (1900-1970 in seconds).
   constexpr uint64_t ntp_epoch_offset = 2208988800ULL;

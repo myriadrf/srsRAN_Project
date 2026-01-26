@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -42,7 +42,6 @@ f1u_bearer_impl::f1u_bearer_impl(uint32_t                       ue_index,
   tx_pdu_notifier(tx_pdu_notifier_),
   ue_executor(ue_executor_),
   ul_notif_timer(timers.create_timer()),
-  ul_buffer_timer(timers.create_timer()),
   desired_buffer_size_for_data_radio_bearer(cfg.rlc_queue_bytes_limit),
   notif_desired_buffer_size_for_data_radio_bearer(
       0) // make sure that we send an initial buffer report, even if there is no data
@@ -50,15 +49,6 @@ f1u_bearer_impl::f1u_bearer_impl(uint32_t                       ue_index,
   ul_notif_timer.set(std::chrono::milliseconds(cfg.t_notify), [this](timer_id_t tid) { on_expired_ul_notif_timer(); });
   ul_notif_timer.run();
 
-  ul_buffer_timer.set(cfg.ul_buffer_timeout, [this](timer_id_t tid) {
-    logger.log_warning("UL buffering timed out, flushing PDUs. ul_buffer_size={} ul_buffer_timeout={}ms",
-                       cfg.ul_buffer_size,
-                       cfg.ul_buffer_timeout.count());
-    flush_ul_buffer();
-  });
-  if (cfg.buffer_ul_on_startup) {
-    ul_buffer_timer.run();
-  }
   logger.log_info("F1-U bearer configured. {} {}", cfg, dl_tnl_info);
 }
 
@@ -70,7 +60,7 @@ void f1u_bearer_impl::handle_sdu(byte_buffer_chain sdu)
   // attach the SDU
   msg.t_pdu = std::move(sdu);
 
-  // attach data delivery status (if anything has changed)
+  // piggy-back latest data delivery status (ignore if anything has changed)
   fill_data_delivery_status(msg);
 
   if (buffering) {
@@ -91,8 +81,7 @@ void f1u_bearer_impl::handle_sdu(byte_buffer_chain sdu)
 
 void f1u_bearer_impl::handle_pdu(nru_dl_message msg)
 {
-  auto fn = TRACE_TASK([this, m = std::move(msg)]() mutable { handle_pdu_impl(std::move(m)); });
-  if (!ue_executor.execute(std::move(fn))) {
+  if (!ue_executor.execute([this, m = std::move(msg)]() mutable { handle_pdu_impl(std::move(m)); })) {
     if (!cfg.warn_on_drop) {
       logger.log_info("Dropped F1-U PDU, queue is full");
     } else {
@@ -119,7 +108,7 @@ void f1u_bearer_impl::handle_pdu_impl(nru_dl_message msg)
   }
   // handle polling of delivery status report
   if (msg.dl_user_data.report_polling) {
-    if (send_data_delivery_status()) {
+    if (send_data_delivery_status(/* force = */ true)) {
       logger.log_debug("Report polling flag is set. Sent data delivery status");
     } else {
       logger.log_warning("Report polling flag is set. No data to be sent in data delivery status");
@@ -152,8 +141,8 @@ void f1u_bearer_impl::flush_ul_buffer()
     ul_buffer.pop();
   }
   buffering = false;
-  ul_buffer_timer.stop();
 }
+
 void f1u_bearer_impl::handle_transmit_notification(uint32_t highest_pdcp_sn, uint32_t desired_buf_size)
 {
   // This function may be called from pcell_executor, since it only writes to an atomic variable
@@ -204,9 +193,13 @@ bool f1u_bearer_impl::fill_highest_transmitted_pdcp_sn(nru_dl_data_delivery_stat
   // In case the DL DATA DELIVERY STATUS frame is sent before any NR PDCP PDU is transferred to lower layers, the
   // information on the highest NR PDCP PDU sequence number successfully delivered in sequence to the UE and the
   // highest NR PDCP PDU sequence number transmitted to the lower layers may not be provided.
-  if (cur_highest_transmitted_pdcp_sn != unset_pdcp_sn) {
-    logger.log_debug("Adding highest transmitted pdcp_sn={}", cur_highest_transmitted_pdcp_sn);
-    status.highest_transmitted_pdcp_sn = cur_highest_transmitted_pdcp_sn;
+  if (cur_highest_transmitted_pdcp_sn == unset_pdcp_sn) {
+    return false;
+  }
+  logger.log_debug("Adding highest transmitted pdcp_sn={}", cur_highest_transmitted_pdcp_sn);
+  status.highest_transmitted_pdcp_sn = cur_highest_transmitted_pdcp_sn;
+  if (cur_highest_transmitted_pdcp_sn != notif_highest_transmitted_pdcp_sn) {
+    notif_highest_transmitted_pdcp_sn = cur_highest_transmitted_pdcp_sn;
     return true;
   }
   return false;
@@ -226,9 +219,13 @@ bool f1u_bearer_impl::fill_highest_delivered_pdcp_sn(nru_dl_data_delivery_status
   // In case the DL DATA DELIVERY STATUS frame is sent before any NR PDCP PDU is transferred to lower layers, the
   // information on the highest NR PDCP PDU sequence number successfully delivered in sequence to the UE and the
   // highest NR PDCP PDU sequence number transmitted to the lower layers may not be provided.
-  if (cur_highest_delivered_pdcp_sn != unset_pdcp_sn) {
-    logger.log_debug("Adding highest delivered pdcp_sn={}", cur_highest_delivered_pdcp_sn);
-    status.highest_delivered_pdcp_sn = cur_highest_delivered_pdcp_sn;
+  if (cur_highest_delivered_pdcp_sn == unset_pdcp_sn) {
+    return false;
+  }
+  logger.log_debug("Adding highest delivered pdcp_sn={}", cur_highest_delivered_pdcp_sn);
+  status.highest_delivered_pdcp_sn = cur_highest_delivered_pdcp_sn;
+  if (cur_highest_delivered_pdcp_sn != notif_highest_delivered_pdcp_sn) {
+    notif_highest_delivered_pdcp_sn = cur_highest_delivered_pdcp_sn;
     return true;
   }
   return false;
@@ -261,31 +258,31 @@ bool f1u_bearer_impl::fill_highest_delivered_retransmitted_pdcp_sn(nru_dl_data_d
   return false;
 }
 
-void f1u_bearer_impl::fill_data_delivery_status(nru_ul_message& msg)
+bool f1u_bearer_impl::fill_data_delivery_status(nru_ul_message& msg)
 {
-  nru_dl_data_delivery_status status      = {};
-  bool                        value_added = false;
+  nru_dl_data_delivery_status status       = {};
+  bool                        fresh_values = false;
 
-  value_added |= fill_desired_buffer_size_of_data_radio_bearer(status);
-  value_added |= fill_highest_transmitted_pdcp_sn(status);
-  value_added |= fill_highest_delivered_pdcp_sn(status);
-  value_added |= fill_highest_retransmitted_pdcp_sn(status);
-  value_added |= fill_highest_delivered_retransmitted_pdcp_sn(status);
+  fresh_values |= fill_desired_buffer_size_of_data_radio_bearer(status);
+  fresh_values |= fill_highest_transmitted_pdcp_sn(status);
+  fresh_values |= fill_highest_delivered_pdcp_sn(status);
+  fresh_values |= fill_highest_retransmitted_pdcp_sn(status);
+  fresh_values |= fill_highest_delivered_retransmitted_pdcp_sn(status);
 
-  if (value_added) {
-    logger.log_debug("Adding data delivery status to NR-U message");
-    msg.data_delivery_status = std::move(status);
-  }
+  logger.log_debug("Adding data delivery status to NR-U message");
+  msg.data_delivery_status = std::move(status);
 
   // restart UL notification timer
   ul_notif_timer.run();
+
+  return fresh_values;
 }
 
-bool f1u_bearer_impl::send_data_delivery_status()
+bool f1u_bearer_impl::send_data_delivery_status(bool force)
 {
-  nru_ul_message msg = {};
-  fill_data_delivery_status(msg);
-  if (!msg.data_delivery_status.has_value()) {
+  nru_ul_message msg          = {};
+  bool           fresh_values = fill_data_delivery_status(msg);
+  if (!fresh_values && !force) {
     return false;
   }
   tx_pdu_notifier.on_new_pdu(std::move(msg));
@@ -294,9 +291,9 @@ bool f1u_bearer_impl::send_data_delivery_status()
 
 void f1u_bearer_impl::on_expired_ul_notif_timer()
 {
-  if (send_data_delivery_status()) {
+  if (send_data_delivery_status(/* force = */ false)) {
     logger.log_debug("UL notification timer expired. Sent data delivery status");
   } else {
-    logger.log_debug("UL notification timer expired. No data to be sent in data delivery status");
+    logger.log_debug("UL notification timer expired. No fresh data to be sent in data delivery status");
   }
 }

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -204,7 +204,7 @@ TEST_F(cu_cp_paging_test, when_no_du_for_tac_exists_then_paging_is_not_sent_to_d
   paging_msg.pdu.init_msg().value.paging()->tai_list_for_paging[0].tai.tac.from_number(8);
   ASSERT_TRUE(send_ngap_paging(du_idx, paging_msg));
 
-  // Make sure he paging request is in the metrics.
+  // Make sure the paging request is in the metrics.
   auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
   ASSERT_EQ(report.ngaps[0].metrics.nof_cn_initiated_paging_requests, 1) << "Paging request should be in the metrics";
 
@@ -266,7 +266,7 @@ TEST_F(cu_cp_paging_test, when_valid_paging_message_received_then_paging_is_only
 
   // Connect second DU and run F1Setup.
   unsigned du_idx2 = setup_du(test_helpers::generate_f1_setup_request(
-      int_to_gnb_du_id(0x12), {{nr_cell_identity::create(6577).value(), 1, 8}}));
+      int_to_gnb_du_id(0x12), {{.nci = nr_cell_identity::create(6577).value(), .pci = 1, .tac = 8}}));
 
   // Inject NGAP Paging with only mandatory values and await F1AP Paging.
   ASSERT_TRUE(send_minimal_ngap_paging_and_await_f1ap_paging(du_idx));
@@ -286,7 +286,13 @@ TEST_F(cu_cp_paging_test, when_valid_paging_message_received_then_paging_is_only
 
   // Connect second DU and run F1Setup.
   unsigned du_idx2 = setup_du(test_helpers::generate_f1_setup_request(
-      int_to_gnb_du_id(0x12), {{nr_cell_identity::create(6577).value(), 1, 7}}));
+      int_to_gnb_du_id(0x12), {{.nci = nr_cell_identity::create(6577).value(), .pci = 1, .tac = 7}}));
+
+  // Connect third DU and run F1Setup.
+  unsigned du_idx3 = setup_du(test_helpers::generate_f1_setup_request(
+      int_to_gnb_du_id(0x13), {{.nci = nr_cell_identity::create(6578).value(), .pci = 2, .tac = 7}}));
+  // Drop the second DU connection to test that paging is not sent to disconnected DUs.
+  ASSERT_TRUE(drop_du_connection(du_idx2));
 
   // Inject NGAP Paging with only mandatory values and await F1AP Paging.
   ASSERT_TRUE(send_minimal_ngap_paging_and_await_f1ap_paging(du_idx));
@@ -295,8 +301,8 @@ TEST_F(cu_cp_paging_test, when_valid_paging_message_received_then_paging_is_only
   auto report = this->get_cu_cp().get_metrics_handler().request_metrics_report();
   ASSERT_EQ(report.ngaps[0].metrics.nof_cn_initiated_paging_requests, 1) << "Paging request should be in the metrics";
 
-  // Make sure that no paging was sent to the second DU.
-  ASSERT_FALSE(this->get_du(du_idx2).try_pop_dl_pdu(f1ap_pdu));
+  // Make sure that no paging was sent to the third DU.
+  ASSERT_FALSE(this->get_du(du_idx3).try_pop_dl_pdu(f1ap_pdu));
 }
 
 TEST_F(cu_cp_paging_test, when_valid_paging_message_with_optional_values_received_then_paging_is_sent_to_du)

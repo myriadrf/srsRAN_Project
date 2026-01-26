@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,8 @@
 #include "test_helpers.h"
 #include "../rrc/rrc_ue_test_helpers.h"
 #include "tests/test_doubles/rrc/rrc_test_messages.h"
+#include "srsran/asn1/f1ap/f1ap.h"
+#include "srsran/asn1/f1ap/f1ap_pdu_contents.h"
 #include "srsran/security/integrity.h"
 
 using namespace srsran;
@@ -51,7 +53,8 @@ byte_buffer srsran::srs_cu_cp::generate_rrc_setup_complete()
 byte_buffer srsran::srs_cu_cp::generate_rrc_reconfiguration_complete_pdu(unsigned transaction_id, uint8_t count)
 {
   byte_buffer pdu_with_count = byte_buffer::create({0x00, count}).value();
-  if (!pdu_with_count.append(pack_ul_dcch_msg(create_rrc_reconfiguration_complete(transaction_id)))) {
+  if (!pdu_with_count.append(
+          test_helpers::pack_ul_dcch_msg(test_helpers::create_rrc_reconfiguration_complete(transaction_id)))) {
     return {};
   }
 
@@ -68,4 +71,24 @@ byte_buffer srsran::srs_cu_cp::generate_rrc_reconfiguration_complete_pdu(unsigne
   }
 
   return pdu_with_count;
+}
+
+rrc_timers_t srsran::srs_cu_cp::get_timers(const asn1::f1ap::f1_setup_request_s& f1_setup_req)
+{
+  rrc_timers_t timers;
+
+  auto& sib1_container = f1_setup_req->gnb_du_served_cells_list[0]->gnb_du_served_cells_item().gnb_du_sys_info.sib1_msg;
+
+  // Unpack SIB1 to store timers.
+  asn1::rrc_nr::sib1_s sib1_msg;
+  asn1::cbit_ref       bref2(sib1_container);
+  if (sib1_msg.unpack(bref2) != asn1::SRSASN_SUCCESS) {
+    report_fatal_error("Failed to unpack SIB1");
+  }
+  timers.t300 = std::chrono::milliseconds{sib1_msg.ue_timers_and_consts.t300.to_number()};
+  timers.t301 = std::chrono::milliseconds{sib1_msg.ue_timers_and_consts.t301.to_number()};
+  timers.t310 = std::chrono::milliseconds{sib1_msg.ue_timers_and_consts.t310.to_number()};
+  timers.t311 = std::chrono::milliseconds{sib1_msg.ue_timers_and_consts.t311.to_number()};
+
+  return timers;
 }

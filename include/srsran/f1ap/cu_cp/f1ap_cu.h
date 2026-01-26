@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -55,8 +55,8 @@ public:
 
   /// Establish the UE context in F1.
   virtual async_task<f1ap_ue_context_setup_response>
-  handle_ue_context_setup_request(const f1ap_ue_context_setup_request&   request,
-                                  std::optional<rrc_ue_transfer_context> rrc_context) = 0;
+  handle_ue_context_setup_request(const f1ap_ue_context_setup_request&          request,
+                                  const std::optional<rrc_ue_transfer_context>& rrc_context) = 0;
 
   /// \brief Initiates the UE Context Release procedure as per TS 38.473 section 8.3.3.
   /// \param[in] msg The UE Context Release message to transmit.
@@ -110,11 +110,6 @@ struct ue_rrc_context_creation_response {
 
 using ue_rrc_context_creation_outcome = expected<ue_rrc_context_creation_response, byte_buffer>;
 
-/// Notification from the F1AP that the loss of transaction reference information for some UEs has been lost.
-struct f1_ue_transaction_info_loss_event {
-  std::vector<ue_index_t> ues_lost;
-};
-
 /// Scheduler of F1AP async tasks using common signalling.
 class f1ap_common_du_task_notifier
 {
@@ -140,10 +135,9 @@ public:
   virtual void on_du_initiated_ue_context_release_request(const f1ap_ue_context_release_request& req) = 0;
 
   /// \brief Indicates that there was some loss of transaction information for some UEs.
-  ///
   /// Called when an F1 removal or F1 Reset is received, or when the DU disconnects.
   /// \return Asynchronous task that handles the event
-  virtual async_task<void> on_transaction_info_loss(const f1_ue_transaction_info_loss_event& ev) = 0;
+  virtual async_task<void> on_transaction_info_loss(const ue_transaction_info_loss_event& ev) = 0;
 };
 
 /// Methods to get statistics of the F1AP.

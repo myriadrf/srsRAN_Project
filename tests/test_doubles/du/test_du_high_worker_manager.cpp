@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,6 +24,7 @@
 #include "srsran/adt/byte_buffer.h"
 #include "srsran/support/executors/inline_task_executor.h"
 #include "srsran/support/executors/priority_task_worker.h"
+#include "srsran/support/executors/strand_executor.h"
 #include "srsran/support/executors/task_worker_pool.h"
 #include "srsran/support/timers.h"
 
@@ -98,10 +99,13 @@ public:
                                cfg.nof_cell_workers,
                                task_worker_queue_size,
                                task_worker_queue_size,
+                               &low_prio_exec,
                                &low_prio_exec};
     exec_cfg.ctrl_executors = {task_worker_queue_size, &high_prio_exec};
 
     exec_mapper = srs_du::create_du_high_executor_mapper(exec_cfg);
+
+    timer_strand = make_task_strand_ptr<concurrent_queue_policy::lockfree_mpmc>(high_prio_exec, task_worker_queue_size);
   }
 
   void stop() override
@@ -114,14 +118,19 @@ public:
 
   du_high_executor_mapper& get_exec_mapper() override { return *exec_mapper; }
 
+  task_executor& timer_executor() override { return *timer_strand; }
+
+  void wait_pending_tasks() override { worker_pool.wait_pending_tasks(); }
+
 private:
-  // instantiated workers.
+  // Instantiated workers.
   priority_task_worker_pool                          worker_pool;
   priority_task_worker_pool_executor                 high_prio_exec{enqueue_priority::max, worker_pool};
   priority_task_worker_pool_executor                 low_prio_exec{enqueue_priority::max - 1, worker_pool};
   std::vector<std::unique_ptr<priority_task_worker>> cell_workers;
   std::vector<priority_task_worker_executor>         slot_execs;
   std::vector<priority_task_worker_executor>         cell_execs;
+  std::unique_ptr<task_executor>                     timer_strand;
 
   std::unique_ptr<du_high_executor_mapper> exec_mapper;
 };

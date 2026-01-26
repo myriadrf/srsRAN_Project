@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,12 +28,13 @@
 #include "processors/downlink/downlink_processor_test_doubles.h"
 #include "processors/uplink/uplink_processor_notifier_test_doubles.h"
 #include "srsran/phy/lower/lower_phy_controller.h"
+#include "srsran/phy/lower/lower_phy_downlink_handler.h"
 #include "srsran/phy/lower/lower_phy_factory.h"
-#include "srsran/phy/lower/lower_phy_request_handler.h"
-#include "srsran/phy/lower/lower_phy_rg_handler.h"
+#include "srsran/phy/lower/lower_phy_uplink_request_handler.h"
 #include "srsran/phy/lower/processors/downlink/downlink_processor_notifier.h"
 #include "srsran/phy/lower/processors/uplink/uplink_processor_notifier.h"
 #include "srsran/srsvec/compare.h"
+#include "srsran/support/executors/manual_task_worker.h"
 #include <fmt/ostream.h>
 #include <gtest/gtest.h>
 #include <random>
@@ -139,8 +140,23 @@ bool operator==(const baseband_gateway_buffer_reader& left, const baseband_gatew
     return false;
   }
 
-  for (unsigned i_channel = 0, i_channel_end = left.get_nof_channels(); i_channel != i_channel_end; ++i_channel) {
-    if (!srsvec::equal(left.get_channel_buffer(i_channel), right.get_channel_buffer(i_channel))) {
+  unsigned nof_channels = left.get_nof_channels();
+
+  bool same_data = true;
+  for (unsigned i_channel = 0; i_channel != nof_channels; ++i_channel) {
+    span<const ci16_t> left_channel  = left.get_channel_buffer(i_channel);
+    span<const ci16_t> right_channel = right.get_channel_buffer(i_channel);
+    same_data &= (left_channel.data() == right_channel.data());
+  }
+
+  if (same_data) {
+    return true;
+  }
+
+  for (unsigned i_channel = 0; i_channel != nof_channels; ++i_channel) {
+    span<const ci16_t> left_channel  = left.get_channel_buffer(i_channel);
+    span<const ci16_t> right_channel = right.get_channel_buffer(i_channel);
+    if (!std::equal(left_channel.begin(), left_channel.end(), right_channel.begin(), right_channel.end())) {
       return false;
     }
   }
@@ -154,7 +170,7 @@ static std::ostream& operator<<(std::ostream& os, const subcarrier_spacing& scs)
   return os;
 }
 
-static std::ostream& operator<<(std::ostream& os, const cyclic_prefix& cp)
+static std::ostream& operator<<(std::ostream& os, cyclic_prefix cp)
 {
   fmt::print(os, "{}", cp.to_string());
   return os;
@@ -263,37 +279,41 @@ protected:
     ul_freq_hz                   = ul_freq_hz_dist(rgen);
     nof_tx_ports                 = nof_tx_ports_dist(rgen);
     nof_rx_ports                 = nof_rx_ports_dist(rgen);
-    buffer_size                  = srate.to_kHz() / pow2(to_numerology_value(scs));
+
+    // Create the PRACH buffer pool.
+    prach_pool = create_spy_prach_buffer_pool();
 
     // Prepare configuration.
     lower_phy_configuration config;
-    config.sector_id                      = 0U;
-    config.scs                            = scs;
-    config.cp                             = cp;
-    config.bandwidth_rb                   = bandwidth_rb;
-    config.dl_freq_hz                     = dl_freq_hz;
-    config.ul_freq_hz                     = ul_freq_hz;
-    config.nof_tx_ports                   = nof_tx_ports;
-    config.nof_rx_ports                   = nof_rx_ports;
-    config.dft_window_offset              = dft_window_offset;
-    config.max_processing_delay_slots     = max_processing_delay_slots;
-    config.srate                          = srate;
-    config.ta_offset                      = ta_offset;
-    config.time_alignment_calibration     = time_alignment_calibration;
-    config.baseband_tx_buffer_size_policy = lower_phy_baseband_buffer_size_policy::slot;
-    config.baseband_rx_buffer_size_policy = lower_phy_baseband_buffer_size_policy::slot;
-    config.amplitude_config               = {};
-    config.bb_gateway                     = &bb_gateway_spy;
-    config.rx_symbol_notifier             = &rx_symbol_notifier_spy;
-    config.timing_notifier                = &timing_notifier_spy;
-    config.error_notifier                 = &error_notifier_spy;
-    config.metric_notifier                = &metrics_notifier_spy;
-    config.tx_task_executor               = &tx_task_executor;
-    config.rx_task_executor               = &rx_task_executor;
-    config.dl_task_executor               = &dl_task_executor;
-    config.ul_task_executor               = &ul_task_executor;
-    config.prach_async_executor           = &prach_task_executor;
-    config.system_time_throttling         = 0.1;
+    config.sector_id                         = 0U;
+    config.scs                               = scs;
+    config.cp                                = cp;
+    config.bandwidth_rb                      = bandwidth_rb;
+    config.dl_freq_hz                        = dl_freq_hz;
+    config.ul_freq_hz                        = ul_freq_hz;
+    config.nof_tx_ports                      = nof_tx_ports;
+    config.nof_rx_ports                      = nof_rx_ports;
+    config.dft_window_offset                 = dft_window_offset;
+    config.max_processing_delay_slots        = max_processing_delay_slots;
+    config.srate                             = srate;
+    config.ta_offset                         = ta_offset;
+    config.time_alignment_calibration        = time_alignment_calibration;
+    config.baseband_rx_buffer_size_policy    = lower_phy_baseband_buffer_size_policy::slot;
+    config.amplitude_config                  = {};
+    config.system_time_throttling            = 0.1;
+    config.max_nof_prach_concurrent_requests = 1;
+
+    lower_phy_dependencies deps = {.logger               = srslog::fetch_basic_logger("PHY"),
+                                   .bb_gateway           = bb_gateway_spy,
+                                   .rx_symbol_notifier   = rx_symbol_notifier_spy,
+                                   .timing_notifier      = timing_notifier_spy,
+                                   .error_notifier       = error_notifier_spy,
+                                   .metric_notifier      = metrics_notifier_spy,
+                                   .rx_task_executor     = rx_task_executor,
+                                   .tx_task_executor     = tx_task_executor,
+                                   .dl_task_executor     = dl_task_executor,
+                                   .ul_task_executor     = ul_task_executor,
+                                   .prach_async_executor = prach_task_executor};
 
     // Prepare downlink processor factory.
     std::shared_ptr<lower_phy_downlink_processor_factory_spy> lphy_dl_proc_factory =
@@ -311,7 +331,7 @@ protected:
     ASSERT_NE(lphy_factory, nullptr);
 
     // Create lower PHY.
-    lphy = lphy_factory->create(config);
+    lphy = lphy_factory->create(config, deps);
     ASSERT_NE(lphy, nullptr);
 
     // Select spies.
@@ -321,26 +341,36 @@ protected:
 
   void TearDown() override
   {
+    // No need to stop if there are no pending tasks.
+    bool rx_task = rx_task_executor.try_run_next();
+    bool tx_task = tx_task_executor.try_run_next();
+    ul_task_executor.run_pending_tasks();
+    if (!rx_task && !tx_task) {
+      return;
+    }
+
     // Request stop streaming asynchronously. As executors run in the main thread, it avoids deadlock.
-    std::thread stop_thread([&lphy_controller = lphy->get_controller()]() { lphy_controller.stop(); });
+    std::atomic<bool> stop_thread_started = false;
+    std::thread       stop_thread([&lphy_controller = lphy->get_controller(), &stop_thread_started]() {
+      stop_thread_started = true;
+      lphy_controller.stop();
+          });
+
+    //  Wait for stop thread to start.
+    while (!stop_thread_started) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
     // Flush pending tasks until no task is left.
-    bool rx_task;
-    bool dl_task;
     do {
       rx_task = rx_task_executor.try_run_next();
-      dl_task = dl_task_executor.try_run_next();
-      if (rx_task) {
-        ul_task_executor.run_pending_tasks();
-      }
-      if (dl_task) {
-        tx_task_executor.run_pending_tasks();
-      }
+      tx_task = tx_task_executor.try_run_next();
+      ul_task_executor.run_pending_tasks();
 
       // Let the stop thread run after running the pending tasks.
       std::this_thread::yield();
 
-    } while (rx_task || dl_task);
+    } while (rx_task || tx_task);
 
     // Join asynchronous thread.
     stop_thread.join();
@@ -349,7 +379,6 @@ protected:
     ASSERT_FALSE(tx_task_executor.has_pending_tasks());
     ASSERT_FALSE(rx_task_executor.has_pending_tasks());
     ASSERT_FALSE(ul_task_executor.has_pending_tasks());
-    ASSERT_FALSE(dl_task_executor.has_pending_tasks());
   }
 
   unsigned get_tx_time_offset() const
@@ -373,8 +402,8 @@ protected:
   double             ul_freq_hz;
   unsigned           nof_tx_ports;
   unsigned           nof_rx_ports;
-  unsigned           buffer_size;
 
+  std::unique_ptr<prach_buffer_pool>      prach_pool;
   baseband_gateway_spy                    bb_gateway_spy;
   lower_phy_rx_symbol_notifier_spy        rx_symbol_notifier_spy;
   lower_phy_timing_notifier_spy           timing_notifier_spy;
@@ -415,15 +444,14 @@ std::uniform_int_distribution<unsigned> LowerPhyFixture::sector_id_dist(0, 1024)
 TEST_P(LowerPhyFixture, Factory)
 {
   // Check that the downlink processor configuration is correct.
-  downlink_processor_configuration dl_proc_config;
-  dl_proc_config.sector_id               = 0;
-  dl_proc_config.scs                     = scs;
-  dl_proc_config.cp                      = cp;
-  dl_proc_config.rate                    = srate;
-  dl_proc_config.bandwidth_prb           = bandwidth_rb;
-  dl_proc_config.center_frequency_Hz     = dl_freq_hz;
-  dl_proc_config.nof_tx_ports            = nof_tx_ports;
-  dl_proc_config.nof_slot_tti_in_advance = max_processing_delay_slots;
+  downlink_processor_configuration dl_proc_config = {.sector_id               = 0,
+                                                     .scs                     = scs,
+                                                     .cp                      = cp,
+                                                     .rate                    = srate,
+                                                     .bandwidth_prb           = bandwidth_rb,
+                                                     .center_frequency_Hz     = dl_freq_hz,
+                                                     .nof_tx_ports            = nof_tx_ports,
+                                                     .nof_slot_tti_in_advance = max_processing_delay_slots};
   ASSERT_EQ(dl_proc_config, downlink_proc_spy->get_config());
 
   // Check that the uplink processor configuration is correct.
@@ -624,14 +652,13 @@ TEST_P(LowerPhyFixture, RxSymbolNotifiers)
     context.start_preamble_index  = 0;
     context.nof_preamble_indices  = 0;
 
-    prach_buffer_spy buffer;
+    auto buffer = prach_pool->get();
 
-    prach_notifier->on_rx_prach_window(buffer, context);
+    prach_notifier->on_rx_prach_window(buffer.clone(), context);
     auto& entries = rx_symbol_notifier_spy.get_rx_prach_events();
     ASSERT_EQ(entries.size(), 1);
-    ASSERT_EQ(context, entries.back().context);
-    ASSERT_EQ(&buffer, entries.back().buffer);
-    ASSERT_EQ(buffer.get_total_count(), 0);
+    ASSERT_EQ(buffer.get(), entries.back().buffer);
+    ASSERT_EQ(static_cast<prach_buffer_spy&>(*buffer).get_total_count(), 0);
   }
 
   // Notify PUxCH grid complete reception event.
@@ -644,7 +671,7 @@ TEST_P(LowerPhyFixture, RxSymbolNotifiers)
     resource_grid_writer_spy rg_writer_spy;
     resource_grid_spy        rg_spy(rg_reader_spy, rg_writer_spy);
     shared_resource_grid_spy shared_rg(rg_spy);
-    puxch_notifier->on_rx_symbol(shared_rg.get_grid(), context);
+    puxch_notifier->on_rx_symbol(shared_rg.get_grid(), context, true);
     auto& entries = rx_symbol_notifier_spy.get_rx_symbol_events();
     ASSERT_EQ(entries.size(), 1);
     ASSERT_EQ(context, entries.back().context);
@@ -662,7 +689,7 @@ TEST_P(LowerPhyFixture, RxSymbolNotifiers)
 
 TEST_P(LowerPhyFixture, RgHandler)
 {
-  lower_phy_rg_handler&                      rg_handler     = lphy->get_rg_handler();
+  lower_phy_downlink_handler&                rg_handler     = lphy->get_downlink_handler();
   const pdxch_processor_request_handler_spy& pdxch_proc_spy = downlink_proc_spy->get_pdxch_proc_request_handler_spy();
 
   // Prepare context.
@@ -692,7 +719,7 @@ TEST_P(LowerPhyFixture, RgHandler)
 
 TEST_P(LowerPhyFixture, PrachRequestHandler)
 {
-  lower_phy_request_handler&                 request_handler = lphy->get_request_handler();
+  lower_phy_uplink_request_handler&          request_handler = lphy->get_uplink_request_handler();
   const prach_processor_request_handler_spy& prach_proc_spy  = uplink_proc_spy->get_prach_req_handler_spy();
 
   // Prepare context.
@@ -713,26 +740,25 @@ TEST_P(LowerPhyFixture, PrachRequestHandler)
   context.start_preamble_index  = 0;
   context.nof_preamble_indices  = 0;
 
-  // Prepare RG spy.
-  prach_buffer_spy buffer_spy;
+  auto buffer = prach_pool->get();
 
   // Request RG.
-  request_handler.request_prach_window(context, buffer_spy);
+  request_handler.request_prach_window(context, buffer.clone());
 
   // Assert context and RG.
   auto& entries = prach_proc_spy.get_entries();
   ASSERT_EQ(entries.size(), 1);
   auto& puxch_entry = entries.back();
   ASSERT_EQ(puxch_entry.context, context);
-  ASSERT_EQ(puxch_entry.buffer, &buffer_spy);
+  ASSERT_EQ(puxch_entry.buffer, buffer);
 
   // No method of the buffer should have been called.
-  ASSERT_EQ(buffer_spy.get_total_count(), 0);
+  ASSERT_EQ(static_cast<prach_buffer_spy&>(*buffer).get_total_count(), 0);
 }
 
 TEST_P(LowerPhyFixture, PuxchRequestHandler)
 {
-  lower_phy_request_handler&                 request_handler = lphy->get_request_handler();
+  lower_phy_uplink_request_handler&          request_handler = lphy->get_uplink_request_handler();
   const puxch_processor_request_handler_spy& puxch_proc_spy  = uplink_proc_spy->get_puxch_req_handler_spy();
 
   // Prepare context.
@@ -764,7 +790,7 @@ TEST_P(LowerPhyFixture, PuxchRequestHandler)
 
 TEST_P(LowerPhyFixture, BasebandDownlinkFlow)
 {
-  static constexpr unsigned nof_repetitions = 5;
+  static constexpr unsigned nof_slots = 5;
 
   // Get lower PHY controller.
   lower_phy_controller& lphy_controller = lphy->get_controller();
@@ -773,21 +799,36 @@ TEST_P(LowerPhyFixture, BasebandDownlinkFlow)
   ASSERT_FALSE(rx_task_executor.has_pending_tasks());
   ASSERT_FALSE(tx_task_executor.has_pending_tasks());
   ASSERT_FALSE(ul_task_executor.has_pending_tasks());
-  ASSERT_FALSE(dl_task_executor.has_pending_tasks());
 
   // Set initial time and start streaming.
-  baseband_gateway_timestamp init_time = 100;
-  bb_gateway_spy.set_receiver_current_timestamp(init_time);
-  lphy_controller.start(init_time);
+  baseband_gateway_timestamp current_timestamp = 100;
+  bb_gateway_spy.set_receiver_current_timestamp(current_timestamp);
+  lphy_controller.start(current_timestamp);
 
   // Repeat for a number of baseband blocks.
-  for (unsigned i_repetition = 0; i_repetition != nof_repetitions; ++i_repetition) {
+  for (unsigned i_slot = 0; i_slot != nof_slots; ++i_slot) {
     // Clear spies.
     bb_gateway_spy.clear_all_entries();
     downlink_proc_spy->clear();
 
     // A task should be pending in the downlink executor, try to execute.
-    ASSERT_TRUE(dl_task_executor.try_run_next());
+    ASSERT_TRUE(tx_task_executor.try_run_next());
+
+    // The baseband gateway should have been called. Extract and assert baseband transmission.
+    auto& transmit_entries = bb_gateway_spy.get_transmit_entries();
+    ASSERT_EQ(transmit_entries.size(), 1);
+    auto& transmit_entry = transmit_entries.back();
+    ASSERT_EQ(transmit_entry.metadata.ts, current_timestamp + srate.to_kHz() + 2 * get_tx_time_offset());
+
+    // Calculate expected timestamp and advance.
+    baseband_gateway_timestamp expected__timestamp = current_timestamp + srate.to_kHz() + get_tx_time_offset();
+    current_timestamp += transmit_entry.data.get_nof_samples();
+
+    // Handle the first slot.
+    if (i_slot == 0) {
+      ASSERT_TRUE(transmit_entry.metadata.is_empty);
+      continue;
+    }
 
     // The PDxCH processor should have been called. Extract and assert DL processor output.
     const downlink_processor_baseband_spy& baseband_spy  = downlink_proc_spy->get_downlink_proc_baseband_spy();
@@ -795,31 +836,18 @@ TEST_P(LowerPhyFixture, BasebandDownlinkFlow)
     ASSERT_EQ(dl_bb_entries.size(), 1);
     auto& dl_bb_entry = dl_bb_entries.back();
 
-    // A task should be pending in the transmit executor, try to execute.
-    ASSERT_TRUE(tx_task_executor.try_run_next());
+    // Metadata timestamp must match the expected.
+    ASSERT_EQ(dl_bb_entry.metadata.ts, expected__timestamp);
+    ASSERT_FALSE(dl_bb_entry.metadata.is_empty);
 
-    // The baseband gateway should have been called. Extract and assert baseband transmission.
-    auto& transmit_entries = bb_gateway_spy.get_transmit_entries();
-    ASSERT_EQ(transmit_entries.size(), 1);
-    auto& transmit_entry = transmit_entries.back();
-    ASSERT_EQ(transmit_entry.metadata.ts,
-              init_time + srate.to_kHz() + 2 * get_tx_time_offset() + i_repetition * buffer_size);
-    ASSERT_EQ(transmit_entry.data.get_nof_channels(), nof_tx_ports);
-    ASSERT_EQ(transmit_entry.data.get_nof_samples(), buffer_size);
-
-    // Assert transmitted signal is the same as generated in DL.
-    ASSERT_EQ(dl_bb_entry.buffer, transmit_entry.data);
-    ASSERT_EQ(dl_bb_entry.timestamp, init_time + srate.to_kHz() + get_tx_time_offset() + i_repetition * buffer_size);
-
-    // No task should be pending in DL nor Tx.
-    ASSERT_TRUE(dl_task_executor.has_pending_tasks());
-    ASSERT_FALSE(tx_task_executor.has_pending_tasks());
+    // Transmit entry data must match the downlink processor baseband generated data.
+    ASSERT_EQ(transmit_entry.data, dl_bb_entry.samples);
   }
 }
 
 TEST_P(LowerPhyFixture, BasebandUplinkFlow)
 {
-  static constexpr unsigned nof_repetitions = 5;
+  static constexpr unsigned nof_slots = 5;
 
   // Get lower PHY controller.
   lower_phy_controller& lphy_controller = lphy->get_controller();
@@ -828,7 +856,6 @@ TEST_P(LowerPhyFixture, BasebandUplinkFlow)
   ASSERT_FALSE(rx_task_executor.has_pending_tasks());
   ASSERT_FALSE(tx_task_executor.has_pending_tasks());
   ASSERT_FALSE(ul_task_executor.has_pending_tasks());
-  ASSERT_FALSE(dl_task_executor.has_pending_tasks());
 
   // Set initial time and start streaming.
   baseband_gateway_timestamp init_time = 100;
@@ -836,7 +863,7 @@ TEST_P(LowerPhyFixture, BasebandUplinkFlow)
   lphy_controller.start(init_time);
 
   // Repeat for a number of baseband blocks.
-  for (unsigned i_repetition = 0; i_repetition != nof_repetitions; ++i_repetition) {
+  for (unsigned i_slot = 0; i_slot != nof_slots; ++i_slot) {
     // Clear spies.
     bb_gateway_spy.clear_all_entries();
     uplink_proc_spy->clear();
@@ -853,7 +880,6 @@ TEST_P(LowerPhyFixture, BasebandUplinkFlow)
     ASSERT_EQ(receive_entries.size(), 1);
     auto& receive_entry = receive_entries.back();
     ASSERT_EQ(receive_entry.data.get_nof_channels(), nof_rx_ports);
-    ASSERT_EQ(receive_entry.data.get_nof_samples(), buffer_size);
 
     // Run and assert uplink block.
     ASSERT_TRUE(ul_task_executor.try_run_next());

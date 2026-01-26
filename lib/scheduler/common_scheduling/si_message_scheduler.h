@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -42,6 +42,9 @@ public:
   /// \brief Update the SI messages.
   void handle_si_message_update_indication(unsigned                                   version,
                                            const std::optional<si_scheduling_config>& new_si_sched_cfg);
+
+  /// Called when cell is deactivated.
+  void stop();
 
 private:
   struct message_window_context {

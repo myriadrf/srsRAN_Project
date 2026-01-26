@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -137,7 +137,7 @@ void pusch_decoder_hw_impl::on_end_softbits()
   // Try to execute the asynchronous decoder.
   bool success = false;
   if (executor != nullptr) {
-    success = executor->execute(asynch_func);
+    success = executor->defer(asynch_func);
   }
 
   // Execute the decoder syncrhonously.

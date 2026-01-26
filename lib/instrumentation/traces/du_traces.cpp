@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -21,7 +21,6 @@
  */
 
 #include "srsran/instrumentation/traces/du_traces.h"
-#include "srsran/adt/to_array.h"
 
 srsran::file_event_tracer<srsran::L1_DL_TRACE_ENABLED> srsran::l1_common_tracer;
 

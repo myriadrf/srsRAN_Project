@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,8 +34,6 @@ async_task<void> start_ngap_handover_resource_allocation(const ngap_handover_req
                                                          ngap_ue_context_list&        ue_ctxt_list,
                                                          ngap_cu_cp_notifier&         cu_cp_notifier,
                                                          ngap_message_notifier&       amf_notifier,
-                                                         timer_manager&               timers,
-                                                         task_executor&               task_exec,
                                                          srslog::basic_logger&        logger);
 
 } // namespace srsran::srs_cu_cp

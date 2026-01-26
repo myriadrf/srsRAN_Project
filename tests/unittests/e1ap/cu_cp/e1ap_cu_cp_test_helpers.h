@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -46,10 +46,30 @@ public:
   {
   }
 
+  void on_bearer_context_release_request_received(const srs_cu_cp::cu_cp_bearer_context_release_request& msg) override
+  {
+    last_release_request = msg;
+    logger.info("Received a bearer context release request");
+  }
+
   void on_bearer_context_inactivity_notification_received(const srs_cu_cp::cu_cp_inactivity_notification& msg) override
   {
     last_msg = msg;
     logger.info("Received an inactivity notification");
+  }
+
+  async_task<void> on_ue_release_required(const cu_cp_ue_context_release_request& request) override
+  {
+    logger.info("ue={}: Requested a UE release", request.ue_index);
+    return launch_async([](coro_context<async_task<void>>& ctx) mutable {
+      CORO_BEGIN(ctx);
+      CORO_RETURN();
+    });
+  }
+
+  void on_e1_release_request_received(cu_up_index_t cu_up_index) override
+  {
+    logger.info("Received E1 Release Request for CU-UP {}", cu_up_index);
   }
 
   bool schedule_async_task(ue_index_t ue_index, async_task<void> task) override
@@ -58,7 +78,17 @@ public:
     return ue_mng.find_ue_task_scheduler(ue_index)->schedule_async_task(std::move(task));
   }
 
-  srs_cu_cp::cu_cp_inactivity_notification last_msg;
+  async_task<void> on_transaction_info_loss(const ue_transaction_info_loss_event& ev) override
+  {
+    logger.info("Received transaction info loss for {} UEs", ev.ues_lost.size());
+    return launch_async([](coro_context<async_task<void>>& ctx) mutable {
+      CORO_BEGIN(ctx);
+      CORO_RETURN();
+    });
+  }
+
+  srs_cu_cp::cu_cp_bearer_context_release_request last_release_request;
+  srs_cu_cp::cu_cp_inactivity_notification        last_msg;
 
 private:
   ue_manager&           ue_mng;
@@ -154,9 +184,9 @@ protected:
   manual_task_worker                  ctrl_worker{128};
   cu_cp_configuration                 cu_cp_cfg;
 
-  ue_manager                      ue_mng{cu_cp_cfg};
-  dummy_e1ap_cu_cp_notifier       cu_cp_notifier{ue_mng};
-  std::unique_ptr<e1ap_interface> e1ap;
+  ue_manager                  ue_mng{cu_cp_cfg};
+  dummy_e1ap_cu_cp_notifier   cu_cp_notifier{ue_mng};
+  std::unique_ptr<e1ap_cu_cp> e1ap;
 };
 
 } // namespace srs_cu_cp

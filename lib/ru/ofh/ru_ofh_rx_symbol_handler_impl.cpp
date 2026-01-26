@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,18 +26,19 @@
 using namespace srsran;
 
 void ru_ofh_rx_symbol_handler_impl::on_new_uplink_symbol(const ofh::uplane_rx_symbol_context& context,
-                                                         shared_resource_grid                 grid)
+                                                         shared_resource_grid                 grid,
+                                                         bool                                 is_valid)
 {
   ru_uplink_rx_symbol_context ru_context;
   ru_context.sector    = context.sector;
   ru_context.slot      = context.slot;
   ru_context.symbol_id = context.symbol;
 
-  notifier.on_new_uplink_symbol(ru_context, grid);
+  notifier.on_new_uplink_symbol(ru_context, grid, is_valid);
 }
 
 void ru_ofh_rx_symbol_handler_impl::on_new_prach_window_data(const prach_buffer_context& context,
-                                                             const prach_buffer&         buffer)
+                                                             shared_prach_buffer         buffer)
 {
-  notifier.on_new_prach_window_data(context, buffer);
+  notifier.on_new_prach_window_data(context, std::move(buffer));
 }

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -39,21 +39,22 @@ public:
   void connect(upper_phy_rx_symbol_handler* upper_handler) { rx_symbol_handler = upper_handler; }
 
   // See interface for documentation.
-  void on_rx_symbol(const lower_phy_rx_symbol_context& context, const shared_resource_grid& grid) override
+  void
+  on_rx_symbol(const lower_phy_rx_symbol_context& context, const shared_resource_grid& grid, bool is_valid) override
   {
     report_fatal_error_if_not(rx_symbol_handler, "Adapter is not connected.");
     upper_phy_rx_symbol_context upper_context;
     upper_context.slot   = context.slot;
     upper_context.sector = context.sector;
     upper_context.symbol = context.nof_symbols;
-    rx_symbol_handler->handle_rx_symbol(upper_context, grid);
+    rx_symbol_handler->handle_rx_symbol(upper_context, grid, is_valid);
   }
 
   // See interface for documentation.
-  void on_rx_prach_window(const prach_buffer_context& context, const prach_buffer& buffer) override
+  void on_rx_prach_window(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
     report_fatal_error_if_not(rx_symbol_handler, "Adapter is not connected.");
-    rx_symbol_handler->handle_rx_prach_window(context, buffer);
+    rx_symbol_handler->handle_rx_prach_window(context, std::move(buffer));
   }
 };
 

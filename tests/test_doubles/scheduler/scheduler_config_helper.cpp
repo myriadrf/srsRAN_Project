@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -57,13 +57,13 @@ sched_cell_configuration_request_message srsran::sched_config_helper::make_defau
   sched_req.sib1_payload_size = units::bytes{101}; // Random size.
 
   pucch_builder_params default_pucch_builder_params;
-  default_pucch_builder_params.nof_ue_pucch_f0_or_f1_res_harq       = 3;
-  default_pucch_builder_params.nof_ue_pucch_f2_or_f3_or_f4_res_harq = 6;
-  default_pucch_builder_params.nof_sr_resources                     = 2;
+  default_pucch_builder_params.res_set_0_size        = 3;
+  default_pucch_builder_params.res_set_1_size        = 6;
+  default_pucch_builder_params.nof_cell_sr_resources = 2;
   default_pucch_builder_params.f0_or_f1_params.emplace<pucch_f1_params>();
   default_pucch_builder_params.f2_or_f3_or_f4_params.emplace<pucch_f2_params>();
 
-  sched_req.pucch_guardbands = config_helpers::build_pucch_guardbands_list(
+  sched_req.ded_pucch_resources = config_helpers::build_pucch_resource_list(
       default_pucch_builder_params, sched_req.ul_cfg_common.init_ul_bwp.generic_params.crbs.length());
 
   if (params.csi_rs_enabled) {

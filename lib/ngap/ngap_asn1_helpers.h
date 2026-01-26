@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,7 +32,7 @@
 #include "srsran/ngap/ngap_handover.h"
 #include "srsran/ngap/ngap_init_context_setup.h"
 #include "srsran/ngap/ngap_nas.h"
-#include "srsran/ngap/ngap_reset.h"
+#include "srsran/ngap/ngap_rrc_inactive_transition.h"
 #include "srsran/ngap/ngap_setup.h"
 #include "srsran/ngap/ngap_types.h"
 #include "srsran/ran/cu_types.h"
@@ -155,29 +155,6 @@ inline void fill_ngap_ng_setup_result(ngap_ng_setup_result& result, const asn1::
   result = fail;
 }
 
-inline void fill_asn1_ng_reset(asn1::ngap::ng_reset_s& asn1_reset, const ngap_ng_reset& reset)
-{
-  asn1_reset->cause = cause_to_asn1(reset.cause);
-
-  if (reset.reset_type.index() == 0) {
-    asn1_reset->reset_type.set_ng_interface();
-  } else {
-    asn1_reset->reset_type.set_part_of_ng_interface();
-    for (const auto& item : std::get<ngap_reset_type_part_of_interface>(reset.reset_type)) {
-      asn1::ngap::ue_associated_lc_ng_conn_item_s asn1_item;
-      if (item.amf_ue_id.has_value()) {
-        asn1_item.amf_ue_ngap_id_present = true;
-        asn1_item.amf_ue_ngap_id         = amf_ue_id_to_uint(item.amf_ue_id.value());
-      }
-      if (item.ran_ue_id.has_value()) {
-        asn1_item.ran_ue_ngap_id_present = true;
-        asn1_item.ran_ue_ngap_id         = ran_ue_id_to_uint(item.ran_ue_id.value());
-      }
-      asn1_reset->reset_type.part_of_ng_interface().push_back(asn1_item);
-    }
-  }
-}
-
 /// \brief Fills the common type \c ngap_dl_nas_transport_message struct.
 /// \param[out] msg The common type \c ngap_dl_nas_transport_message struct to fill.
 /// \param[in] ue_index The index of the UE.
@@ -203,8 +180,7 @@ inline void fill_asn1_initial_ue_message(asn1::ngap::init_ue_msg_s&      asn1_ms
 {
   asn1_msg->nas_pdu = msg.nas_pdu.copy();
 
-  asn1_msg->rrc_establishment_cause.value =
-      static_cast<asn1::ngap::rrc_establishment_cause_opts::options>(msg.establishment_cause);
+  asn1_msg->rrc_establishment_cause = establishment_cause_to_asn1(msg.establishment_cause);
 
   auto& user_loc_info_nr = asn1_msg->user_location_info.set_user_location_info_nr();
   user_loc_info_nr       = cu_cp_user_location_info_to_asn1(msg.user_location_info);
@@ -473,11 +449,11 @@ inline bool fill_ngap_initial_context_setup_request(ngap_init_context_setup_requ
   }
 
   // Fill security context.
-  copy_asn1_key(request.security_context.k, asn1_request->security_key);
-  fill_supported_algorithms(request.security_context.supported_int_algos,
-                            asn1_request->ue_security_cap.nr_integrity_protection_algorithms);
-  fill_supported_algorithms(request.security_context.supported_enc_algos,
-                            asn1_request->ue_security_cap.nr_encryption_algorithms);
+  asn1_utils::copy_asn1_key(request.security_context.k, asn1_request->security_key);
+  asn1_utils::fill_supported_algorithms(request.security_context.supported_int_algos,
+                                        asn1_request->ue_security_cap.nr_integrity_protection_algorithms);
+  asn1_utils::fill_supported_algorithms(request.security_context.supported_enc_algos,
+                                        asn1_request->ue_security_cap.nr_encryption_algorithms);
 
   // Fill UE radio capabilities.
   if (asn1_request->ue_radio_cap_present) {
@@ -1130,6 +1106,58 @@ fill_asn1_handover_notify(asn1::ngap::ho_notify_s& asn1_msg, const nr_cell_globa
   user_loc_info_nr.nr_cgi      = nr_cgi_to_ngap_asn1(cgi);
   user_loc_info_nr.tai.plmn_id = cgi.plmn_id.to_bytes();
   user_loc_info_nr.tai.tac.from_number(tac);
+}
+
+/// \brief Convert the UL RAN Status Transfer struct to ASN.1.
+/// \param[out] asn1_msg The UL RAN Status Transfer ASN1 struct to fill.
+/// \param[in] drb_list The list of DRB status transfer information.
+inline void
+fill_asn1_ul_ran_status_transfer(asn1::ngap::ul_ran_status_transfer_s&                                         asn1_msg,
+                                 const slotted_id_vector<drb_id_t, ngap_drbs_subject_to_status_transfer_item>& drb_list)
+{
+  asn1::ngap::drbs_subject_to_status_transfer_list_l& asn1_drb_list =
+      asn1_msg->ran_status_transfer_transparent_container.drbs_subject_to_status_transfer_list;
+  for (const ngap_drbs_subject_to_status_transfer_item& drb : drb_list) {
+    asn1::ngap::drbs_subject_to_status_transfer_item_s asn1_drb_item = {};
+    asn1_drb_item.drb_id                                             = drb_id_to_uint(drb.drb_id);
+    if (drb.drb_status_ul.sn_size == pdcp_sn_size::size12bits) {
+      asn1_drb_item.drb_status_ul.set_drb_status_ul12();
+      asn1_drb_item.drb_status_ul.drb_status_ul12().ul_count_value.hfn_pdcp_sn12 = drb.drb_status_ul.ul_count.hfn;
+      asn1_drb_item.drb_status_ul.drb_status_ul12().ul_count_value.pdcp_sn12     = drb.drb_status_ul.ul_count.sn;
+    } else {
+      asn1_drb_item.drb_status_ul.set_drb_status_ul18();
+      asn1_drb_item.drb_status_ul.drb_status_ul18().ul_count_value.hfn_pdcp_sn18 = drb.drb_status_ul.ul_count.hfn;
+      asn1_drb_item.drb_status_ul.drb_status_ul18().ul_count_value.pdcp_sn18     = drb.drb_status_ul.ul_count.sn;
+    }
+    if (drb.drb_status_dl.sn_size == pdcp_sn_size::size12bits) {
+      asn1_drb_item.drb_status_dl.set_drb_status_dl12();
+      asn1_drb_item.drb_status_dl.drb_status_dl12().dl_count_value.hfn_pdcp_sn12 = drb.drb_status_dl.dl_count.hfn;
+      asn1_drb_item.drb_status_dl.drb_status_dl12().dl_count_value.pdcp_sn12     = drb.drb_status_dl.dl_count.sn;
+    } else {
+      asn1_drb_item.drb_status_dl.set_drb_status_dl18();
+      asn1_drb_item.drb_status_dl.drb_status_dl18().dl_count_value.hfn_pdcp_sn18 = drb.drb_status_dl.dl_count.hfn;
+      asn1_drb_item.drb_status_dl.drb_status_dl18().dl_count_value.pdcp_sn18     = drb.drb_status_dl.dl_count.sn;
+    }
+    asn1_drb_list.push_back(asn1_drb_item);
+  }
+}
+
+/// \brief Convert common type RRC Inactive Transition Report to NGAP ASN1 RRC Inactive Transition Report.
+/// \param[out] asn1_report The ASN1 NGAP RRC Inactive Transition Report.
+/// \param[in] report The CU-CP RRC Inactive Transition Report.
+inline void fill_asn1_rrc_inactive_transition_report(asn1::ngap::rrc_inactive_transition_report_s& asn1_report,
+                                                     const ngap_rrc_inactive_transition_report&    report)
+{
+  // Fill RRC state.
+  if (report.rrc_state == ngap_rrc_inactive_transition_report::ngap_rrc_state::inactive) {
+    asn1_report->rrc_state = asn1::ngap::rrc_state_opts::inactive;
+  } else {
+    asn1_report->rrc_state = asn1::ngap::rrc_state_opts::connected;
+  }
+
+  // Fill user location info.
+  auto& user_loc_info_nr = asn1_report->user_location_info.set_user_location_info_nr();
+  user_loc_info_nr       = cu_cp_user_location_info_to_asn1(report.user_location_info);
 }
 
 } // namespace srs_cu_cp

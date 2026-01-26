@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,8 +29,8 @@
 
 namespace srsran {
 
-/// OFDM modulator factory configuration. Provides the necessary dependency instances.
-struct ofdm_modulator_common_configuration {
+/// OFDM modulator dependencies. Provides the necessary dependency instances.
+struct ofdm_modulator_dependencies {
   /// DFT instance. The ownership is transferred to the modulator.
   std::unique_ptr<dft_processor> dft;
 };
@@ -38,7 +38,6 @@ struct ofdm_modulator_common_configuration {
 /// Describes a generic OFDM symbol modulator.
 class ofdm_symbol_modulator_impl : public ofdm_symbol_modulator
 {
-private:
   /// Indicates the DFT size.
   unsigned dft_size;
   /// Indicates the resource grid bandwidth in resource elements.
@@ -62,10 +61,9 @@ private:
 
 public:
   /// \brief Constructs an OFDM symbol modulator.
-  /// \param[in] common_config Provides specific configuration parameters from the factory.
-  /// \param[in] ofdm_config Provides generic OFDM configuration parameters.
-  ofdm_symbol_modulator_impl(ofdm_modulator_common_configuration& common_config,
-                             const ofdm_modulator_configuration&  ofdm_config);
+  /// \param[in] ofdm_config  Provides generic OFDM configuration parameters.
+  /// \param[in] dependencies Provides specific dependencies.
+  ofdm_symbol_modulator_impl(const ofdm_modulator_configuration& ofdm_config, ofdm_modulator_dependencies dependencies);
 
   // See the interface for documentation.
   unsigned get_symbol_size(unsigned symbol_index) const override
@@ -74,7 +72,10 @@ public:
   }
 
   // See the interface for documentation.
-  void set_center_frequency(double center_frequency_Hz) override { next_center_freq_Hz = center_frequency_Hz; }
+  void set_center_frequency(double center_frequency_Hz) override
+  {
+    next_center_freq_Hz.store(center_frequency_Hz, std::memory_order_relaxed);
+  }
 
   // See the interface for documentation.
   void
@@ -84,23 +85,22 @@ public:
 /// Describes a generic OFDM slot modulator.
 class ofdm_slot_modulator_impl : public ofdm_slot_modulator
 {
-private:
   /// Cyclic prefix type.
   cyclic_prefix cp;
   /// Resource grid numerology.
   unsigned numerology;
   /// Instance of symbol modulator.
-  ofdm_symbol_modulator_impl symbol_modulator;
+  std::unique_ptr<ofdm_symbol_modulator> symbol_modulator;
 
 public:
   /// \brief Constructs an OFDM slot modulator.
-  /// \param[in] common_config Provides specific configuration parameters from the factory.
-  /// \param[in] ofdm_config Provides generic OFDM configuration parameters.
-  ofdm_slot_modulator_impl(ofdm_modulator_common_configuration& common_config,
-                           const ofdm_modulator_configuration&  ofdm_config) :
-    cp(ofdm_config.cp), numerology(ofdm_config.numerology), symbol_modulator(common_config, ofdm_config)
+  /// \param[in] ofdm_config       OFDM factory parameters.
+  /// \param[in] symbol_modulator_ OFDM symbol modulator instance.
+  ofdm_slot_modulator_impl(const ofdm_modulator_configuration&    ofdm_config,
+                           std::unique_ptr<ofdm_symbol_modulator> symbol_modulator_) :
+    cp(ofdm_config.cp), numerology(ofdm_config.numerology), symbol_modulator(std::move(symbol_modulator_))
   {
-    // Do nothing.
+    srsran_assert(symbol_modulator, "Invalid OFDM symbol modulator.");
   }
 
   // See interface for documentation;

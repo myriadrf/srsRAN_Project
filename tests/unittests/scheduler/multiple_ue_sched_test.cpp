@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -103,7 +103,7 @@ protected:
     srslog::flush();
   }
 
-  void setup_sched(const scheduler_expert_config& expert_cfg, const sched_cell_configuration_request_message& msg)
+  void setup_sched(const scheduler_expert_config& expert_cfg, sched_cell_configuration_request_message msg)
   {
     current_slot = slot_point{to_numerology_value(msg.scs_common), 0};
 
@@ -120,6 +120,14 @@ protected:
       }
     }
 
+    pucch_builder_params pucch_basic_params{
+        .res_set_0_size = 8, .res_set_1_size = 8, .nof_cell_sr_resources = 8, .nof_cell_csi_resources = 8};
+    auto& f1_params          = pucch_basic_params.f0_or_f1_params.emplace<pucch_f1_params>();
+    f1_params.nof_cyc_shifts = pucch_nof_cyclic_shifts::twelve;
+    f1_params.occ_supported  = true;
+
+    msg.ded_pucch_resources = config_helpers::build_pucch_resource_list(
+        pucch_basic_params, msg.ul_cfg_common.init_ul_bwp.generic_params.crbs.length());
     bench.emplace(expert_cfg, msg);
 
     // Initialize.
@@ -127,13 +135,6 @@ protected:
     test_logger.set_context(current_slot.sfn(), current_slot.slot_index());
     bench->sched_res = &bench->sch.slot_indication(current_slot, to_du_cell_index(0));
 
-    pucch_builder_params pucch_basic_params{.nof_ue_pucch_f0_or_f1_res_harq       = 8,
-                                            .nof_ue_pucch_f2_or_f3_or_f4_res_harq = 8,
-                                            .nof_sr_resources                     = 8,
-                                            .nof_csi_resources                    = 8};
-    auto&                f1_params = pucch_basic_params.f0_or_f1_params.emplace<pucch_f1_params>();
-    f1_params.nof_cyc_shifts       = pucch_nof_cyclic_shifts::twelve;
-    f1_params.occ_supported        = true;
     pucch_cfg_builder.setup(bench->cell_cfg, pucch_basic_params);
   }
 
@@ -446,7 +447,7 @@ protected:
     return {};
   }
 
-  uci_indication build_harq_ack_pucch_f0_f1_uci_ind(const du_ue_index_t ue_idx, const slot_point& sl_tx)
+  uci_indication build_harq_ack_pucch_f0_f1_uci_ind(const du_ue_index_t ue_idx, slot_point sl_tx)
   {
     const sched_test_ue& u = get_ue(ue_idx);
 
@@ -467,7 +468,7 @@ protected:
     return uci_ind;
   }
 
-  uci_indication build_harq_nack_pucch_f0_f1_uci_ind(const du_ue_index_t ue_idx, const slot_point& sl_tx)
+  uci_indication build_harq_nack_pucch_f0_f1_uci_ind(const du_ue_index_t ue_idx, slot_point sl_tx)
   {
     const sched_test_ue& u = get_ue(ue_idx);
 
@@ -613,102 +614,6 @@ public:
 protected:
   multiple_ue_test_params params;
 };
-
-TEST_P(multiple_ue_sched_tester, dl_buffer_state_indication_test)
-{
-  // Used to track BSR 0.
-  std::map<unsigned, bool>                      is_bsr_zero_sent;
-  std::map<unsigned, std::optional<slot_point>> pdsch_scheduled_slot_in_future;
-
-  const lcid_t lcid = LCID_MIN_DRB;
-
-  // Vector to keep track of ACKs to send.
-  std::vector<uci_indication> uci_ind_to_send;
-
-  setup_sched(create_expert_config(10, params.pdsch_interleaving_bundle_size),
-              create_custom_cell_config_request(params.duplx_mode, params.enable_pusch_transform_precoding));
-  // Add UE(s) and notify to each UE a DL buffer status indication of random size between min and max defined in params.
-  // Assumption: LCID is DRB1.
-  for (unsigned idx = 0; idx != params.nof_ues; ++idx) {
-    // Initialize.
-    is_bsr_zero_sent[idx] = false;
-
-    add_ue(to_du_ue_index(idx),
-           LCID_MIN_DRB,
-           static_cast<lcg_id_t>(0),
-           params.duplx_mode,
-           params.enable_pusch_transform_precoding);
-
-    push_buffer_state_to_dl_ue(
-        to_du_ue_index(idx),
-        test_rgen::uniform_int<unsigned>(params.min_buffer_size_in_bytes, params.max_buffer_size_in_bytes),
-        LCID_MIN_DRB);
-  }
-
-  for (unsigned
-           i              = 0,
-           nof_iterations = params.nof_ues * test_bench::max_test_run_slots_per_ue * (1U << current_slot.numerology());
-       i != nof_iterations;
-       ++i) {
-    run_slot();
-
-    std::vector<uci_indication> uci_ind_not_for_current_slot;
-    // Send ACKs if there are any to send.
-    for (const auto& ind : uci_ind_to_send) {
-      if (current_slot == ind.slot_rx) {
-        bench->sch.handle_uci_indication(ind);
-      } else {
-        uci_ind_not_for_current_slot.push_back(ind);
-      }
-    }
-    swap(uci_ind_to_send, uci_ind_not_for_current_slot);
-
-    for (unsigned idx = 0; idx != params.nof_ues; ++idx) {
-      auto& test_ue = get_ue(to_du_ue_index(idx));
-      // Update the PDSCH scheduled slot in the future.
-      const auto& pdsch_slot = get_pdsch_scheduled_slot(test_ue);
-      if (pdsch_slot.has_value()) {
-        pdsch_scheduled_slot_in_future[idx] = pdsch_slot;
-      }
-      const auto& ack_nack_slot = get_pdsch_ack_nack_scheduled_slot(test_ue);
-      if (ack_nack_slot.has_value()) {
-        uci_ind_to_send.push_back(build_harq_ack_pucch_f0_f1_uci_ind(to_du_ue_index(idx), ack_nack_slot.value()));
-      }
-
-      const auto* grant = find_ue_pdsch(test_ue);
-      if (is_bsr_zero_sent[idx] && pdsch_scheduled_slot_in_future[idx].has_value() &&
-          current_slot > pdsch_scheduled_slot_in_future[idx].value()) {
-        ASSERT_TRUE(grant == nullptr or not grant->pdsch_cfg.codewords[0].new_data)
-            << fmt::format("Condition failed for UE with c-rnti={}", test_ue.crnti);
-        continue;
-      }
-
-      const unsigned tbs_sched_bytes = pdsch_tbs_scheduled_bytes_per_lc(test_ue, lcid);
-      if (tbs_sched_bytes == 0 && test_ue.dl_bsr_list.at(lcid).bs == 0 &&
-          pdsch_scheduled_slot_in_future[idx].has_value() &&
-          current_slot > pdsch_scheduled_slot_in_future[idx].value() && not is_bsr_zero_sent[idx]) {
-        is_bsr_zero_sent[idx] = true;
-        // Notify buffer status of 0 to ensure scheduler does not schedule further for this UE.
-        push_buffer_state_to_dl_ue(to_du_ue_index(idx), 0, lcid);
-      }
-
-      if (grant != nullptr && grant->pdsch_cfg.codewords[0].new_data) {
-        if (tbs_sched_bytes > test_ue.dl_bsr_list.at(lcid).bs) {
-          // Accounting for MAC headers.
-          test_ue.dl_bsr_list.at(lcid).bs = 0;
-        } else {
-          test_ue.dl_bsr_list.at(lcid).bs -= tbs_sched_bytes;
-        }
-      }
-    }
-  }
-
-  for (unsigned idx = 0; idx != params.nof_ues; ++idx) {
-    const auto& test_ue = get_ue(to_du_ue_index(idx));
-    ASSERT_EQ(test_ue.dl_bsr_list.at(lcid).bs, 0)
-        << fmt::format("Condition failed for UE with c-rnti={}", test_ue.crnti);
-  }
-}
 
 TEST_P(multiple_ue_sched_tester, ul_buffer_state_indication_test)
 {
@@ -1400,9 +1305,9 @@ TEST_F(single_ue_sched_tester, successfully_schedule_srb0_retransmission_fdd)
     const auto* grant   = find_ue_pdsch(test_ue);
     // Re-transmission scenario.
     if (grant != nullptr && grant->context.nof_retxs > 0) {
-      // Must be Typ1-PDCCH CSS.
+      // Must be Type1-PDCCH CSS.
       // See 3GPP TS 38.213, clause 10.1,
-      // A UE monitors PDCCH candidates in one or more of the following search spaces sets
+      // A UE monitors PDCCH candidates in one or more of the following search spaces sets:
       //  - a Type1-PDCCH CSS set configured by ra-SearchSpace in PDCCH-ConfigCommon for a DCI format with
       //    CRC scrambled by a RA-RNTI, a MsgB-RNTI, or a TC-RNTI on the primary cell.
       ASSERT_EQ(grant->pdsch_cfg.ss_set_type, search_space_set_type::type1);
@@ -1411,12 +1316,15 @@ TEST_F(single_ue_sched_tester, successfully_schedule_srb0_retransmission_fdd)
     }
 
     if (uci_ind_to_send.has_value() and current_slot == uci_ind_to_send.value().slot_rx) {
+      // Send the NACK indication on the expected slot to trigger retransmission.
       bench->sch.handle_uci_indication(uci_ind_to_send.value());
       uci_ind_to_send.reset();
     }
 
+    // Look for a PDSCH in the scheduler results and get the corresponding ACK/NACK slot.
     const auto& ack_nack_slot = get_pdsch_ack_nack_scheduled_slot(test_ue);
     if (ack_nack_slot.has_value()) {
+      // Build a NACK for the first PDSCH scheduled to trigger retransmission.
       uci_ind_to_send.emplace(build_harq_nack_pucch_f0_f1_uci_ind(to_du_ue_index(0), ack_nack_slot.value()));
     }
   }

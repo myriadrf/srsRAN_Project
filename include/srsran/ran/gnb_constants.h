@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,6 +28,6 @@ namespace srsran {
 
 /// \brief Defines the maximum number of cells that can be instantiated per srsDU (implementation-defined).
 /// \remark TS 38.473 defines an upper limit of maxCellingNBDU=512 for this value.
-static constexpr uint16_t MAX_CELLS_PER_DU = 32;
+constexpr uint16_t MAX_CELLS_PER_DU = 32;
 
 } // namespace srsran

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -30,7 +30,10 @@ void flexible_o_du_metrics_consumer_json::handle_metric(const app_services::metr
   const flexible_o_du_metrics& odu_metrics =
       static_cast<const flexible_o_du_app_service_metrics_impl&>(metric).get_metrics();
 
-  odu_low_metrics_handler.handle_metric(odu_metrics.du.low);
+  if (odu_metrics.du.low) {
+    odu_low_metrics_handler.handle_metric(*odu_metrics.du.low);
+  }
+
   ru_metrics_handler.handle_metric(odu_metrics.ru);
 }
 
@@ -39,14 +42,17 @@ void flexible_o_du_metrics_consumer_log::handle_metric(const app_services::metri
   const flexible_o_du_metrics& odu_metrics =
       static_cast<const flexible_o_du_app_service_metrics_impl&>(metric).get_metrics();
 
-  odu_low_metrics_handler.handle_metric(odu_metrics.du.low);
+  if (odu_metrics.du.low) {
+    odu_low_metrics_handler.handle_metric(*odu_metrics.du.low);
+  }
+
   ru_metrics_handler.handle_metric(odu_metrics.ru);
 }
 
 /// Radio metrics are independent of the enabled flag. Print them.
 static void print_radio_metrics(const ru_metrics& metrics)
 {
-  const auto* sdr_metrics = std::get_if<ru_generic_metrics>(&metrics.metrics);
+  const auto* sdr_metrics = std::get_if<ru_sdr_metrics>(&metrics.metrics);
 
   // Only valid for SDR metrics.
   if (!sdr_metrics) {

@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -19,8 +19,7 @@
 #
 
 set(SOURCES
-        dl_logical_channel_manager.cpp
-        ul_logical_channel_manager.cpp
+        logical_channel_system.cpp
         ta_manager.cpp
         ue_channel_state_manager.cpp
         ue_link_adaptation_controller.cpp
@@ -29,3 +28,4 @@ set(SOURCES
         ue_cell.cpp)
 
 add_library(sched_ue_context STATIC ${SOURCES})
+target_link_libraries(sched_ue_context srsran_ran sched_support sched_cell)

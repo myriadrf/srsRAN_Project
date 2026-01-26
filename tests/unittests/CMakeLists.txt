@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -59,6 +59,7 @@ add_subdirectory(apps)
 add_subdirectory(asn1)
 add_subdirectory(cu_cp)
 add_subdirectory(cu_up)
+add_subdirectory(du_high)
 add_subdirectory(du_manager)
 add_subdirectory(e1ap)
 add_subdirectory(e2)
@@ -78,6 +79,7 @@ add_subdirectory(phy)
 add_subdirectory(radio)
 add_subdirectory(ran)
 add_subdirectory(rlc)
+add_subdirectory(rohc)
 add_subdirectory(rrc)
 add_subdirectory(scheduler)
 add_subdirectory(sdap)

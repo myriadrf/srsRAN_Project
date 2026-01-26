@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -91,7 +91,7 @@ void ue_creation_procedure::operator()(coro_context<async_task<void>>& ctx)
 
   // > Start Initial UL RRC Message Transfer by signalling MAC to notify CCCH to upper layers.
   if (not req.ul_ccch_msg.empty()) {
-    if (not du_params.mac.ue_cfg.handle_ul_ccch_msg(ue_ctx->ue_index, req.ul_ccch_msg.copy())) {
+    if (not du_params.mac.mgr.get_ue_configurator().handle_ul_ccch_msg(ue_ctx->ue_index, req.ul_ccch_msg.copy())) {
       proc_logger.log_proc_failure("Failed to notify CCCH message to upper layers");
       CORO_AWAIT(clear_ue());
       CORO_EARLY_RETURN();
@@ -128,19 +128,25 @@ async_task<void> ue_creation_procedure::clear_ue()
 {
   return launch_async([this](coro_context<async_task<void>>& ctx) {
     CORO_BEGIN(ctx);
+
+    if (ue_ctx == nullptr) {
+      // No UE context to clear.
+      CORO_EARLY_RETURN();
+    }
+
+    CORO_AWAIT(ue_ctx->handle_activity_stop_request(true));
+
     if (f1ap_resp.result) {
       du_params.f1ap.ue_mng.handle_ue_deletion_request(req.ue_index);
     }
 
     if (mac_resp.allocated_crnti != rnti_t::INVALID_RNTI) {
-      CORO_AWAIT(du_params.mac.ue_cfg.handle_ue_delete_request(
+      CORO_AWAIT(du_params.mac.mgr.get_ue_configurator().handle_ue_delete_request(
           mac_ue_delete_request{req.pcell_index, req.ue_index, mac_resp.allocated_crnti}));
     }
 
-    if (ue_ctx != nullptr) {
-      // Clear UE from DU Manager UE repository.
-      ue_mng.remove_ue(ue_ctx->ue_index);
-    }
+    // Clear UE from DU Manager UE repository.
+    ue_mng.remove_ue(ue_ctx->ue_index);
 
     CORO_RETURN();
   });
@@ -237,7 +243,7 @@ async_task<mac_ue_create_response> ue_creation_procedure::create_mac_ue()
   mac_ue_create_msg.sched_cfg = create_scheduler_ue_config_request(*ue_ctx, *ue_ctx->resources);
 
   // Request MAC to create new UE.
-  return du_params.mac.ue_cfg.handle_ue_create_request(mac_ue_create_msg);
+  return du_params.mac.mgr.get_ue_configurator().handle_ue_create_request(mac_ue_create_msg);
 }
 
 f1ap_ue_creation_response ue_creation_procedure::create_f1ap_ue()

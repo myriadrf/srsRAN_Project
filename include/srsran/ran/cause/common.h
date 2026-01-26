@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -64,7 +64,8 @@ enum class establishment_cause_t : uint8_t {
   mo_video_call,
   mo_sms,
   mps_prio_access,
-  mcs_prio_access
+  mcs_prio_access,
+  unknown
 };
 
 } // namespace srsran

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,6 +23,7 @@
 #include "cu_up_manager_impl.h"
 #include "cu_up_manager_helpers.h"
 #include "routines/cu_up_bearer_context_modification_routine.h"
+#include "routines/cu_up_e1_connection_loss_routine.h"
 #include "routines/cu_up_test_mode_routines.h"
 #include "srsran/support/async/execute_on_blocking.h"
 
@@ -37,12 +38,14 @@ static ue_manager_config generate_ue_manager_config(const n3_interface_config&  
 }
 
 static ue_manager_dependencies generate_ue_manager_dependencies(const cu_up_manager_impl_dependencies& dependencies,
-                                                                srslog::basic_logger&                  logger)
+                                                                cu_up_manager_pdcp_interface& cu_up_mngr_pdcp_if,
+                                                                srslog::basic_logger&         logger)
 {
   return {dependencies.e1ap,
           dependencies.timers,
           dependencies.f1u_gateway,
           dependencies.ngu_session_mngr,
+          cu_up_mngr_pdcp_if,
           dependencies.ngu_demux,
           dependencies.n3_teid_allocator,
           dependencies.f1u_teid_allocator,
@@ -53,6 +56,11 @@ static ue_manager_dependencies generate_ue_manager_dependencies(const cu_up_mana
 
 cu_up_manager_impl::cu_up_manager_impl(const cu_up_manager_impl_config&       config,
                                        const cu_up_manager_impl_dependencies& dependencies) :
+  cu_up_id(config.cu_up_id),
+  cu_up_name(config.cu_up_name),
+  plmn(config.plmn),
+  stop_command(dependencies.stop_command),
+  e1ap(dependencies.e1ap),
   qos(config.qos),
   n3_cfg(config.n3_cfg),
   test_mode_cfg(config.test_mode_cfg),
@@ -63,7 +71,7 @@ cu_up_manager_impl::cu_up_manager_impl(const cu_up_manager_impl_config&       co
 {
   /// > Create UE manager
   ue_mng = std::make_unique<ue_manager>(generate_ue_manager_config(n3_cfg, test_mode_cfg),
-                                        generate_ue_manager_dependencies(dependencies, logger));
+                                        generate_ue_manager_dependencies(dependencies, *this, logger));
 }
 
 async_task<void> cu_up_manager_impl::stop()
@@ -160,14 +168,74 @@ cu_up_manager_impl::handle_bearer_context_release_command(const e1ap_bearer_cont
   return ue_mng->remove_ue(msg.ue_index);
 }
 
+void cu_up_manager_impl::handle_e1ap_connection_drop()
+{
+  schedule_cu_up_async_task(launch_async<cu_up_e1_connection_loss_routine>(
+      cu_up_id, cu_up_name, plmn, stop_command, e1ap, *ue_mng, timers, exec_mapper.ctrl_executor()));
+}
+
+async_task<void> cu_up_manager_impl::handle_e1_reset(const e1ap_reset& msg)
+{
+  // Full E1 reset, release all bearer contexts.
+  if (msg.type == e1ap_reset::full) {
+    return ue_mng->remove_all_ues();
+  }
+
+  // Partial E1 reset, release the indicated bearer contexts.
+  if (msg.ues.empty()) {
+    logger.error("Received partial E1 reset, but no UEs to release");
+    return launch_async([](coro_context<async_task<void>>& ctx) {
+      CORO_BEGIN(ctx);
+      CORO_RETURN();
+    });
+  }
+
+  return launch_async(
+      [this, msg, ue_it = std::vector<ue_index_t>::const_iterator{}](coro_context<async_task<void>>& ctx) mutable {
+        CORO_BEGIN(ctx);
+        ue_it = msg.ues.begin();
+        while (ue_it != msg.ues.end()) {
+          CORO_AWAIT(ue_mng->remove_ue(*ue_it));
+          ue_it++;
+        }
+        CORO_RETURN();
+      });
+}
+
+///
+/// PDCP control events handling.
+///
+void cu_up_manager_impl::handle_pdcp_protocol_failure(ue_index_t ue_index)
+{
+  /// TODO.
+}
+
+void cu_up_manager_impl::handle_pdcp_max_count_reached(ue_index_t ue_index)
+{
+  ue_context* ue_ctxt = ue_mng->find_ue(ue_index);
+  if (ue_ctxt == nullptr) {
+    logger.error("ue={}: Reached PDCP MAX count, but could not find UE context", ue_index);
+    return;
+  }
+  e1ap.handle_bearer_context_release_request_required(ue_index);
+}
+
+///
+/// Test mode helpers.
+///
 async_task<void> cu_up_manager_impl::enable_test_mode()
 {
-  return launch_async<cu_up_enable_test_mode_routine>(test_mode_cfg, *this, ngu_demux);
+  return launch_async<cu_up_enable_test_mode_routine>(test_mode_cfg, *this, *ue_mng, ngu_demux);
 }
 
 async_task<void> cu_up_manager_impl::disable_test_mode()
 {
   return launch_async<cu_up_disable_test_mode_routine>(*this, *ue_mng);
+}
+
+async_task<void> cu_up_manager_impl::reestablish_test_mode()
+{
+  return launch_async<cu_up_reestablish_test_mode_routine>(test_mode_cfg, *this, *ue_mng);
 }
 
 void cu_up_manager_impl::trigger_enable_test_mode()
@@ -186,6 +254,16 @@ void cu_up_manager_impl::trigger_disable_test_mode()
     test_mode_ue_timer = timers.create_unique_timer(exec_mapper.ctrl_executor());
     test_mode_ue_timer.set(test_mode_cfg.attach_detach_period,
                            [this](timer_id_t /**/) { schedule_cu_up_async_task(disable_test_mode()); });
+    test_mode_ue_timer.run();
+  }
+}
+
+void cu_up_manager_impl::trigger_reestablish_test_mode()
+{
+  if (test_mode_cfg.reestablish_period.count() != 0) {
+    test_mode_ue_timer = timers.create_unique_timer(exec_mapper.ctrl_executor());
+    test_mode_ue_timer.set(test_mode_cfg.reestablish_period,
+                           [this](timer_id_t /**/) { schedule_cu_up_async_task(reestablish_test_mode()); });
     test_mode_ue_timer.run();
   }
 }

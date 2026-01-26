@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,7 +32,7 @@ struct ul_sched_result;
 /// Parameters of a grant allocation in the cell resource grid.
 
 struct test_grant_info {
-  enum type_t { SSB, DL_PDCCH, UL_PDCCH, SIB, RAR, UE_DL, UE_UL, PUCCH, PRACH, PAGING } type;
+  enum type_t { SSB, DL_PDCCH, UL_PDCCH, SIB, RAR, UE_DL, UE_UL, PUCCH, PRACH, SRS, PAGING } type;
   rnti_t     rnti;
   grant_info grant;
 };
@@ -46,9 +46,10 @@ std::vector<grant_info> get_pdcch_grant_info(pci_t pci, const pdcch_dl_informati
 
 /// Extract PDCCH grant info of UL PDCCH allocation.
 ///
+/// \param pci Cell PCI.
 /// \param pdcch UL PDCCH allocation parameters.
 /// \return Parameters of the grant.
-std::vector<grant_info> get_pdcch_grant_info(const pdcch_ul_information& pdcch);
+std::vector<grant_info> get_pdcch_grant_info(pci_t pci, const pdcch_ul_information& pdcch);
 
 /// Extract PDSCH grant info of SIB allocation.
 ///

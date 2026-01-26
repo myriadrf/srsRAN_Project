@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -23,11 +23,16 @@
 #include "du_manager_impl.h"
 #include "du_positioning_handler_factory.h"
 #include "procedures/cu_configuration_procedure.h"
+#include "procedures/du_cell_stop_procedure.h"
 #include "procedures/du_mac_si_pdu_update_procedure.h"
 #include "procedures/du_param_config_procedure.h"
+#include "procedures/du_setup_procedure.h"
 #include "procedures/du_stop_procedure.h"
+#include "procedures/du_ue_reset_procedure.h"
 #include "procedures/du_ue_ric_configuration_procedure.h"
-#include "procedures/initial_du_setup_procedure.h"
+#include "procedures/f1c_disconnection_handling_procedure.h"
+#include "srsran/mac/mac_pdu_handler.h"
+#include "srsran/support/async/async_timer.h"
 #include "srsran/support/executors/execute_until_success.h"
 #include <condition_variable>
 #include <future>
@@ -43,11 +48,8 @@ du_manager_impl::du_manager_impl(const du_manager_params& params_) :
   cell_res_alloc(params.ran.cells, params.mac.sched_cfg, params.ran.srbs, params.ran.qos, params.test_cfg),
   ue_mng(params, cell_res_alloc),
   positioning_handler(create_du_positioning_handler(params, cell_mng, ue_mng, logger)),
-  metrics(params.metrics,
-          params.services.du_mng_exec,
-          params.services.timers,
-          params.f1ap.metrics,
-          params.mac.mac_metrics_notif),
+  metrics(params.metrics, params.services.du_mng_exec, params.services.timers, params.f1ap.metrics),
+  proc_ctxt{params, ctxt, cell_mng, ue_mng, metrics, logger},
   main_ctrl_loop(128)
 {
 }
@@ -61,7 +63,7 @@ void du_manager_impl::start()
 {
   {
     std::unique_lock<std::mutex> lock(mutex);
-    if (running) {
+    if (ctxt.running) {
       logger.warning("Ignoring start request. Cause: DU Manager already started.");
       return;
     }
@@ -69,27 +71,27 @@ void du_manager_impl::start()
 
   logger.info("DU manager starting...");
 
-  if (not params.services.du_mng_exec.execute(TRACE_TASK([this]() {
+  if (not params.services.du_mng_exec.execute([this]() {
         main_ctrl_loop.schedule([this](coro_context<async_task<void>>& ctx) {
           CORO_BEGIN(ctx);
 
           // Connect to CU-CP and send F1 Setup Request and await for F1 setup response.
-          CORO_AWAIT(launch_async<initial_du_setup_procedure>(params, cell_mng, metrics));
+          CORO_AWAIT(launch_async<du_setup_procedure>(proc_ctxt));
 
           // Signal start() caller thread that the operation is complete.
           std::lock_guard<std::mutex> lock(mutex);
-          running = true;
+          ctxt.running = true;
           cvar.notify_all();
 
           CORO_RETURN();
         });
-      }))) {
+      })) {
     report_fatal_error("Unable to initiate DU setup procedure");
   }
 
   // Block waiting for DU setup to complete.
   std::unique_lock<std::mutex> lock(mutex);
-  cvar.wait(lock, [this]() { return running; });
+  cvar.wait(lock, [this]() { return ctxt.running; });
 
   logger.info("DU manager started successfully.");
 }
@@ -99,12 +101,12 @@ void du_manager_impl::stop()
   {
     // Avoid stopping the DU Manager multiple times.
     std::lock_guard<std::mutex> lock(mutex);
-    if (not running) {
+    if (not ctxt.running) {
       return;
     }
   }
 
-  while (not params.services.du_mng_exec.execute(TRACE_TASK([this]() { handle_du_stop_request(); }))) {
+  while (not params.services.du_mng_exec.execute([this]() { handle_du_stop_request(); })) {
     logger.error("Unable to dispatch DU Manager shutdown. Retrying...");
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     return;
@@ -112,16 +114,16 @@ void du_manager_impl::stop()
 
   // Wait for the DU Manager thread to signal that the stop was completed.
   std::unique_lock<std::mutex> lock(mutex);
-  cvar.wait(lock, [this]() { return not running; });
+  cvar.wait(lock, [this]() { return not ctxt.running; });
 }
 
 void du_manager_impl::handle_ul_ccch_indication(const ul_ccch_indication_message& msg)
 {
   // Switch DU Manager exec context
-  if (not params.services.du_mng_exec.execute(TRACE_TASK([this, msg = std::move(msg)]() {
+  if (not params.services.du_mng_exec.execute([this, msg = std::move(msg)]() {
         // Start UE create procedure
         ue_mng.handle_ue_create_request(msg);
-      }))) {
+      })) {
     logger.warning("Discarding UL-CCCH message cell={} tc-rnti={} slot_rx={}. Cause: DU manager task queue is full",
                    fmt::underlying(msg.cell_index),
                    msg.tc_rnti,
@@ -129,18 +131,26 @@ void du_manager_impl::handle_ul_ccch_indication(const ul_ccch_indication_message
   }
 }
 
+void du_manager_impl::handle_f1c_connection_loss()
+{
+  schedule_async_task(launch_async<f1c_disconnection_handling_procedure>(proc_ctxt));
+}
+
 void du_manager_impl::handle_du_stop_request()
 {
-  if (not running) {
+  if (not ctxt.running) {
     // Already stopped.
     return;
   }
+
+  // Notify other procedures that the DU needs to stop.
+  ctxt.stop_command_received = true;
 
   // Start DU stop procedure.
   schedule_async_task(launch_async([this](coro_context<async_task<void>>& ctx) {
     CORO_BEGIN(ctx);
 
-    if (not running) {
+    if (not ctxt.running) {
       // Already stopped.
       CORO_EARLY_RETURN();
     }
@@ -150,14 +160,15 @@ void du_manager_impl::handle_du_stop_request()
 
     // DU stop successfully finished.
     // Dispatch main async task loop destruction via defer so that the current coroutine ends successfully.
-    while (not params.services.du_mng_exec.defer(TRACE_TASK([this]() {
+    while (not params.services.du_mng_exec.defer([this]() {
       // Let main loop go out of scope and be destroyed.
       auto main_loop = main_ctrl_loop.request_stop();
 
       std::lock_guard<std::mutex> lock(mutex);
-      running = false;
+      ctxt.running               = false;
+      ctxt.stop_command_received = false;
       cvar.notify_all();
-    }))) {
+    })) {
       logger.warning("Unable to stop DU Manager. Retrying...");
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -173,7 +184,7 @@ du_ue_index_t du_manager_impl::find_unused_du_ue_index()
 
 async_task<void> du_manager_impl::handle_f1_reset_request(const std::vector<du_ue_index_t>& ues_to_reset)
 {
-  return ue_mng.handle_f1_reset_request(ues_to_reset);
+  return launch_async<du_ue_reset_procedure>(ues_to_reset, ue_mng, params, std::nullopt);
 }
 
 async_task<gnbcu_config_update_response>
@@ -199,9 +210,9 @@ async_task<void> du_manager_impl::handle_ue_delete_request(const f1ap_ue_delete_
   return ue_mng.handle_ue_delete_request(request);
 }
 
-async_task<void> du_manager_impl::handle_ue_deactivation_request(du_ue_index_t ue_index)
+async_task<void> du_manager_impl::handle_ue_drb_deactivation_request(du_ue_index_t ue_index)
 {
-  return ue_mng.handle_ue_deactivation_request(ue_index);
+  return ue_mng.handle_ue_drb_deactivation_request(ue_index);
 }
 
 void du_manager_impl::handle_ue_reestablishment(du_ue_index_t new_ue_index, du_ue_index_t old_ue_index)
@@ -219,7 +230,7 @@ size_t du_manager_impl::nof_ues()
   // TODO: This is temporary code.
   std::promise<size_t> p;
   std::future<size_t>  fut = p.get_future();
-  if (not params.services.du_mng_exec.execute(TRACE_TASK([this, &p]() { p.set_value(ue_mng.nof_ues()); }))) {
+  if (not params.services.du_mng_exec.execute([this, &p]() { p.set_value(ue_mng.nof_ues()); })) {
     logger.warning("Unable to compute the number of UEs active in the DU");
     return std::numeric_limits<size_t>::max();
   }
@@ -228,7 +239,7 @@ size_t du_manager_impl::nof_ues()
 
 mac_cell_time_mapper& du_manager_impl::get_time_mapper()
 {
-  return params.mac.cell_mng.get_time_mapper(to_du_cell_index(0));
+  return params.mac.mgr.get_cell_manager().get_time_mapper(to_du_cell_index(0));
 }
 
 async_task<du_mac_sched_control_config_response>
@@ -251,7 +262,7 @@ du_param_config_response du_manager_impl::handle_operator_config_request(const d
       // Launch config procedure.
       CORO_AWAIT_VALUE(auto resp, launch_async<du_param_config_procedure>(req, params, cell_mng));
 
-      // signal back to caller.
+      // Signal back to caller.
       p.set_value(resp);
 
       CORO_RETURN();
@@ -266,7 +277,7 @@ void du_manager_impl::handle_si_pdu_update(const du_si_pdu_update_request& req)
   schedule_async_task(launch_async([&req, this](coro_context<async_task<void>>& ctx) {
     CORO_BEGIN(ctx);
 
-    if (not running) {
+    if (not ctxt.running) {
       // Already stopped.
       CORO_EARLY_RETURN();
     }

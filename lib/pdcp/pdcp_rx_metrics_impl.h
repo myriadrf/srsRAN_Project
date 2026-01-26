@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -145,7 +145,7 @@ public:
       return {};
     }
     pdcp_rx_metrics_container ret        = metrics.copy();
-    ret.sum_crypto_processing_latency_ns = sum_crypto_processing_latency_ns;
+    ret.sum_crypto_processing_latency_ns = sum_crypto_processing_latency_ns.load(std::memory_order_relaxed);
     return ret;
   }
 
@@ -170,7 +170,7 @@ public:
     metrics          = {};
     metrics.counter  = counter;
 
-    sum_crypto_processing_latency_ns = 0;
+    sum_crypto_processing_latency_ns.store(0, std::memory_order_relaxed);
   }
 
 private:

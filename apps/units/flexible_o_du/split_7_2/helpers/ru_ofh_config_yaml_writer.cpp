@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,30 +33,14 @@ static void fill_ru_ofh_log_section(YAML::Node node, const ru_ofh_unit_logger_co
 
 static void fill_ru_ofh_expert_execution_section(YAML::Node node, const ru_ofh_unit_expert_execution_config& config)
 {
-  {
-    YAML::Node affinities_node       = node["affinities"];
-    affinities_node["ru_timing_cpu"] = fmt::format("{:,}", span<const size_t>(config.ru_timing_cpu.get_cpu_ids()));
-  }
-
-  {
-    YAML::Node threads_node               = node["threads"];
-    YAML::Node ofh_node                   = threads_node["ofh"];
-    ofh_node["enable_dl_parallelization"] = config.threads.is_downlink_parallelized;
-  }
+  YAML::Node affinities_node = node["affinities"];
+  YAML::Node ofh_node        = affinities_node["ofh"];
+  ofh_node["timing_cpu"]     = fmt::format("{:,}", span<const size_t>(config.ru_timing_cpu.get_cpu_ids()));
 
   if (config.txrx_affinities.size() > 0) {
-    YAML::Node affinities_node = node["affinities"];
-    YAML::Node ofh_node        = affinities_node["ofh"];
-    while (config.txrx_affinities.size() > ofh_node.size()) {
-      ofh_node.push_back(YAML::Node());
-    }
-
-    unsigned index = 0;
-    for (auto subnode : ofh_node) {
-      const auto& mask = config.txrx_affinities[index];
-
-      subnode["ru_txrx_cpus"] = fmt::format("{:,}", span<const size_t>(mask.get_cpu_ids()));
-      ++index;
+    YAML::Node txrx_node = ofh_node["txrx_cpus"];
+    for (const auto& affinity : config.txrx_affinities) {
+      txrx_node.push_back(fmt::format("{:,}", span<const size_t>(affinity.get_cpu_ids())));
     }
   }
 
@@ -106,6 +90,7 @@ static YAML::Node build_ru_ofh_cell_section(const ru_ofh_unit_cell_config& confi
   node["ignore_prach_start_symbol"]  = config.cell.ignore_prach_start_symbol;
   node["ignore_ecpri_seq_id"]        = config.cell.ignore_ecpri_seq_id_field;
   node["ignore_ecpri_payload_size"]  = config.cell.ignore_ecpri_payload_size_field;
+  node["log_lates_as_warnings"]      = config.cell.enable_log_warnings_for_lates;
   node["warn_unreceived_ru_frames"]  = to_string(config.cell.log_unreceived_ru_frames);
   node["compr_method_ul"]            = config.cell.compression_method_ul;
   node["compr_bitwidth_ul"]          = config.cell.compression_bitwidth_ul;
@@ -116,8 +101,13 @@ static YAML::Node build_ru_ofh_cell_section(const ru_ofh_unit_cell_config& confi
   node["enable_ul_static_compr_hdr"] = config.cell.is_uplink_static_comp_hdr_enabled;
   node["enable_dl_static_compr_hdr"] = config.cell.is_downlink_static_comp_hdr_enabled;
   if (const auto* scaling_params = std::get_if<ru_ofh_scaling_config>(&config.cell.iq_scaling_config)) {
-    node["ru_reference_level_dBFS"]   = scaling_params->ru_reference_level_dBFS;
-    node["subcarrier_rms_backoff_dB"] = scaling_params->subcarrier_rms_backoff_dB;
+    node["ru_reference_level_dBFS"] = scaling_params->ru_reference_level_dBFS;
+
+    if (scaling_params->subcarrier_rms_backoff_dB) {
+      node["subcarrier_rms_backoff_dB"] = *scaling_params->subcarrier_rms_backoff_dB;
+    } else {
+      node["subcarrier_rms_backoff_dB"] = "auto";
+    }
   } else if (const auto* legacy_scaling_params =
                  std::get_if<ru_ofh_legacy_scaling_config>(&config.cell.iq_scaling_config)) {
     node["iq_scaling"] = legacy_scaling_params->iq_scaling;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -76,8 +76,11 @@ srsran::srs_du::make_sched_cell_config_req(du_cell_index_t                      
   sched_req.ssb_config           = du_cfg.ssb_cfg;
   sched_req.dmrs_typeA_pos       = du_cfg.dmrs_typeA_pos;
   sched_req.tdd_ul_dl_cfg_common = du_cfg.tdd_ul_dl_cfg_common;
-  sched_req.ntn_cs_koffset       = du_cfg.ntn_cs_koffset;
   sched_req.nof_beams            = 1;
+  // NTN parameters.
+  sched_req.ntn_cs_koffset = du_cfg.ntn_cs_koffset;
+  sched_req.dl_harq_mode_b = du_cfg.dl_harq_mode_b;
+  sched_req.ul_harq_mode_b = du_cfg.ul_harq_mode_b;
 
   sched_req.coreset0     = du_cfg.coreset0_idx;
   sched_req.searchspace0 = du_cfg.searchspace0_idx;
@@ -86,7 +89,7 @@ srsran::srs_du::make_sched_cell_config_req(du_cell_index_t                      
   sched_req.sib1_payload_size = sib1_len;
   sched_req.si_scheduling     = si_sched_cfg;
 
-  sched_req.pucch_guardbands = config_helpers::build_pucch_guardbands_list(
+  sched_req.ded_pucch_resources = config_helpers::build_pucch_resource_list(
       du_cfg.pucch_cfg, du_cfg.ul_cfg_common.init_ul_bwp.generic_params.crbs.length());
 
   sched_req.zp_csi_rs_list = du_cfg.ue_ded_serv_cell_cfg.init_dl_bwp.pdsch_cfg->zp_csi_rs_res_list;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -35,27 +35,51 @@ ue_cell_scheduler* ue_scheduler_impl::do_add_cell(const ue_cell_scheduler_creati
   cells.emplace(params.cell_index, *this, params);
   auto& cell = cells[params.cell_index];
 
-  event_mng.add_cell(cell_creation_event{*params.cell_res_alloc,
-                                         cell.cell_harqs,
-                                         cell.fallback_sched,
-                                         cell.uci_sched,
-                                         cell.slice_sched,
-                                         cell.srs_sched,
-                                         *params.cell_metrics,
-                                         *params.ev_logger});
+  // Create a cell-specific UE event manager.
+  cell.ev_mng = event_mng.add_cell(cell_creation_event{*params.cell_res_alloc,
+                                                       cell.cell_harqs,
+                                                       cell.ue_cell_db,
+                                                       cell.fallback_sched,
+                                                       cell.uci_sched,
+                                                       cell.slice_sched,
+                                                       cell.srs_sched,
+                                                       *params.cell_metrics,
+                                                       *params.ev_logger});
 
   return &cell;
+}
+
+void ue_scheduler_impl::do_start_cell(du_cell_index_t cell_index)
+{
+  srsran_assert(cells.contains(cell_index), "Cell reference not found in the scheduler");
+
+  // Signal event manager that new events can be processed for this cell.
+  cells[cell_index].ev_mng->start();
+}
+
+void ue_scheduler_impl::do_stop_cell(du_cell_index_t cell_index)
+{
+  srsran_assert(cells.contains(cell_index), "Cell reference not found in the scheduler");
+  auto& c = cells[cell_index];
+
+  // Halt any pending events associated with this cell.
+  cells[cell_index].ev_mng->stop();
+
+  // Stop sub-schedulers.
+  c.fallback_sched.stop();
+  c.srs_sched.stop();
+  c.uci_sched.stop();
+  c.cell_harqs.stop();
+
+  // Remove UEs from the UE repository associated with this cell.
+  ue_db.handle_cell_deactivation(cell_index);
 }
 
 void ue_scheduler_impl::do_rem_cell(du_cell_index_t cell_index)
 {
   srsran_assert(cells.contains(cell_index), "Cell reference not found in the scheduler");
 
-  // Remove cell from UE event manager.
-  event_mng.rem_cell(cell_index);
-
-  // Remove UEs from the UE repository associated with this cell.
-  ue_db.handle_cell_removal(cell_index);
+  do_stop_cell(cell_index);
 
   // Remove cell from UE scheduler.
   cells.erase(cell_index);
@@ -166,7 +190,7 @@ void ue_scheduler_impl::run_slot_impl(slot_point slot_tx)
     du_cell_index_t cell_index = group_cell.cell_res_alloc->cfg.cell_index;
 
     // Process any pending events that are directed at UEs.
-    event_mng.run(slot_tx, cell_index);
+    group_cell.ev_mng->run_slot(slot_tx);
 
     // Update all UEs state.
     ue_db.slot_indication(slot_tx);
@@ -229,10 +253,14 @@ ue_scheduler_impl::cell_context::cell_context(ue_scheduler_impl&                
       MAX_NOF_DU_UES,
       MAX_NOF_HARQS,
       std::make_unique<harq_manager_timeout_notifier>(*params.cell_metrics),
+      std::make_unique<harq_manager_timeout_notifier>(*params.cell_metrics),
       parent.expert_cfg.dl_harq_retx_timeout.count() * get_nof_slots_per_subframe(cell_res_alloc->cfg.scs_common),
       parent.expert_cfg.ul_harq_retx_timeout.count() * get_nof_slots_per_subframe(cell_res_alloc->cfg.scs_common),
       cell_harq_manager::DEFAULT_ACK_TIMEOUT_SLOTS,
-      params.cell_res_alloc->cfg.ntn_cs_koffset),
+      params.cell_res_alloc->cfg.ntn_cs_koffset,
+      params.cell_res_alloc->cfg.dl_harq_mode_b,
+      params.cell_res_alloc->cfg.ul_harq_mode_b),
+  ue_cell_db(parent.ue_db.add_cell(params.cell_index)),
   uci_sched(params.cell_res_alloc->cfg, *params.uci_alloc, parent.ue_db),
   fallback_sched(parent.expert_cfg,
                  params.cell_res_alloc->cfg,
@@ -251,4 +279,9 @@ ue_scheduler_impl::cell_context::cell_context(ue_scheduler_impl&                
                     srslog::fetch_basic_logger("SCHED")),
   srs_sched(params.cell_res_alloc->cfg, parent.ue_db)
 {
+}
+
+ue_scheduler_impl::cell_context::~cell_context()
+{
+  parent.ue_db.rem_cell(ue_cell_db.cell_index());
 }

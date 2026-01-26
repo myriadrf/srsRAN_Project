@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -141,6 +141,7 @@ void reestablishment_context_modification_routine::operator()(coro_context<async
                                   true /* Reestablish DRBs */,
                                   std::nullopt /* don't update keys */,
                                   {},
+                                  std::nullopt,
                                   logger)) {
         logger.warning("ue={}: \"{}\" Failed to fill RrcReconfiguration", ue_index, name());
         CORO_EARLY_RETURN(false);
@@ -158,6 +159,9 @@ void reestablishment_context_modification_routine::operator()(coro_context<async
       CORO_EARLY_RETURN(false);
     }
   }
+
+  // Mark unused DRB IDs as clean after successful re-establishment.
+  up_resource_mng.refresh_drb_id_after_key_change();
 
   // we are done
   CORO_RETURN(true);

@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -26,9 +26,8 @@ set(SOURCES mac_factory.cpp
         mac_ctrl/mac_controller.cpp
         mac_ctrl/ue_creation_procedure.cpp
         mac_ctrl/ue_reconfiguration_procedure.cpp
-        mac_ctrl/ue_delete_procedure.cpp
+        mac_ctrl/mac_ue_removal_procedure.cpp
         mac_ctrl/mac_metrics_aggregator.cpp
-        mac_ctrl/du_time_controller.cpp
         mac_dl/sib_pdu_assembler.cpp
         mac_dl/mac_dl_processor.cpp
         mac_dl/mac_cell_time_mapper_impl.cpp

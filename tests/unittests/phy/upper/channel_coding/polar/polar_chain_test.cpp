@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -116,7 +116,7 @@ void parse_args(int argc, char** argv)
         break;
       default:
         usage(argv[0]);
-        exit(-1);
+        std::exit(-1);
     }
   }
 }

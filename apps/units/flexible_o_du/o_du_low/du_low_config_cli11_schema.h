@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,10 +33,6 @@ struct du_low_unit_config;
 void configure_cli11_with_du_low_config_schema(CLI::App& app, du_low_unit_config& parsed_cfg);
 
 /// Auto derive DU low parameters after the parsing.
-void autoderive_du_low_parameters_after_parsing(CLI::App&           app,
-                                                du_low_unit_config& parsed_cfg,
-                                                duplex_mode         mode,
-                                                bool                is_blocking_mode_enabled,
-                                                unsigned            nof_cells);
+void autoderive_du_low_parameters_after_parsing(CLI::App& app, du_low_unit_config& parsed_cfg, duplex_mode mode);
 
 } // namespace srsran

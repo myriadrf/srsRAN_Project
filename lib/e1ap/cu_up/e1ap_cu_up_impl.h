@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -50,6 +50,7 @@ public:
   [[nodiscard]] bool connect_to_cu_cp() override;
   // E1AP interface management procedures functions as per TS38.463, Section 8.2.
   async_task<cu_up_e1_setup_response> handle_cu_up_e1_setup_request(const cu_up_e1_setup_request& request) override;
+  async_task<void>                    handle_cu_up_e1ap_release_request() override;
 
   // e1ap message handler functions
   void handle_message(const e1ap_message& msg) override;
@@ -57,8 +58,13 @@ public:
   // e1ap control message handler functions
   void handle_bearer_context_inactivity_notification(const e1ap_bearer_context_inactivity_notification& msg) override;
 
+  void handle_bearer_context_release_request_required(ue_index_t ue_index) override;
+
   // e1ap event handler functions
-  void handle_connection_loss() override {}
+  void handle_connection_loss() override
+  {
+    // TODO
+  }
 
   // e1ap_statistics_handler functions
   size_t get_nof_ues() const override { return ue_ctxt_list.size(); }
@@ -98,6 +104,8 @@ private:
   /// This starts the UE context release at the UE manager and E1.
   /// \param[in] msg The Bearer Context Release Command.
   void handle_bearer_context_release_command(const asn1::e1ap::bearer_context_release_cmd_s& msg);
+
+  void handle_cu_up_e1ap_reset(const asn1::e1ap::reset_s& msg);
 
   /// \brief Notify about the reception of an successful outcome.
   /// \param[in] msg The received successful outcome message.

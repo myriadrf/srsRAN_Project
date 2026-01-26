@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -30,7 +30,10 @@ using namespace ofh;
 metrics_collector_impl::metrics_collector_impl(receiver_metrics_collector*    rx_metrics_collector_,
                                                transmitter_metrics_collector* tx_metrics_collector_,
                                                unsigned                       sector_id_) :
-  sector_id(sector_id_), rx_metrics_collector(rx_metrics_collector_), tx_metrics_collector(tx_metrics_collector_)
+  sector_id(sector_id_),
+  rx_metrics_collector(rx_metrics_collector_),
+  tx_metrics_collector(tx_metrics_collector_),
+  last_timestamp(std::chrono::high_resolution_clock::now())
 {
   is_enabled = (rx_metrics_collector && tx_metrics_collector);
 }
@@ -38,12 +41,6 @@ metrics_collector_impl::metrics_collector_impl(receiver_metrics_collector*    rx
 void metrics_collector_impl::collect_metrics(sector_metrics& metric)
 {
   if (disabled()) {
-    return;
-  }
-
-  if (last_timestamp == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
-    last_timestamp = std::chrono::high_resolution_clock::now();
-    metric         = {};
     return;
   }
 

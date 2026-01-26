@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -29,6 +29,7 @@
 #include "srsran/hal/dpdk/dpdk_eal_factory.h"
 #include "srsran/hal/phy/upper/channel_processors/hw_accelerator_factories.h"
 #include "srsran/hal/phy/upper/channel_processors/hw_accelerator_pdsch_enc_factory.h"
+#include "srsran/srslog/srslog.h"
 #endif // HWACC_PDSCH_ENABLED
 #include <getopt.h>
 
@@ -119,7 +120,7 @@ static void parse_args(int argc, char** argv)
       case 'h':
       default:
         usage(argv[0]);
-        exit(-1);
+        std::exit(-1);
     }
   }
 }

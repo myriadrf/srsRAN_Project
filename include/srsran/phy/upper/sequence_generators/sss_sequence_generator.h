@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,10 +24,10 @@
 
 #include "srsran/adt/complex.h"
 #include "srsran/adt/span.h"
+#include "srsran/phy/constants.h"
 #include "srsran/ran/pci.h"
 #include "srsran/srsvec/prod.h"
 #include "srsran/srsvec/sc_prod.h"
-#include <srsran/phy/constants.h>
 
 namespace srsran {
 

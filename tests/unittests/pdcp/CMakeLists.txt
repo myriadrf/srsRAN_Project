@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -88,6 +88,12 @@ target_link_libraries(pdcp_rx_stop_test srsran_pdcp srsran_security srsran_suppo
 target_include_directories(pdcp_rx_stop_test PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(pdcp_rx_stop_test pdcp_rx_stop_test)
 gtest_discover_tests(pdcp_rx_stop_test)
+
+add_executable(pdcp_tx_stop_test pdcp_tx_stop_test.cpp)
+target_link_libraries(pdcp_tx_stop_test srsran_pdcp srsran_security srsran_support srslog gtest gtest_main)
+target_include_directories(pdcp_tx_stop_test PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(pdcp_tx_stop_test pdcp_tx_stop_test)
+gtest_discover_tests(pdcp_tx_stop_test)
 
 add_executable(pdcp_gen_helper pdcp_gen_helper.cpp)
 target_link_libraries(pdcp_gen_helper srsran_pdcp srsran_security srsran_support srslog)

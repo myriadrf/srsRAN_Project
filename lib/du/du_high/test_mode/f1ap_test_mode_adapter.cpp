@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -56,10 +56,15 @@ public:
     return adapted->handle_f1_setup_request(request);
   }
   async_task<void> handle_f1_removal_request() override { return adapted->handle_f1_removal_request(); }
+  async_task<f1_reset_acknowledgement> handle_f1_reset_request(const f1_reset_request& req) override
+  {
+    return adapted->handle_f1_reset_request(req);
+  }
   async_task<gnbdu_config_update_response> handle_du_config_update(const gnbdu_config_update_request& request) override
   {
     return adapted->handle_du_config_update(request);
   }
+  bool                      is_f1_setup() const override { return adapted->is_f1_setup(); }
   f1ap_ue_creation_response handle_ue_creation_request(const f1ap_ue_creation_request& msg) override
   {
     return adapted->handle_ue_creation_request(msg);
@@ -85,12 +90,16 @@ public:
   {
     return adapted->handle_ue_inactivity_notification(msg);
   }
-  void                handle_notify(const f1ap_notify_message& msg) override { return adapted->handle_notify(msg); }
-  gnb_cu_ue_f1ap_id_t get_gnb_cu_ue_f1ap_id(const du_ue_index_t& ue_index) override
+  void handle_notify(const f1ap_notify_message& msg) override { return adapted->handle_notify(msg); }
+  bool has_gnb_cu_ue_f1ap_id(const du_ue_index_t& ue_index) const override
+  {
+    return get_gnb_cu_ue_f1ap_id(ue_index).has_value();
+  }
+  std::optional<gnb_cu_ue_f1ap_id_t> get_gnb_cu_ue_f1ap_id(const du_ue_index_t& ue_index) const override
   {
     return adapted->get_gnb_cu_ue_f1ap_id(ue_index);
   }
-  gnb_cu_ue_f1ap_id_t get_gnb_cu_ue_f1ap_id(const gnb_du_ue_f1ap_id_t& gnb_du_ue_f1ap_id) override
+  std::optional<gnb_cu_ue_f1ap_id_t> get_gnb_cu_ue_f1ap_id(const gnb_du_ue_f1ap_id_t& gnb_du_ue_f1ap_id) const override
   {
     return adapted->get_gnb_cu_ue_f1ap_id(gnb_du_ue_f1ap_id);
   }
@@ -167,7 +176,7 @@ public:
           asn1::f1ap::f1_setup_resp_s& f1_setup_resp = pdu_resp.pdu.successful_outcome().value.f1_setup_resp();
 
           f1_setup_resp->transaction_id = f1_setup->transaction_id;
-          f1_setup_resp->gnb_cu_name.from_string("srsgnb01");
+          f1_setup_resp->gnb_cu_name.from_string("gnb01");
           if (f1_setup->gnb_du_served_cells_list_present) {
             f1_setup_resp->cells_to_be_activ_list_present = true;
             for (const auto& cell : f1_setup->gnb_du_served_cells_list) {
@@ -279,7 +288,9 @@ private:
   std::unique_ptr<f1ap_message_notifier> adapted_notif;
 };
 
-// F1-C client interface.
+} // namespace
+
+/// F1-C client interface.
 std::unique_ptr<f1ap_message_notifier>
 f1ap_test_mode_adapter::handle_du_connection_request(std::unique_ptr<f1ap_message_notifier> du_rx_pdu_notifier)
 {
@@ -290,8 +301,6 @@ f1ap_test_mode_adapter::handle_du_connection_request(std::unique_ptr<f1ap_messag
   }
   return std::make_unique<f1ap_to_gw_pdu_interceptor>(*this);
 }
-
-} // namespace
 
 std::unique_ptr<f1ap_du> srsran::srs_du::create_du_high_f1ap(f1c_connection_client&      f1c_client_handler,
                                                              f1ap_du_configurator&       du_mng,

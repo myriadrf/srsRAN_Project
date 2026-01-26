@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,6 +28,7 @@
 #include "srsran/rrc/rrc_ue.h"
 #include "srsran/support/async/async_task.h"
 #include "srsran/support/async/eager_async_task.h"
+#include <chrono>
 
 namespace srsran {
 namespace srs_cu_cp {
@@ -38,8 +39,8 @@ public:
   rrc_reestablishment_procedure(const asn1::rrc_nr::rrc_reest_request_s& request_,
                                 rrc_ue_context_t&                        context_,
                                 const byte_buffer&                       du_to_cu_container_,
-                                rrc_ue_setup_proc_notifier&              rrc_setup_notifier_,
-                                rrc_ue_reestablishment_proc_notifier&    rrc_ue_notifier_,
+                                rrc_ue_setup_proc_notifier&              rrc_ue_setup_notifier_,
+                                rrc_ue_reestablishment_proc_notifier&    rrc_ue_reest_notifier_,
                                 rrc_ue_control_message_handler&          srb_notifier_,
                                 rrc_ue_context_update_notifier&          cu_cp_notifier_,
                                 rrc_ue_cu_cp_ue_notifier&                cu_cp_ue_notifier_,
@@ -89,6 +90,7 @@ private:
   rrc_ue_logger&                           logger;
 
   const asn1::rrc_nr::pdcp_cfg_s          srb1_pdcp_cfg;
+  std::chrono::milliseconds               procedure_timeout{0};
   rrc_transaction                         transaction;
   eager_async_task<rrc_outcome>           task;
   rrc_ue_reestablishment_context_response old_ue_reest_context;

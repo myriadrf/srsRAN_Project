@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -116,7 +116,8 @@ protected:
   std::unique_ptr<f1u_bearer_impl>   f1u;
 
   gtpu_teid_t    dl_teid_next{1234};
-  const uint32_t f1u_ul_notif_time_ms = 10;
+  const uint32_t f1u_ul_notif_time_ms             = 10;
+  const uint32_t f1u_intial_rlc_queue_bytes_limit = 8000;
 };
 
 /// Fixture class for F1-U DU tests
@@ -128,9 +129,10 @@ protected:
     // init test's logger
     init_logger();
     // create tester and testee
-    f1u_config config   = {};
-    config.t_notify     = f1u_ul_notif_time_ms;
-    config.warn_on_drop = true;
+    f1u_config config            = {};
+    config.t_notify              = f1u_ul_notif_time_ms;
+    config.rlc_queue_bytes_limit = f1u_intial_rlc_queue_bytes_limit;
+    config.warn_on_drop          = true;
     init_f1u(config);
   }
 
@@ -155,7 +157,6 @@ protected:
     config.warn_on_drop         = true;
     config.buffer_ul_on_startup = true;
     config.ul_buffer_size       = 2;
-    config.ul_buffer_timeout    = std::chrono::milliseconds(5);
     init_f1u(config);
   }
 
@@ -289,14 +290,38 @@ TEST_F(f1u_du_test, tx_pdcp_pdus)
 
   ASSERT_FALSE(tester->tx_msg_list.empty());
   EXPECT_EQ(tester->tx_msg_list.front().t_pdu.value(), tx_pdcp_pdu1);
-  EXPECT_FALSE(tester->tx_msg_list.front().data_delivery_status.has_value());
+  ASSERT_TRUE(tester->tx_msg_list.front().data_delivery_status.has_value());
+  {
+    nru_dl_data_delivery_status& status = tester->tx_msg_list.front().data_delivery_status.value();
+    EXPECT_FALSE(status.final_frame_ind);
+    EXPECT_EQ(status.desired_buffer_size_for_drb, f1u_intial_rlc_queue_bytes_limit);
+    EXPECT_FALSE(status.desired_data_rate);
+    EXPECT_FALSE(status.lost_nru_sn_ranges.has_value());
+    EXPECT_FALSE(status.highest_delivered_pdcp_sn.has_value());
+    EXPECT_FALSE(status.highest_transmitted_pdcp_sn.has_value());
+    EXPECT_FALSE(status.cause_value.has_value());
+    EXPECT_FALSE(status.highest_delivered_retransmitted_pdcp_sn.has_value());
+    EXPECT_FALSE(status.highest_retransmitted_pdcp_sn.has_value());
+  }
   EXPECT_FALSE(tester->tx_msg_list.front().assistance_information.has_value());
 
   tester->tx_msg_list.pop_front();
 
   ASSERT_FALSE(tester->tx_msg_list.empty());
   EXPECT_EQ(tester->tx_msg_list.front().t_pdu.value(), tx_pdcp_pdu2);
-  EXPECT_FALSE(tester->tx_msg_list.front().data_delivery_status.has_value());
+  ASSERT_TRUE(tester->tx_msg_list.front().data_delivery_status.has_value());
+  {
+    nru_dl_data_delivery_status& status = tester->tx_msg_list.front().data_delivery_status.value();
+    EXPECT_FALSE(status.final_frame_ind);
+    EXPECT_EQ(status.desired_buffer_size_for_drb, f1u_intial_rlc_queue_bytes_limit);
+    EXPECT_FALSE(status.desired_data_rate);
+    EXPECT_FALSE(status.lost_nru_sn_ranges.has_value());
+    EXPECT_FALSE(status.highest_delivered_pdcp_sn.has_value());
+    EXPECT_FALSE(status.highest_transmitted_pdcp_sn.has_value());
+    EXPECT_FALSE(status.cause_value.has_value());
+    EXPECT_FALSE(status.highest_delivered_retransmitted_pdcp_sn.has_value());
+    EXPECT_FALSE(status.highest_retransmitted_pdcp_sn.has_value());
+  }
   EXPECT_FALSE(tester->tx_msg_list.front().assistance_information.has_value());
 
   tester->tx_msg_list.pop_front();
@@ -647,8 +672,21 @@ TEST_F(f1u_du_test, rx_with_poll_triggers_no_ddds_when_nothing_was_notified)
   msg1.dl_user_data.report_polling = true;
   f1u->handle_pdu(std::move(msg1));
 
-  // This should not trigger a DDDS, because no data is available yet
-  EXPECT_TRUE(tester->tx_msg_list.empty());
+  // This triggers a DDDS that only includes the initial "desired_buffer_size_for_drb", no other data is available yet
+  ASSERT_TRUE(tester->tx_msg_list.front().data_delivery_status.has_value());
+  {
+    nru_dl_data_delivery_status& status = tester->tx_msg_list.front().data_delivery_status.value();
+    EXPECT_FALSE(status.final_frame_ind);
+    EXPECT_EQ(status.desired_buffer_size_for_drb, f1u_intial_rlc_queue_bytes_limit);
+    EXPECT_FALSE(status.desired_data_rate);
+    EXPECT_FALSE(status.lost_nru_sn_ranges.has_value());
+    EXPECT_FALSE(status.highest_delivered_pdcp_sn.has_value());
+    EXPECT_FALSE(status.highest_transmitted_pdcp_sn.has_value());
+    EXPECT_FALSE(status.cause_value.has_value());
+    EXPECT_FALSE(status.highest_delivered_retransmitted_pdcp_sn.has_value());
+    EXPECT_FALSE(status.highest_retransmitted_pdcp_sn.has_value());
+  }
+  EXPECT_FALSE(tester->tx_msg_list.front().assistance_information.has_value());
 
   // Also check that the DL PDU was properly forwarded
   ASSERT_FALSE(tester->rx_sdu_list.empty());
@@ -683,42 +721,6 @@ TEST_F(f1u_du_buffer_test, buffer_ul_pdus)
   // Check F1-U is buffering.
   ASSERT_TRUE(tester->tx_msg_list.empty());
   f1u->flush_ul_buffer();
-
-  // Check flushing is correct.
-  ASSERT_EQ(tester->tx_msg_list.size(), 2);
-
-  // Check flush was in order.
-  byte_buffer t_pdu1 = tester->tx_msg_list.front().t_pdu.value().deep_copy().value();
-  ASSERT_EQ(t_pdu1[0], pdcp_sn);
-  tester->tx_msg_list.pop_front();
-  byte_buffer t_pdu2 = tester->tx_msg_list.front().t_pdu.value().deep_copy().value();
-  ASSERT_EQ(t_pdu2[0], pdcp_sn + 1);
-  tester->tx_msg_list.pop_front();
-}
-
-TEST_F(f1u_du_buffer_test, buffer_ul_pdus_timeout)
-{
-  constexpr uint32_t pdu_size = 10;
-  constexpr uint32_t pdcp_sn  = 123;
-
-  byte_buffer tx_pdcp_pdu1 = create_sdu_byte_buffer(pdu_size, pdcp_sn);
-  auto        chain1       = byte_buffer_chain::create(tx_pdcp_pdu1.deep_copy().value());
-  ASSERT_TRUE(chain1.has_value());
-  f1u->handle_sdu(std::move(chain1.value()));
-
-  byte_buffer tx_pdcp_pdu2 = create_sdu_byte_buffer(pdu_size, pdcp_sn + 1);
-  auto        chain2       = byte_buffer_chain::create(tx_pdcp_pdu2.deep_copy().value());
-  ASSERT_TRUE(chain2.has_value());
-  f1u->handle_sdu(std::move(chain2.value()));
-
-  byte_buffer tx_pdcp_pdu3 = create_sdu_byte_buffer(pdu_size, pdcp_sn + 2);
-  auto        chain3       = byte_buffer_chain::create(tx_pdcp_pdu3.deep_copy().value());
-  ASSERT_TRUE(chain3.has_value());
-  f1u->handle_sdu(std::move(chain2.value())); // This should be dropped at the UL buffer, as the queue size is only 2.
-
-  // Check F1-U is buffering.
-  ASSERT_TRUE(tester->tx_msg_list.empty());
-  tick_all(5);
 
   // Check flushing is correct.
   ASSERT_EQ(tester->tx_msg_list.size(), 2);

@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -24,3 +24,4 @@ set(SOURCES
 
 add_library(srsran_cu_up_unit_metrics_helpers STATIC ${SOURCES})
 target_include_directories(srsran_cu_up_unit_metrics_helpers PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(srsran_cu_up_unit_metrics_helpers PRIVATE srsran_cu_up_metrics_json_generators_helpers)

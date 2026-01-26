@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -57,6 +57,14 @@ void si_message_scheduler::run_slot(cell_slot_resource_allocator& res_grid)
 
   // Schedule SI messages that are within the window for tx.
   schedule_pending_si_messages(res_grid);
+}
+
+void si_message_scheduler::stop()
+{
+  // Clear all windows.
+  for (unsigned i = 0; i != pending_messages.size(); ++i) {
+    pending_messages[i] = {};
+  }
 }
 
 void si_message_scheduler::handle_si_message_update_indication(

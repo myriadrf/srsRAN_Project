@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -42,18 +42,16 @@ public:
 
   /// Decoder configuration.
   struct configuration {
-    /// LDPC decoding algorithm configuration parameters.
-    struct algorithm_details {
-      /// Maximum number of iterations.
-      unsigned max_iterations = 6;
-      /// Scaling factor of the normalized min-sum decoding algorithm.
-      float scaling_factor = 0.8;
-    };
-
-    /// Codeblock configuration.
-    codeblock_metadata block_conf;
-    /// LDPC decoding algorithm configuration.
-    algorithm_details algorithm_conf;
+    /// Code base graph.
+    ldpc_base_graph_type base_graph = ldpc_base_graph_type::BG1;
+    /// Code lifting size.
+    ldpc::lifting_size_t lifting_size = ldpc::LS2;
+    /// Number of filler bits in the full codeblock.
+    unsigned nof_filler_bits = 0;
+    /// CRC bits
+    unsigned nof_crc_bits = 16;
+    /// Maximum number of iterations.
+    unsigned max_iterations = 6;
   };
 
   /// \brief Decodes a codeblock.
@@ -68,8 +66,8 @@ public:
   /// \param[in]  cfg     Decoder configuration.
   /// \return If the decoding is successful, returns the number of LDPC iterations needed by the decoder. Otherwise, no
   ///         value is returned.
-  /// \note A codeblock of all zero-valued log-likelihood ratios will automatically will return an empty value (i.e.,
-  /// failed CRC) and set all the output bits to one.
+  /// \note A codeblock of all zero-valued log-likelihood ratios will automatically return an empty value (i.e., failed
+  /// CRC) and set all the output bits to one.
   virtual std::optional<unsigned>
   decode(bit_buffer& output, span<const log_likelihood_ratio> input, crc_calculator* crc, const configuration& cfg) = 0;
 };

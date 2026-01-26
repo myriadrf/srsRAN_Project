@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,6 +27,7 @@
 #include "srsran/support/executors/detail/task_executor_utils.h"
 #include "srsran/support/executors/task_executor.h"
 #include "srsran/support/rtsan.h"
+#include "srsran/support/tracing/event_tracing.h"
 #include "srsran/support/tracing/resource_usage.h"
 #include <chrono>
 
@@ -34,7 +35,7 @@ namespace srsran {
 
 /// \brief Decorator of a task executor that tracks its performance metrics, such as latency.
 /// \remark This class should only be used for sequential executors (e.g. strands, single threads).
-template <typename ExecutorType, typename Logger>
+template <typename ExecutorType, typename Logger, typename Tracer = detail::null_event_tracer>
 class sequential_metrics_executor : public task_executor
 {
   /// Maximum number of elements the pool can hold.
@@ -49,12 +50,15 @@ public:
   sequential_metrics_executor(std::string               name_,
                               U&&                       exec_,
                               Logger&                   metrics_logger_,
-                              std::chrono::milliseconds period_) :
+                              std::chrono::milliseconds period_,
+                              Tracer*                   tracer_ = nullptr) :
     name(std::move(name_)),
     exec(std::forward<U>(exec_)),
     metrics_logger(metrics_logger_),
     logger(srslog::fetch_basic_logger("APP")),
     period(period_),
+    tracer(tracer_),
+    trace_name(tracer == nullptr ? "" : fmt::format("{}_run", name)),
     task_pool(POOL_SIZE),
     free_tasks(std::make_unique<queue_type>(POOL_SIZE))
   {
@@ -82,9 +86,9 @@ public:
       auto start_rusg = resource_usage::now();
 
       pooled_task();
-
-      handle_metrics(true, enqueue_tp, start_tp, start_rusg, pooled_task.file, pooled_task.lineno);
       pooled_task = {};
+
+      handle_metrics(true, enqueue_tp, start_tp, start_rusg);
       (void)free_tasks->try_push(task_idx);
     });
     if (not ret) {
@@ -112,7 +116,7 @@ public:
 
       pooled_task();
 
-      handle_metrics(false, enqueue_tp, start_tp, start_rusg, pooled_task.file, pooled_task.lineno);
+      handle_metrics(false, enqueue_tp, start_tp, start_rusg);
       pooled_task = {};
       (void)free_tasks->try_push(task_idx);
     });
@@ -139,11 +143,14 @@ private:
   void handle_metrics(bool                                           is_exec,
                       time_point                                     enqueue_tp,
                       time_point                                     start_tp,
-                      const expected<resource_usage::snapshot, int>& start_rusg,
-                      const char*                                    file,
-                      int                                            line) SRSRAN_RTSAN_NONBLOCKING
+                      const expected<resource_usage::snapshot, int>& start_rusg) noexcept SRSRAN_RTSAN_NONBLOCKING
   {
     using namespace std::chrono;
+
+    // Trace if enabled.
+    if (tracer != nullptr and tracer->is_enabled()) {
+      (*tracer) << trace_event(trace_name.c_str(), start_tp);
+    }
 
     auto end_tp          = steady_clock::now();
     auto end_rusg        = resource_usage::now();
@@ -166,13 +173,7 @@ private:
     }
 
     // Check if it is time for a new metric report.
-    auto                  telapsed_since_last_report = end_tp - last_tp;
-    static const unsigned THRESHOLD                  = 25;
-    if (duration_cast<milliseconds>(counters.task_max_latency).count() > THRESHOLD && file) {
-      // Report metrics.
-      metrics_logger.info(
-          "Executor metrics \"{}\": task took longer than {}ms to execute in {}:{} ", name, THRESHOLD, file, line);
-    }
+    auto telapsed_since_last_report = end_tp - last_tp;
     if (telapsed_since_last_report >= period) {
       // Report metrics.
       metrics_logger.info("Executor metrics \"{}\": nof_executes={} nof_defers={} enqueue_avg={}usec "
@@ -197,6 +198,8 @@ private:
   Logger&                         metrics_logger;
   srslog::basic_logger&           logger;
   const std::chrono::milliseconds period;
+  Tracer*                         tracer;
+  const std::string               trace_name;
   std::vector<unique_task>        task_pool;
   std::unique_ptr<queue_type>     free_tasks;
 

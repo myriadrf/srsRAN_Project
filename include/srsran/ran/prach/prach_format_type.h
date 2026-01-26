@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -47,7 +47,7 @@ enum class prach_format_type : uint8_t {
   invalid
 };
 
-inline constexpr const char* to_string(prach_format_type format)
+constexpr const char* to_string(prach_format_type format)
 {
   switch (format) {
     case prach_format_type::zero:

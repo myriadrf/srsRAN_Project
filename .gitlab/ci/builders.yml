@@ -8,13 +8,13 @@
 
 include:
   - project: softwareradiosystems/ci/tools
-    ref: "22"
+    ref: "23"
     file: .gitlab/ci-shared/setup/all.yml
   - project: softwareradiosystems/ci/tools
-    ref: "22"
+    ref: "23"
     file: .gitlab/ci-shared/tools/docker.yml
   - project: softwareradiosystems/ci/tools
-    ref: "22"
+    ref: "23"
     file: .gitlab/ci-shared/tools/python.yml
   - local: .gitlab/ci/builders/version.yml
 
@@ -42,6 +42,128 @@ tox python in builder:
   variables:
     PY_DIR: .gitlab/ci/builders
     GIT_LFS_SKIP_SMUDGE: 1
+
+builder version increased:
+  stage: ci
+  image: alpine:3.16.0
+  variables:
+    GIT_LFS_SKIP_SMUDGE: 1
+  rules:
+    - if: $ON_MR
+      changes:
+        paths:
+          - .gitlab/ci/builders/**/*
+          - docker/scripts/**/*
+  script:
+    - apk add git git-lfs
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME --depth 20
+    - NEW_VERSION=$(cat .gitlab/ci/builders/version.yml | grep DOCKER_BUILDER_VERSION | cut -d'"' -f2)
+    - export NEW_VERSION
+    - |
+      git checkout $CI_MERGE_REQUEST_DIFF_BASE_SHA
+      if [ ! $(cat .gitlab/ci/builders/version.yml | grep DOCKER_BUILDER_VERSION) ]; then
+          exit 0
+      fi
+    - OLD_VERSION=$(cat .gitlab/ci/builders/version.yml | grep DOCKER_BUILDER_VERSION | cut -d'"' -f2)
+    - export OLD_VERSION
+    - |
+      echo "OLD version: $OLD_VERSION -- NEW version: $NEW_VERSION"
+    - |
+      if [ "$NEW_VERSION" = "$OLD_VERSION" ]; then
+          echo "ERROR: Version not changed."
+          exit 1
+      elif [ "$OLD_VERSION" \> "$NEW_VERSION" ]; then
+          echo "ERROR: Version decreased."
+          exit 1
+      fi
+      echo "Version increased correctly."
+
+################################################################################
+# ROHC builder
+################################################################################
+.ubuntu-rohc-builder:
+  stage: dependencies
+  image: ubuntu:${os_version}
+  rules:
+    - if: $ON_MR
+  variables:
+    os_version: ""
+    arch_name: ""
+    target_arch: ""
+    GIT_STRATEGY: none
+    KUBERNETES_CPU_REQUEST: ${SRS_CPU_LIMIT}
+    KUBERNETES_CPU_LIMIT: ${SRS_CPU_LIMIT}
+    KUBERNETES_MEMORY_REQUEST: ${SRS_MEMORY_LIMIT}
+    KUBERNETES_MEMORY_LIMIT: ${SRS_MEMORY_LIMIT}
+  before_script:
+    - TZ=Europe/Madrid && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+    # Download existing package in the registry, if exists
+    - |
+      download_from_registry() {
+        DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends curl apt-transport-https ca-certificates xz-utils
+
+        cd ${CI_PROJECT_DIR}
+        http_code=$(curl -w "%{http_code}" --header "PRIVATE-TOKEN: $CODEBOT_TOKEN" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/rohc/ubuntu-${os_version}-${arch_name}/rohc.tar.gz" -o output.tar.gz)
+        if [[ $http_code == "200" ]]; then
+          tar -xf output.tar.gz
+          return 0
+        else
+          return 1
+        fi
+      }
+
+    # Install dependencies and compile
+    - |
+      build_rohc() {
+        docker/scripts/install_rohc_dependencies.sh build
+        docker/scripts/build_rohc.sh ${target_arch} ${KUBERNETES_CPU_REQUEST}
+        mkdir -p ${CI_PROJECT_DIR}/.gitlab/ci/builders
+        cp -r /opt/rohc ${CI_PROJECT_DIR}/.gitlab/ci/builders
+      }
+
+    # Publish compiled version to the registry
+    - |
+      publish_to_registry() {
+        cd ${CI_PROJECT_DIR}
+        tar -czf rohc.tar.gz .gitlab/ci/builders/rohc
+        curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file rohc.tar.gz "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/rohc/ubuntu-${os_version}-${arch_name}/rohc.tar.gz"
+      }
+  script:
+    - |
+      if download_from_registry; then
+        echo "Reusing existing package"
+      else
+        echo "Not found on the package registry. It will be compiled and published"
+        build_rohc
+        publish_to_registry
+      fi
+  artifacts:
+    paths:
+      - .gitlab/ci/builders/rohc
+    expire_in: 8 hours
+  parallel:
+    matrix:
+      - os_version: "22.04"
+      - os_version: "24.04"
+      - os_version: "25.04"
+      - os_version: "25.10"
+
+ubuntu-rohc-builder avx2:
+  extends: .ubuntu-rohc-builder
+  tags:
+    - amd64-avx2
+  variables:
+    arch_name: amd64
+    target_arch: x86-64-v3
+
+ubuntu-rohc-builder arm64:
+  extends: .ubuntu-rohc-builder
+  tags:
+    - arm64
+  variables:
+    arch_name: arm64
+    target_arch: armv8.2-a+crypto+fp16+dotprod
 
 ################################################################################
 # UHD builder
@@ -114,10 +236,10 @@ tox python in builder:
         uhd_version: ["4.8.0.0", "4.7.0.0", "4.6.0.0", "4.4.0.0", "4.3.0.0"] # "4.1.0.5" default
       - os_version: "24.04"
         uhd_version: ["4.8.0.0", "4.7.0.0"] # "4.6.0.0" default
-      - os_version: "24.10"
-        uhd_version: ["4.8.0.0"] # "4.7.0.0" default
       - os_version: "25.04"
         uhd_version: ["4.8.0.0"] # "4.7.0.0" default
+      - os_version: "25.10"
+        uhd_version: [] # "4.8.0.0" default
 
 ubuntu-uhd-builder avx2:
   extends: .ubuntu-uhd-builder
@@ -207,19 +329,19 @@ ubuntu-uhd-builder arm64:
     matrix:
       - &dpdk_2204_no_isa_matrix
         os_version: "22.04"
-        dpdk_version: ["22.11.6", "23.11.1", "24.11.1"]
+        dpdk_version: ["22.11.8", "23.11.4", "24.11.2"]
       - &dpdk_2204_matrix
         os_version: "22.04"
-        dpdk_version: ["21.08", "22.11.6", "23.11.1", "24.11.1"]
+        dpdk_version: ["21.08", "22.11.8", "23.11.4", "24.11.2"]
       - &dpdk_2404_matrix
         os_version: "24.04"
-        dpdk_version: ["23.11.1", "24.11.1"]
-      - &dpdk_2410_matrix
-        os_version: "24.10"
-        dpdk_version: ["23.11.1", "24.11.1"]
+        dpdk_version: ["23.11.4", "24.11.2"]
       - &dpdk_2504_matrix
         os_version: "25.04"
-        dpdk_version: ["24.11.1"]
+        dpdk_version: ["24.11.2"]
+      - &dpdk_2510_matrix
+        os_version: "25.10"
+        dpdk_version: ["24.11.2"]
 
 ubuntu-dpdk-builder no isa:
   extends: .ubuntu-dpdk-builder
@@ -244,8 +366,8 @@ ubuntu-dpdk-builder avx2:
     matrix:
       - *dpdk_2204_matrix
       - *dpdk_2404_matrix
-      - *dpdk_2410_matrix
       - *dpdk_2504_matrix
+      - *dpdk_2510_matrix
 
 ubuntu-dpdk-builder avx512:
   extends: .ubuntu-dpdk-builder
@@ -259,8 +381,8 @@ ubuntu-dpdk-builder avx512:
     matrix:
       - *dpdk_2204_matrix
       - *dpdk_2404_matrix
-      - *dpdk_2410_matrix
       - *dpdk_2504_matrix
+      - *dpdk_2510_matrix
 
 ubuntu-dpdk-builder arm64:
   extends: .ubuntu-dpdk-builder
@@ -301,12 +423,12 @@ ubuntu-dpdk-builder arm64:
       mkdir -p ${CI_PROJECT_DIR}/${CONTEXT}/lib
       DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends curl apt-transport-https ca-certificates xz-utils
       curl --header "PRIVATE-TOKEN: $CODEBOT_TOKEN" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/wls/25.03/libwls.so" -o ${CI_PROJECT_DIR}/${CONTEXT}/lib/libwls.so
-      curl --header "PRIVATE-TOKEN: $CODEBOT_TOKEN" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libshared/0.0.1/libshared.so" -o ${CI_PROJECT_DIR}/${CONTEXT}/lib/libshared.so
+      curl --header "PRIVATE-TOKEN: $CODEBOT_TOKEN" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libshared/0.0.2/libshared.so" -o ${CI_PROJECT_DIR}/${CONTEXT}/lib/libshared.so
     - cp -r ${CI_PROJECT_DIR}/docker/scripts/. ${CI_PROJECT_DIR}/${CONTEXT}
-    - mkdir -p $CONTEXT/lib $CONTEXT/uhd $CONTEXT/dpdk
-    - ls -lah $CONTEXT $CONTEXT/lib $CONTEXT/uhd $CONTEXT/dpdk
+    - mkdir -p $CONTEXT/lib $CONTEXT/rohc $CONTEXT/uhd $CONTEXT/dpdk
+    - ls -lah $CONTEXT $CONTEXT/lib $CONTEXT/rohc $CONTEXT/uhd $CONTEXT/dpdk
   needs:
-    - builder version
+    - builder version increased
 
 .alternative-tag:
   extends: .docker copy
@@ -357,8 +479,6 @@ image-build-publish [codechecker]:
       export BUILD_ARGS="CR_REGISTRY_URI=${CR_REGISTRY_URI};CI_TOOLS_REPO=${CI_TOOLS_REPO}"
     - |
       cp -r ${CI_PROJECT_DIR}/docker/scripts/. ${CI_PROJECT_DIR}/${CONTEXT}
-  needs:
-    - builder version
 
 alternative-tag [codechecker]:
   extends: .docker copy
@@ -369,7 +489,6 @@ alternative-tag [codechecker]:
         docker://${CR_REGISTRY_URI}${CI_PROJECT_NAMESPACE#'softwareradiosystems'}/${CI_PROJECT_NAME}/codechecker:${DOCKER_BUILDER_VERSION} \
         docker://${GITLAB_REGISTRY_URI}${CI_PROJECT_NAMESPACE#'softwareradiosystems'}/${CI_PROJECT_NAME}/codechecker:${DOCKER_BUILDER_VERSION}
   needs:
-    - builder version
     - image-build-publish [codechecker]
 
 ################################################################################
@@ -384,7 +503,10 @@ image-build-publish [ubuntu, 22.04, amd64]:
     OS_VERSION: "22.04"
     PLATFORM: amd64
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder avx2
+      parallel:
+        matrix:
+          - os_version: "22.04"
     - job: ubuntu-uhd-builder avx2
       parallel:
         matrix:
@@ -394,17 +516,17 @@ image-build-publish [ubuntu, 22.04, amd64]:
       parallel:
         matrix:
           - os_version: "22.04"
-            dpdk_version: ["22.11.6", "23.11.1", "24.11.1"]
+            dpdk_version: ["22.11.8", "23.11.4", "24.11.2"]
     - job: ubuntu-dpdk-builder avx2
       parallel:
         matrix:
           - os_version: "22.04"
-            dpdk_version: ["21.08", "22.11.6", "23.11.1", "24.11.1"]
+            dpdk_version: ["21.08", "22.11.8", "23.11.4", "24.11.2"]
     - job: ubuntu-dpdk-builder avx512
       parallel:
         matrix:
           - os_version: "22.04"
-            dpdk_version: ["21.08", "22.11.6", "23.11.1", "24.11.1"]
+            dpdk_version: ["21.08", "22.11.8", "23.11.4", "24.11.2"]
 
 alternative-tag [ubuntu, 22.04, amd64]:
   extends:
@@ -414,7 +536,6 @@ alternative-tag [ubuntu, 22.04, amd64]:
     OS_VERSION: "22.04"
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 22.04, amd64]
 
 image-build-publish [ubuntu, 22.04, arm64]:
@@ -426,7 +547,10 @@ image-build-publish [ubuntu, 22.04, arm64]:
     OS_VERSION: "22.04"
     PLATFORM: arm64
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder arm64
+      parallel:
+        matrix:
+          - os_version: "22.04"
     - job: ubuntu-uhd-builder arm64
       parallel:
         matrix:
@@ -436,7 +560,7 @@ image-build-publish [ubuntu, 22.04, arm64]:
       parallel:
         matrix:
           - os_version: "22.04"
-            dpdk_version: ["21.08", "22.11.6", "23.11.1", "24.11.1"]
+            dpdk_version: ["21.08", "22.11.8", "23.11.4", "24.11.2"]
 
 alternative-tag [ubuntu, 22.04, arm64]:
   extends:
@@ -446,7 +570,6 @@ alternative-tag [ubuntu, 22.04, arm64]:
     OS_VERSION: "22.04"
     VERSION: ${DOCKER_BUILDER_VERSION}-arm64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 22.04, arm64]
 
 manifest [ubuntu, 22.04]:
@@ -455,7 +578,6 @@ manifest [ubuntu, 22.04]:
     OS_NAME: ubuntu
     OS_VERSION: "22.04"
   needs:
-    - builder version
     - job: alternative-tag [ubuntu, 22.04, amd64]
       optional: false
     - job: alternative-tag [ubuntu, 22.04, arm64]
@@ -476,7 +598,10 @@ image-build-publish [ubuntu, 24.04, amd64]:
     OS_VERSION: "24.04"
     PLATFORM: amd64
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder avx2
+      parallel:
+        matrix:
+          - os_version: "24.04"
     - job: ubuntu-uhd-builder avx2
       parallel:
         matrix:
@@ -486,12 +611,12 @@ image-build-publish [ubuntu, 24.04, amd64]:
       parallel:
         matrix:
           - os_version: "24.04"
-            dpdk_version: ["23.11.1", "24.11.1"]
+            dpdk_version: ["23.11.4", "24.11.2"]
     - job: ubuntu-dpdk-builder avx512
       parallel:
         matrix:
           - os_version: "24.04"
-            dpdk_version: ["23.11.1", "24.11.1"]
+            dpdk_version: ["23.11.4", "24.11.2"]
 
 alternative-tag [ubuntu, 24.04, amd64]:
   extends:
@@ -501,7 +626,6 @@ alternative-tag [ubuntu, 24.04, amd64]:
     OS_VERSION: "24.04"
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 24.04, amd64]
 
 image-build-publish [ubuntu, 24.04, arm64]:
@@ -513,7 +637,10 @@ image-build-publish [ubuntu, 24.04, arm64]:
     OS_VERSION: "24.04"
     PLATFORM: arm64
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder arm64
+      parallel:
+        matrix:
+          - os_version: "24.04"
     - job: ubuntu-uhd-builder arm64
       parallel:
         matrix:
@@ -523,7 +650,7 @@ image-build-publish [ubuntu, 24.04, arm64]:
       parallel:
         matrix:
           - os_version: "24.04"
-            dpdk_version: ["23.11.1", "24.11.1"]
+            dpdk_version: ["23.11.4", "24.11.2"]
 
 alternative-tag [ubuntu, 24.04, arm64]:
   extends:
@@ -533,7 +660,6 @@ alternative-tag [ubuntu, 24.04, arm64]:
     OS_VERSION: "24.04"
     VERSION: ${DOCKER_BUILDER_VERSION}-arm64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 24.04, arm64]
 
 manifest [ubuntu, 24.04]:
@@ -542,7 +668,6 @@ manifest [ubuntu, 24.04]:
     OS_NAME: ubuntu
     OS_VERSION: "24.04"
   needs:
-    - builder version
     - job: alternative-tag [ubuntu, 24.04, amd64]
       optional: false
     - job: alternative-tag [ubuntu, 24.04, arm64]
@@ -562,12 +687,15 @@ image-build-publish [ubuntu, 24.04-rtsan, amd64]:
     OS_NAME: ubuntu
     OS_VERSION: "24.04-rtsan"
     PLATFORM: amd64
-    KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "70G"
-    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "70G"
+    KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "80G"
+    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "80G"
   tags:
     - ${PLATFORM}-docker
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder avx2
+      parallel:
+        matrix:
+          - os_version: "24.04"
     - job: ubuntu-uhd-builder avx2
       parallel:
         matrix:
@@ -577,12 +705,12 @@ image-build-publish [ubuntu, 24.04-rtsan, amd64]:
       parallel:
         matrix:
           - os_version: "24.04"
-            dpdk_version: ["23.11.1", "24.11.1"]
+            dpdk_version: ["23.11.4", "24.11.2"]
     - job: ubuntu-dpdk-builder avx512
       parallel:
         matrix:
           - os_version: "24.04"
-            dpdk_version: ["23.11.1", "24.11.1"]
+            dpdk_version: ["23.11.4", "24.11.2"]
 
 alternative-tag [ubuntu, 24.04-rtsan, amd64]:
   extends:
@@ -592,7 +720,6 @@ alternative-tag [ubuntu, 24.04-rtsan, amd64]:
     OS_VERSION: "24.04-rtsan"
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 24.04-rtsan, amd64]
 
 image-build-publish [ubuntu, 24.04-rtsan, arm64]:
@@ -604,7 +731,10 @@ image-build-publish [ubuntu, 24.04-rtsan, arm64]:
     OS_VERSION: "24.04-rtsan"
     PLATFORM: arm64
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder arm64
+      parallel:
+        matrix:
+          - os_version: "24.04"
     - job: ubuntu-uhd-builder arm64
       parallel:
         matrix:
@@ -614,7 +744,7 @@ image-build-publish [ubuntu, 24.04-rtsan, arm64]:
       parallel:
         matrix:
           - os_version: "24.04"
-            dpdk_version: ["23.11.1", "24.11.1"]
+            dpdk_version: ["23.11.4", "24.11.2"]
 
 alternative-tag [ubuntu, 24.04-rtsan, arm64]:
   extends:
@@ -624,7 +754,6 @@ alternative-tag [ubuntu, 24.04-rtsan, arm64]:
     OS_VERSION: "24.04-rtsan"
     VERSION: ${DOCKER_BUILDER_VERSION}-arm64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 24.04-rtsan, arm64]
 
 manifest [ubuntu, 24.04-rtsan]:
@@ -633,97 +762,9 @@ manifest [ubuntu, 24.04-rtsan]:
     OS_NAME: ubuntu
     OS_VERSION: "24.04-rtsan"
   needs:
-    - builder version
     - job: alternative-tag [ubuntu, 24.04-rtsan, amd64]
       optional: false
     - job: alternative-tag [ubuntu, 24.04-rtsan, arm64]
-      optional: false
-  parallel:
-    matrix:
-      - REGISTRY_URI: ["${CR_REGISTRY_URI}", "${GITLAB_REGISTRY_URI}"]
-
-################################################################################
-# Ubuntu 24.10
-################################################################################
-image-build-publish [ubuntu, 24.10, amd64]:
-  extends:
-    - .image-build-publish
-  variables:
-    OS_FAMILY: debian
-    OS_NAME: ubuntu
-    OS_VERSION: "24.10"
-    PLATFORM: amd64
-  needs:
-    - builder version
-    - job: ubuntu-uhd-builder avx2
-      parallel:
-        matrix:
-          - os_version: "24.10"
-            uhd_version: ["4.8.0.0"] # "4.7.0.0" default
-    - job: ubuntu-dpdk-builder avx2
-      parallel:
-        matrix:
-          - os_version: "24.10"
-            dpdk_version: ["23.11.1", "24.11.1"]
-    - job: ubuntu-dpdk-builder avx512
-      parallel:
-        matrix:
-          - os_version: "24.10"
-            dpdk_version: ["23.11.1", "24.11.1"]
-
-alternative-tag [ubuntu, 24.10, amd64]:
-  extends:
-    - .alternative-tag
-  variables:
-    OS_NAME: ubuntu
-    OS_VERSION: "24.10"
-    VERSION: ${DOCKER_BUILDER_VERSION}-amd64
-  needs:
-    - builder version
-    - image-build-publish [ubuntu, 24.10, amd64]
-
-image-build-publish [ubuntu, 24.10, arm64]:
-  extends:
-    - .image-build-publish
-  variables:
-    OS_FAMILY: debian
-    OS_NAME: ubuntu
-    OS_VERSION: "24.10"
-    PLATFORM: arm64
-  needs:
-    - builder version
-    - job: ubuntu-uhd-builder arm64
-      parallel:
-        matrix:
-          - os_version: "24.10"
-            uhd_version: ["4.8.0.0"] # "4.7.0.0" default
-    - job: ubuntu-dpdk-builder arm64
-      parallel:
-        matrix:
-          - os_version: "24.10"
-            dpdk_version: ["23.11.1", "24.11.1"]
-
-alternative-tag [ubuntu, 24.10, arm64]:
-  extends:
-    - .alternative-tag
-  variables:
-    OS_NAME: ubuntu
-    OS_VERSION: "24.10"
-    VERSION: ${DOCKER_BUILDER_VERSION}-arm64
-  needs:
-    - builder version
-    - image-build-publish [ubuntu, 24.10, arm64]
-
-manifest [ubuntu, 24.10]:
-  extends: .manifest
-  variables:
-    OS_NAME: ubuntu
-    OS_VERSION: "24.10"
-  needs:
-    - builder version
-    - job: alternative-tag [ubuntu, 24.10, amd64]
-      optional: false
-    - job: alternative-tag [ubuntu, 24.10, arm64]
       optional: false
   parallel:
     matrix:
@@ -741,7 +782,10 @@ image-build-publish [ubuntu, 25.04, amd64]:
     OS_VERSION: "25.04"
     PLATFORM: amd64
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder avx2
+      parallel:
+        matrix:
+          - os_version: "25.04"
     - job: ubuntu-uhd-builder avx2
       parallel:
         matrix:
@@ -751,12 +795,12 @@ image-build-publish [ubuntu, 25.04, amd64]:
       parallel:
         matrix:
           - os_version: "25.04"
-            dpdk_version: ["24.11.1"]
+            dpdk_version: ["24.11.2"]
     - job: ubuntu-dpdk-builder avx512
       parallel:
         matrix:
           - os_version: "25.04"
-            dpdk_version: ["24.11.1"]
+            dpdk_version: ["24.11.2"]
 
 alternative-tag [ubuntu, 25.04, amd64]:
   extends:
@@ -766,7 +810,6 @@ alternative-tag [ubuntu, 25.04, amd64]:
     OS_VERSION: "25.04"
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 25.04, amd64]
 
 image-build-publish [ubuntu, 25.04, arm64]:
@@ -778,7 +821,10 @@ image-build-publish [ubuntu, 25.04, arm64]:
     OS_VERSION: "25.04"
     PLATFORM: arm64
   needs:
-    - builder version
+    - job: ubuntu-rohc-builder arm64
+      parallel:
+        matrix:
+          - os_version: "25.04"
     - job: ubuntu-uhd-builder arm64
       parallel:
         matrix:
@@ -788,7 +834,7 @@ image-build-publish [ubuntu, 25.04, arm64]:
       parallel:
         matrix:
           - os_version: "25.04"
-            dpdk_version: ["24.11.1"]
+            dpdk_version: ["24.11.2"]
 
 alternative-tag [ubuntu, 25.04, arm64]:
   extends:
@@ -798,7 +844,6 @@ alternative-tag [ubuntu, 25.04, arm64]:
     OS_VERSION: "25.04"
     VERSION: ${DOCKER_BUILDER_VERSION}-arm64
   needs:
-    - builder version
     - image-build-publish [ubuntu, 25.04, arm64]
 
 manifest [ubuntu, 25.04]:
@@ -807,10 +852,99 @@ manifest [ubuntu, 25.04]:
     OS_NAME: ubuntu
     OS_VERSION: "25.04"
   needs:
-    - builder version
     - job: alternative-tag [ubuntu, 25.04, amd64]
       optional: false
     - job: alternative-tag [ubuntu, 25.04, arm64]
+      optional: false
+  parallel:
+    matrix:
+      - REGISTRY_URI: ["${CR_REGISTRY_URI}", "${GITLAB_REGISTRY_URI}"]
+
+################################################################################
+# Ubuntu 25.10
+################################################################################
+image-build-publish [ubuntu, 25.10, amd64]:
+  extends:
+    - .image-build-publish
+  variables:
+    OS_FAMILY: debian
+    OS_NAME: ubuntu
+    OS_VERSION: "25.10"
+    PLATFORM: amd64
+  needs:
+    - job: ubuntu-rohc-builder avx2
+      parallel:
+        matrix:
+          - os_version: "25.10"
+    - job: ubuntu-uhd-builder avx2
+      parallel:
+        matrix:
+          - os_version: "25.10"
+            uhd_version: [] # "4.8.0.0" default
+    - job: ubuntu-dpdk-builder avx2
+      parallel:
+        matrix:
+          - os_version: "25.10"
+            dpdk_version: ["24.11.2"]
+    - job: ubuntu-dpdk-builder avx512
+      parallel:
+        matrix:
+          - os_version: "25.10"
+            dpdk_version: ["24.11.2"]
+
+alternative-tag [ubuntu, 25.10, amd64]:
+  extends:
+    - .alternative-tag
+  variables:
+    OS_NAME: ubuntu
+    OS_VERSION: "25.10"
+    VERSION: ${DOCKER_BUILDER_VERSION}-amd64
+  needs:
+    - image-build-publish [ubuntu, 25.10, amd64]
+
+image-build-publish [ubuntu, 25.10, arm64]:
+  extends:
+    - .image-build-publish
+  variables:
+    OS_FAMILY: debian
+    OS_NAME: ubuntu
+    OS_VERSION: "25.10"
+    PLATFORM: arm64
+  needs:
+    - job: ubuntu-rohc-builder arm64
+      parallel:
+        matrix:
+          - os_version: "25.10"
+    - job: ubuntu-uhd-builder arm64
+      parallel:
+        matrix:
+          - os_version: "25.10"
+            uhd_version: [] # "4.8.0.0" default
+    - job: ubuntu-dpdk-builder arm64
+      parallel:
+        matrix:
+          - os_version: "25.10"
+            dpdk_version: ["24.11.2"]
+
+alternative-tag [ubuntu, 25.10, arm64]:
+  extends:
+    - .alternative-tag
+  variables:
+    OS_NAME: ubuntu
+    OS_VERSION: "25.10"
+    VERSION: ${DOCKER_BUILDER_VERSION}-arm64
+  needs:
+    - image-build-publish [ubuntu, 25.10, arm64]
+
+manifest [ubuntu, 25.10]:
+  extends: .manifest
+  variables:
+    OS_NAME: ubuntu
+    OS_VERSION: "25.10"
+  needs:
+    - job: alternative-tag [ubuntu, 25.10, amd64]
+      optional: false
+    - job: alternative-tag [ubuntu, 25.10, arm64]
       optional: false
   parallel:
     matrix:
@@ -830,8 +964,8 @@ image-build-publish [debian]:
     matrix:
       - OS_VERSION: "12"
         PLATFORM: [amd64, arm64]
-  needs:
-    - builder version
+      - OS_VERSION: "13"
+        PLATFORM: [amd64, arm64]
 
 alternative-tag [debian, 12, amd64]:
   extends:
@@ -841,7 +975,6 @@ alternative-tag [debian, 12, amd64]:
     OS_VERSION: "12"
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - job: image-build-publish [debian]
       parallel:
         matrix:
@@ -856,7 +989,6 @@ alternative-tag [debian, 12, arm64]:
     OS_VERSION: "12"
     VERSION: ${DOCKER_BUILDER_VERSION}-arm64
   needs:
-    - builder version
     - job: image-build-publish [debian]
       parallel:
         matrix:
@@ -869,10 +1001,51 @@ manifest [debian, 12]:
     OS_NAME: debian
     OS_VERSION: "12"
   needs:
-    - builder version
     - job: alternative-tag [debian, 12, amd64]
       optional: false
     - job: alternative-tag [debian, 12, arm64]
+      optional: false
+  parallel:
+    matrix:
+      - REGISTRY_URI: ["${CR_REGISTRY_URI}", "${GITLAB_REGISTRY_URI}"]
+
+alternative-tag [debian, 13, amd64]:
+  extends:
+    - .alternative-tag
+  variables:
+    OS_NAME: debian
+    OS_VERSION: "13"
+    VERSION: ${DOCKER_BUILDER_VERSION}-amd64
+  needs:
+    - job: image-build-publish [debian]
+      parallel:
+        matrix:
+          - OS_VERSION: "13"
+            PLATFORM: amd64
+
+alternative-tag [debian, 13, arm64]:
+  extends:
+    - .alternative-tag
+  variables:
+    OS_NAME: debian
+    OS_VERSION: "13"
+    VERSION: ${DOCKER_BUILDER_VERSION}-arm64
+  needs:
+    - job: image-build-publish [debian]
+      parallel:
+        matrix:
+          - OS_VERSION: "13"
+            PLATFORM: arm64
+
+manifest [debian, 13]:
+  extends: .manifest
+  variables:
+    OS_NAME: debian
+    OS_VERSION: "13"
+  needs:
+    - job: alternative-tag [debian, 13, amd64]
+      optional: false
+    - job: alternative-tag [debian, 13, arm64]
       optional: false
   parallel:
     matrix:
@@ -890,8 +1063,6 @@ image-build-publish [rhel, 8, amd64]:
     OS_VERSION: "8"
     RHEL_CT_VERSION: "2023.5_1.0.3"
     PLATFORM: amd64
-  needs:
-    - builder version
 
 alternative-tag [rhel, 8, amd64]:
   extends:
@@ -901,7 +1072,6 @@ alternative-tag [rhel, 8, amd64]:
     OS_VERSION: "8"
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - image-build-publish [rhel, 8, amd64]
 
 image-build-publish [rhel, 8, arm64]:
@@ -913,8 +1083,6 @@ image-build-publish [rhel, 8, arm64]:
     OS_VERSION: "8"
     RHEL_CT_VERSION: "2023.5_1.0.3"
     PLATFORM: arm64
-  needs:
-    - builder version
 
 alternative-tag [rhel, 8, arm64]:
   extends:
@@ -924,7 +1092,6 @@ alternative-tag [rhel, 8, arm64]:
     OS_VERSION: "8"
     VERSION: ${DOCKER_BUILDER_VERSION}-arm64
   needs:
-    - builder version
     - image-build-publish [rhel, 8, arm64]
 
 manifest [rhel, 8]:
@@ -933,7 +1100,6 @@ manifest [rhel, 8]:
     OS_NAME: rhel
     OS_VERSION: "8"
   needs:
-    - builder version
     - job: alternative-tag [rhel, 8, amd64]
       optional: false
     - job: alternative-tag [rhel, 8, arm64]
@@ -953,8 +1119,6 @@ image-build-publish [fedora, 39]:
     OS_NAME: fedora
     OS_VERSION: "39"
     PLATFORM: amd64
-  needs:
-    - builder version
   parallel:
     matrix:
       - PLATFORM: [amd64, arm64]
@@ -967,7 +1131,6 @@ alternative-tag [fedora, 39, amd64]:
     OS_VERSION: "39"
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - job: image-build-publish [fedora, 39]
       parallel:
         matrix:
@@ -981,7 +1144,6 @@ alternative-tag [fedora, 39, arm64]:
     OS_VERSION: "39"
     VERSION: ${DOCKER_BUILDER_VERSION}-arm64
   needs:
-    - builder version
     - job: image-build-publish [fedora, 39]
       parallel:
         matrix:
@@ -993,7 +1155,6 @@ manifest [fedora, 39]:
     OS_NAME: fedora
     OS_VERSION: "39"
   needs:
-    - builder version
     - job: alternative-tag [fedora, 39, amd64]
       optional: false
     - job: alternative-tag [fedora, 39, arm64]
@@ -1013,8 +1174,6 @@ image-build-publish [archlinux, latest, amd64]:
     OS_NAME: archlinux
     OS_VERSION: latest
     PLATFORM: amd64
-  needs:
-    - builder version
 
 alternative-tag [archlinux, latest, amd64]:
   extends:
@@ -1024,7 +1183,6 @@ alternative-tag [archlinux, latest, amd64]:
     OS_VERSION: latest
     VERSION: ${DOCKER_BUILDER_VERSION}-amd64
   needs:
-    - builder version
     - image-build-publish [archlinux, latest, amd64]
 
 manifest [archlinux, latest]:
@@ -1042,6 +1200,5 @@ manifest [archlinux, latest]:
     matrix:
       - REGISTRY_URI: ["${CR_REGISTRY_URI}", "${GITLAB_REGISTRY_URI}"]
   needs:
-    - builder version
     - job: alternative-tag [archlinux, latest, amd64]
       optional: false

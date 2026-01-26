@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -45,6 +45,9 @@ expected<ue_capability_summary, std::string> decode_ue_nr_cap_container(const by
 
 /// Helper function to convert advanced UE NR capabilities.
 void decode_advanced_ue_nr_caps(ue_capability_summary& ue_capability, const asn1::rrc_nr::ue_nr_cap_s& ue_cap);
+
+/// Helper function to convert advanced UE NR capabilities.
+void decode_advanced_ue_nr_ntn_caps(ue_capability_summary& ue_capability, const asn1::rrc_nr::ue_nr_cap_s& ue_cap);
 
 /// Entity responsible for handling the UE RAT capabilities container, passed by the CU-CP, and updating the UE
 /// configuration in the DU accordingly.
@@ -99,6 +102,17 @@ private:
   unsigned select_srs_nof_ports(du_cell_index_t cell_idx) const;
   /// Selects the PUSCH maximum number of layers.
   unsigned select_pusch_max_rank(du_cell_index_t cell_idx) const;
+  /// Selects the maximum number of DL HARQ processes.
+  unsigned select_max_dl_nof_harqs(du_cell_index_t cell_idx) const;
+  /// Selects the maximum number of DL HARQ processes.
+  unsigned select_max_ul_nof_harqs(du_cell_index_t cell_idx) const;
+  /// Selects the DL HARQ Process Number field size.
+  unsigned select_dl_dci_harq_num_field_size(du_cell_index_t cell_idx) const;
+  /// Selects the UL HARQ Process Number field size.
+  unsigned select_ul_dci_harq_num_field_size(du_cell_index_t cell_idx) const;
+  /// Selects the UL HARQ Mode B.
+  bool select_ul_harq_mode_b(du_cell_index_t cell_idx) const;
+
   // Updates the DRX config of the UE.
   void update_drx(du_ue_resource_config& ue_res_cfg);
 

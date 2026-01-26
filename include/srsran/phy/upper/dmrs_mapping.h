@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -140,7 +140,7 @@ private:
 };
 
 /// Defines the maximum number of ports the DM-RS can be mapped to.
-static constexpr unsigned DMRS_MAX_NPORTS =
+constexpr unsigned DMRS_MAX_NPORTS =
     std::max(dmrs_type(dmrs_type::TYPE1).dmrs_max_ports_type(), dmrs_type(dmrs_type::TYPE2).dmrs_max_ports_type());
 
 } // namespace srsran

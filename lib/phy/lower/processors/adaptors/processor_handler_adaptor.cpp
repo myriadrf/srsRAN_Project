@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,20 +25,22 @@
 
 using namespace srsran;
 
-void processor_handler_adaptor::rg_handler_adaptor::handle_resource_grid(const resource_grid_context& context,
-                                                                         const shared_resource_grid&  grid)
+void processor_handler_adaptor::downlink_handler_adaptor ::handle_resource_grid(const resource_grid_context& context,
+                                                                                const shared_resource_grid&  grid)
 {
   pdxch_handler.handle_request(grid, context);
 }
 
-void processor_handler_adaptor::request_handler_adaptor::request_prach_window(const prach_buffer_context& context,
-                                                                              prach_buffer&               buffer)
+void processor_handler_adaptor::uplink_request_handler_adaptor::request_prach_window(
+    const prach_buffer_context& context,
+    shared_prach_buffer         buffer)
 {
-  prach_handler.handle_request(buffer, context);
+  prach_handler.handle_request(std::move(buffer), context);
 }
 
-void processor_handler_adaptor::request_handler_adaptor::request_uplink_slot(const resource_grid_context& context,
-                                                                             const shared_resource_grid&  grid)
+void processor_handler_adaptor::uplink_request_handler_adaptor::request_uplink_slot(
+    const resource_grid_context& context,
+    const shared_resource_grid&  grid)
 {
   puxch_handler.handle_request(grid, context);
 }

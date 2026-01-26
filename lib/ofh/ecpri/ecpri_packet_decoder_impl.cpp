@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -140,9 +140,9 @@ span<const uint8_t> packet_decoder_use_header_payload_size::decode_payload(span<
       return packet.subspan(deserializer.get_offset(),
                             (params.header.payload_size - ECPRI_REALTIME_CONTROL_PACKET_FIELDS_SIZE).value());
     default:
-      logger.warning("Sector #{}: dropped received eCPRI packet as its type value '{}' is not supported",
-                     sector,
-                     static_cast<unsigned>(params.header.msg_type));
+      logger.info("Sector #{}: dropped received eCPRI packet as its type value '{}' is not supported",
+                  sector,
+                  static_cast<unsigned>(params.header.msg_type));
       break;
   }
 
@@ -162,9 +162,9 @@ span<const uint8_t> packet_decoder_ignore_header_payload_size::decode_payload(sp
       params.type_params = deserialize_rt_control_parameters(deserializer);
       return packet.subspan(deserializer.get_offset(), deserializer.remaining_bytes());
     default:
-      logger.warning("Sector #{}: dropped received eCPRI packet as its type value '{}' is not supported",
-                     sector,
-                     static_cast<unsigned>(params.header.msg_type));
+      logger.info("Sector #{}: dropped received eCPRI packet as its type value '{}' is not supported",
+                  sector,
+                  static_cast<unsigned>(params.header.msg_type));
       break;
   }
 

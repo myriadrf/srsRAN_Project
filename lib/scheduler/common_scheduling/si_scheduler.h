@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -43,6 +43,8 @@ public:
   void run_slot(cell_resource_allocator& res_alloc);
 
   void handle_si_update_request(const si_scheduling_update_request& req);
+
+  void stop();
 
 private:
   void handle_pending_request(cell_resource_allocator& res_alloc);

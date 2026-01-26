@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -40,6 +40,10 @@ public:
   virtual void stop() = 0;
 
   virtual srs_du::du_high_executor_mapper& get_exec_mapper() = 0;
+
+  virtual task_executor& timer_executor() = 0;
+
+  virtual void wait_pending_tasks() = 0;
 };
 
 struct du_high_worker_config {

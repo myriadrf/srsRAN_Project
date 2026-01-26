@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -52,7 +52,7 @@ public:
       ((::sockaddr_in6*)&out_sockaddr)->sin6_family = AF_INET6;
       ((::sockaddr_in6*)&out_sockaddr)->sin6_port   = htons(port);
     } else {
-      logger.log_error("Invalid address or port. addr={} port={} errno={}", addr, port, strerror(errno));
+      logger.log_error("Invalid address or port. addr={} port={} errno={}", addr, port, ::strerror(errno));
       return false;
     }
     return true;

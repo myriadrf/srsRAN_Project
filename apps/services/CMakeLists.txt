@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -21,6 +21,7 @@
 # Do not build by default.
 set_directory_properties(PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
+add_subdirectory(app_execution_metrics)
 add_subdirectory(app_resource_usage)
 add_subdirectory(buffer_pool)
 add_subdirectory(cmdline)
@@ -30,6 +31,7 @@ add_subdirectory(worker_manager)
 
 add_library(srsran_app_services INTERFACE)
 target_link_libraries(srsran_app_services INTERFACE
+        srsran_exec_metrics_app_service
         srsran_buffer_pool_app_service
         srsran_cmdline_app_service
         srsran_metrics_app_service

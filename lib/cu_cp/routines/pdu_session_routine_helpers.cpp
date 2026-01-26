@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -31,7 +31,26 @@ void srsran::srs_cu_cp::fill_e1ap_drb_pdcp_config(e1ap_pdcp_config& e1ap_pdcp_cf
   e1ap_pdcp_cfg.pdcp_sn_size_ul = cu_cp_pdcp_cfg.tx.sn_size;
   e1ap_pdcp_cfg.pdcp_sn_size_dl = cu_cp_pdcp_cfg.rx.sn_size;
   e1ap_pdcp_cfg.rlc_mod         = cu_cp_pdcp_cfg.rlc_mode;
-  e1ap_pdcp_cfg.discard_timer   = cu_cp_pdcp_cfg.tx.discard_timer;
+
+  // ROHC
+  if (cu_cp_pdcp_cfg.header_compression.has_value()) {
+    const auto&      rohc_cfg_in  = *cu_cp_pdcp_cfg.header_compression;
+    e1ap_rohc_config rohc_cfg_out = {};
+    switch (rohc_cfg_in.rohc_type) {
+      case rohc::rohc_type_t::rohc:
+        rohc_cfg_out.rohc_type = e1ap_rohc_type::rohc;
+        break;
+      case rohc::rohc_type_t::uplink_only_rohc:
+        rohc_cfg_out.rohc_type = e1ap_rohc_type::uplink_only_rohc;
+        break;
+    }
+    rohc_cfg_out.rohc_params.max_cid       = rohc_cfg_in.max_cid;
+    rohc_cfg_out.rohc_params.rohc_profiles = rohc_cfg_in.profiles.get_profile_bitmap();
+    rohc_cfg_out.rohc_params.continue_rohc = rohc_cfg_in.continue_rohc;
+    e1ap_pdcp_cfg.rohc_config              = rohc_cfg_out;
+  }
+
+  e1ap_pdcp_cfg.discard_timer = cu_cp_pdcp_cfg.tx.discard_timer;
   if (cu_cp_pdcp_cfg.rx.t_reordering != pdcp_t_reordering::infinity) {
     e1ap_pdcp_cfg.t_reordering_timer = cu_cp_pdcp_cfg.rx.t_reordering;
   }
@@ -78,11 +97,12 @@ bool srsran::srs_cu_cp::fill_rrc_reconfig_args(
     const std::vector<drb_id_t>&                                     drb_to_remove,
     const f1ap_du_to_cu_rrc_info&                                    du_to_cu_rrc_info,
     const std::vector<byte_buffer>&                                  nas_pdus,
-    const std::optional<rrc_meas_cfg>                                rrc_meas_cfg,
+    const std::optional<rrc_meas_cfg>&                               rrc_meas_cfg,
     bool                                                             reestablish_srbs,
     bool                                                             reestablish_drbs,
     std::optional<uint8_t>                                           ncc,
     byte_buffer                                                      sib1,
+    std::optional<security::sec_selected_algos>                      selected_algos,
     const srslog::basic_logger&                                      logger)
 {
   rrc_radio_bearer_config radio_bearer_config;
@@ -100,7 +120,6 @@ bool srsran::srs_cu_cp::fill_rrc_reconfig_args(
 
   // Set masterCellGroupConfig as received by DU.
   rrc_recfg_v1530_ies rrc_recfg_v1530_ies;
-  rrc_recfg_v1530_ies.master_cell_group = du_to_cu_rrc_info.cell_group_cfg.copy();
 
   // Verify DU container content.
   if (!du_to_cu_rrc_info.cell_group_cfg.empty()) {
@@ -164,6 +183,14 @@ bool srsran::srs_cu_cp::fill_rrc_reconfig_args(
     }
 
     radio_bearer_config.drb_to_release_list.push_back(drb_id);
+  }
+
+  // If selected security algos, fill securityConfig
+  if (selected_algos) {
+    radio_bearer_config.security_cfg.emplace();
+    radio_bearer_config.security_cfg->security_algorithm_cfg.emplace();
+    radio_bearer_config.security_cfg->security_algorithm_cfg->ciphering_algorithm      = selected_algos->cipher_algo;
+    radio_bearer_config.security_cfg->security_algorithm_cfg->integrity_prot_algorithm = selected_algos->integ_algo;
   }
 
   // Append NAS PDUs as received by AMF.

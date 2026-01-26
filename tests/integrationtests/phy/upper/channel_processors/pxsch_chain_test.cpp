@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -106,7 +106,8 @@ private:
     std::shared_ptr<crc_calculator_factory> crc_calc_factory = create_crc_calculator_factory_sw("auto");
     TESTASSERT(crc_calc_factory);
 
-    std::shared_ptr<ldpc_decoder_factory> ldpc_decoder_factory = create_ldpc_decoder_factory_sw("auto");
+    std::shared_ptr<ldpc_decoder_factory> ldpc_decoder_factory =
+        create_ldpc_decoder_factory_sw("auto", {.force_decoding = false});
     TESTASSERT(ldpc_decoder_factory);
 
     std::shared_ptr<ldpc_rate_dematcher_factory> ldpc_rate_dematcher_factory =

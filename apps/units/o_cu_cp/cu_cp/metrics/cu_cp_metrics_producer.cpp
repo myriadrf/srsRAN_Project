@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,7 +25,7 @@
 
 using namespace srsran;
 
-void cu_cp_metrics_producer_impl::notify_metrics_report_request(const srs_cu_cp::metrics_report& report)
+void cu_cp_metrics_producer_impl::notify_metrics_report_request(const cu_cp_metrics_report& report)
 {
   notifier.on_new_metric(cu_cp_metrics_impl(report));
 }

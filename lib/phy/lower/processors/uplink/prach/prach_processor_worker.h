@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -30,10 +30,12 @@
 #include "srsran/phy/lower/sampling_rate.h"
 #include "srsran/phy/support/prach_buffer.h"
 #include "srsran/phy/support/prach_buffer_context.h"
+#include "srsran/phy/support/shared_prach_buffer.h"
 #include "srsran/ran/phy_time_unit.h"
 #include "srsran/ran/prach/prach_constants.h"
 #include "srsran/srslog/srslog.h"
 #include "srsran/support/executors/task_executor.h"
+#include "srsran/support/synchronization/stop_event.h"
 
 namespace srsran {
 
@@ -47,7 +49,6 @@ namespace srsran {
 /// - process_symbol() is called from a second, different thread.
 class prach_processor_worker
 {
-private:
   /// Worker internal states.
   enum class states {
     /// The worker has not been configured yet with any request or the previously configured request has already been
@@ -66,6 +67,9 @@ private:
     processing
   };
 
+  /// Scaling factor for converting from 16-bit complex integer to complex float.
+  static constexpr float scaling_factor_ci16_to_cf = std::numeric_limits<int16_t>::max();
+
   /// PHY logger.
   srslog::basic_logger& logger;
   /// OFDM PRACH demodulator.
@@ -83,22 +87,28 @@ private:
   /// Current context.
   prach_buffer_context prach_context;
   /// Current PRACH buffer.
-  prach_buffer* buffer = nullptr;
+  shared_prach_buffer buffer;
   /// Current PRACH occasion window length.
   unsigned window_length = 0;
   /// Current number of collected samples.
   unsigned nof_samples = 0;
+  /// Buffer to hold complex floating-point based samples for demodulation.
+  dynamic_tensor<2, cf_t> temp_cf_baseband;
+  /// Manager to handle the stop process.
+  stop_event_source stop_manager;
 
   /// Runs state \c wait.
   void run_state_wait(const baseband_gateway_buffer_reader&           samples,
-                      const prach_processor_baseband::symbol_context& context);
+                      const prach_processor_baseband::symbol_context& context,
+                      stop_event_token                                token);
 
   /// Runs state \c collecting.
   void run_state_collecting(const baseband_gateway_buffer_reader&           samples,
-                            const prach_processor_baseband::symbol_context& context);
+                            const prach_processor_baseband::symbol_context& context,
+                            stop_event_token                                token);
 
   /// Accumulates \c samples in the internal buffer.
-  void accumulate_samples(const baseband_gateway_buffer_reader& samples);
+  void accumulate_samples(const baseband_gateway_buffer_reader& samples, stop_event_token token);
 
 public:
   /// Creates a PRACH processor worker.
@@ -110,7 +120,9 @@ public:
     demodulator(std::move(demodulator_)),
     async_task_executor(async_task_executor_),
     sampling_rate_Hz(srate.to_Hz()),
-    temp_baseband(max_nof_ports, prach_constants::MAX_WINDOW_LENGTH.to_samples(sampling_rate_Hz))
+    temp_baseband(max_nof_ports, prach_constants::MAX_WINDOW_LENGTH.to_samples(sampling_rate_Hz)),
+    temp_cf_baseband(
+        {static_cast<unsigned>(prach_constants::MAX_WINDOW_LENGTH.to_samples(sampling_rate_Hz)), max_nof_ports})
   {
     srsran_assert(sampling_rate_Hz && prach_constants::MAX_WINDOW_LENGTH.is_sample_accurate(sampling_rate_Hz),
                   "Invalid sampling rate of {} Hz.",
@@ -123,7 +135,7 @@ public:
   /// \brief Handles a PRACH occasion request.
   /// \param[in] buffer  PRACH buffer.
   /// \param[in] context PRACH occasion context.
-  void handle_request(prach_buffer& buffer, const prach_buffer_context& context);
+  void handle_request(shared_prach_buffer buffer, const prach_buffer_context& context);
 
   /// \brief Processes an OFDM symbol.
   /// \param[in] samples Baseband samples.
@@ -136,6 +148,9 @@ public:
   /// A PRACH processor is available when it is \c idle. See \ref states for more information regarding the PRACH worker
   /// internal states.
   bool is_available() const { return state == states::idle; }
+
+  /// Stops operation of the PRACH processor worker.
+  void stop();
 };
 
 } // namespace srsran

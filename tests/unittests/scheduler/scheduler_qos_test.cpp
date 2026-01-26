@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,6 +26,7 @@
 #include "tests/test_doubles/scheduler/cell_config_builder_profiles.h"
 #include "tests/test_doubles/scheduler/pucch_res_test_builder_helper.h"
 #include "tests/test_doubles/scheduler/scheduler_config_helper.h"
+#include "srsran/scheduler/config/sched_cell_config_helpers.h"
 #include <gtest/gtest.h>
 
 using namespace srsran;
@@ -68,7 +69,9 @@ class scheduler_qos_test : public scheduler_test_simulator, public ::testing::Te
   };
 
 public:
-  scheduler_qos_test() : scheduler_test_simulator(4, subcarrier_spacing::kHz30)
+  scheduler_qos_test() :
+    scheduler_test_simulator(
+        scheduler_test_sim_config{.max_scs = subcarrier_spacing::kHz30, .auto_uci = true, .auto_crc = true})
   {
     params = cell_config_builder_profiles::tdd(subcarrier_spacing::kHz30);
 
@@ -77,18 +80,19 @@ public:
     cell_cfg_req.rrm_policy_members.resize(1);
     cell_cfg_req.rrm_policy_members[0].rrc_member.s_nssai.sst = slice_service_type{1};
     cell_cfg_req.rrm_policy_members[0].policy_sched_cfg =
-        time_qos_scheduler_expert_config{time_qos_scheduler_expert_config::weight_function::gbr_prioritized, 2.0};
-    this->add_cell(cell_cfg_req);
+        time_qos_scheduler_config{time_qos_scheduler_config::combine_function_type::gbr_prioritized, 2.0};
 
     // Create PUCCH builder that will be used to add UEs.
-    pucch_builder_params pucch_basic_params{.nof_ue_pucch_f0_or_f1_res_harq       = 8,
-                                            .nof_ue_pucch_f2_or_f3_or_f4_res_harq = 8,
-                                            .nof_sr_resources                     = 8,
-                                            .nof_csi_resources                    = 8};
-    auto&                f1_params = pucch_basic_params.f0_or_f1_params.emplace<pucch_f1_params>();
-    f1_params.nof_cyc_shifts       = pucch_nof_cyclic_shifts::twelve;
-    f1_params.occ_supported        = true;
-    pucch_cfg_builder.setup(cell_cfg_list[0], pucch_basic_params);
+    pucch_builder_params pucch_basic_params{
+        .res_set_0_size = 8, .res_set_1_size = 8, .nof_cell_sr_resources = 8, .nof_cell_csi_resources = 8};
+    auto& f1_params                  = pucch_basic_params.f0_or_f1_params.emplace<pucch_f1_params>();
+    f1_params.nof_cyc_shifts         = pucch_nof_cyclic_shifts::twelve;
+    f1_params.occ_supported          = true;
+    cell_cfg_req.ded_pucch_resources = config_helpers::build_pucch_resource_list(
+        pucch_basic_params, cell_cfg_req.ul_cfg_common.init_ul_bwp.generic_params.crbs.length());
+    this->add_cell(cell_cfg_req);
+
+    pucch_cfg_builder.setup(cell_cfg(), pucch_basic_params);
   }
 
   void add_ue_with_drb_qos(logical_channel_config::qos_info drb_qos)
@@ -126,48 +130,13 @@ public:
   {
     scheduler_test_simulator::run_slot();
 
-    // Handle UCI and CRC indications.
-    uci_indication uci_ind;
-    uci_ind.cell_index = to_du_cell_index(0);
-    uci_ind.slot_rx    = this->last_result_slot();
-    ul_crc_indication crc_ind;
-    crc_ind.cell_index = to_du_cell_index(0);
-    crc_ind.sl_rx      = last_result_slot();
-
-    span<const dl_msg_alloc>  ue_grants = this->last_sched_res_list[0]->dl.ue_grants;
-    span<const ul_sched_info> ul_grants = this->last_sched_res_list[0]->ul.puschs;
-
-    // Handle PUCCHs.
-    for (const pucch_info& pucch : this->last_sched_res_list[to_du_cell_index(0)]->ul.pucchs) {
-      if (pucch.format() == pucch_format::FORMAT_1 and pucch.uci_bits.sr_bits != sr_nof_bits::no_sr) {
-        // Skip SRs for this test.
-        continue;
-      }
-      du_ue_index_t ue_idx = to_du_ue_index((unsigned)pucch.crnti - 0x4601);
-      uci_ind.ucis.push_back(test_helper::create_uci_indication_pdu(ue_idx, pucch));
-    }
-
-    // Handle CRCs and PUSCH UCIs.
-    for (const ul_sched_info& grant : ul_grants) {
-      crc_ind.crcs.emplace_back(test_helper::create_crc_pdu_indication(grant));
-      if (grant.uci.has_value()) {
-        uci_ind.ucis.push_back(
-            test_helper::create_uci_indication_pdu(grant.pusch_cfg.rnti, grant.context.ue_index, grant.uci.value()));
-      }
-    }
-
-    if (not uci_ind.ucis.empty()) {
-      this->sched->handle_uci_indication(uci_ind);
-    }
-    if (not crc_ind.crcs.empty()) {
-      this->sched->handle_crc_indication(crc_ind);
-    }
-
     // Register DL sched bytes.
+    span<const dl_msg_alloc> ue_grants = this->last_sched_result()->dl.ue_grants;
     for (const dl_msg_alloc& grant : ue_grants) {
       ue_stats_map[grant.context.ue_index].dl_bytes_sum += grant.pdsch_cfg.codewords[0].tb_size_bytes;
     }
     // Register UL sched bytes.
+    span<const ul_sched_info> ul_grants = this->last_sched_result()->ul.puschs;
     for (const ul_sched_info& grant : ul_grants) {
       ue_stats_map[grant.context.ue_index].ul_bytes_sum += grant.pusch_cfg.tb_size_bytes;
     }

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -43,6 +43,7 @@ struct flexible_o_du_unit_config {
   struct ru_config {
     app_helpers::metrics_config config;
     bool                        enable_ru_metrics;
+    float                       dBFS_calibration_value = 1.F;
   };
 
   /// O-RAN DU high configuration.
@@ -64,7 +65,7 @@ struct flexible_o_du_ru_config {
     std::optional<tdd_ul_dl_config_common> tdd_config;
     unsigned                               dl_arfcn;
     unsigned                               ul_arfcn;
-    nr_band                                band;
+    frequency_range                        freq_range;
   };
 
   std::vector<cell_config> cells;

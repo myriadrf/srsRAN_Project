@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -40,6 +40,9 @@ public:
   {
     srsran_assert(data_flow_cplane, "Invalid data flow");
   }
+
+  // See interface for documentation.
+  operation_controller& get_operation_controller() override { return controller; }
 
   // See interface for documentation.
   void enqueue_section_type_1_message(const data_flow_cplane_type_1_context& context) override
@@ -108,6 +111,7 @@ private:
   }
 
   std::unique_ptr<data_flow_cplane_scheduling_commands> data_flow_cplane;
+  operation_controller_dummy                            controller;
 
   std::atomic<uint32_t> count          = {};
   std::atomic<uint64_t> sum_elapsed_ns = {};

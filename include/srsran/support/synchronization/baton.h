@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -65,11 +65,12 @@ class scoped_baton_sender
   };
 
 public:
-  scoped_baton_sender(baton& parent_) : parent(&parent_) {}
+  explicit scoped_baton_sender(baton& parent_) : parent(&parent_) {}
+
   void post() { parent = nullptr; }
 
 private:
-  // Use of unique_ptr for RAII
+  /// Use of unique_ptr for RAII
   std::unique_ptr<baton, deleter> parent;
 };
 

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,13 +25,15 @@
 #include "ofh_data_flow_cplane_scheduling_commands.h"
 #include "srsran/support/executors/task_executor.h"
 #include "srsran/support/rtsan.h"
+#include "srsran/support/synchronization/stop_event.h"
 #include <memory>
 
 namespace srsran {
 namespace ofh {
 
 /// Open Fronthaul Control-Plane scheduling and beamforming commands data flow task dispatcher implementation.
-class data_flow_cplane_downlink_task_dispatcher : public data_flow_cplane_scheduling_commands
+class data_flow_cplane_downlink_task_dispatcher : public data_flow_cplane_scheduling_commands,
+                                                  public operation_controller
 {
 public:
   data_flow_cplane_downlink_task_dispatcher(srslog::basic_logger&                                 logger_,
@@ -44,9 +46,24 @@ public:
   }
 
   // See interface for documentation.
+  operation_controller& get_operation_controller() override { return *this; }
+
+  // See interface for documentation.
+  void start() override { stop_manager.reset(); }
+
+  // See interface for documentation.
+  void stop() override { stop_manager.stop(); }
+
+  // See interface for documentation.
   void enqueue_section_type_1_message(const data_flow_cplane_type_1_context& context) override
   {
-    if (!executor.execute([this, context]() SRSRAN_RTSAN_NONBLOCKING {
+    // Do not process Control Plane if the stop was requested.
+    auto token = stop_manager.get_token();
+    if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
+      return;
+    }
+
+    if (!executor.defer([this, context, tk = std::move(token)]() noexcept SRSRAN_RTSAN_NONBLOCKING {
           data_flow_cplane->enqueue_section_type_1_message(context);
         })) {
       logger.warning(
@@ -57,7 +74,13 @@ public:
   // See interface for documentation.
   void enqueue_section_type_3_prach_message(const data_flow_cplane_scheduling_prach_context& context) override
   {
-    if (!executor.execute([this, context]() SRSRAN_RTSAN_NONBLOCKING {
+    // Do not process Control Plane if the stop was requested.
+    auto token = stop_manager.get_token();
+    if (SRSRAN_UNLIKELY(token.is_stop_requested())) {
+      return;
+    }
+
+    if (!executor.defer([this, context, tk = std::move(token)]() noexcept SRSRAN_RTSAN_NONBLOCKING {
           data_flow_cplane->enqueue_section_type_3_prach_message(context);
         })) {
       logger.warning(
@@ -76,6 +99,7 @@ private:
   std::unique_ptr<data_flow_cplane_scheduling_commands> data_flow_cplane;
   task_executor&                                        executor;
   const unsigned                                        sector_id;
+  stop_event_source                                     stop_manager;
 };
 
 } // namespace ofh

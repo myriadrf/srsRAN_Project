@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -26,6 +26,7 @@
 #include "f1ap_du_connection_handler.h"
 #include "log_helpers.h"
 #include "procedures/f1ap_du_gnbdu_config_update_procedure.h"
+#include "procedures/f1ap_du_initiated_reset_procedure.h"
 #include "procedures/f1ap_du_positioning_procedures.h"
 #include "procedures/f1ap_du_removal_procedure.h"
 #include "procedures/f1ap_du_reset_procedure.h"
@@ -75,7 +76,8 @@ f1ap_du_impl::f1ap_du_impl(f1c_connection_client&      f1c_client_handler_,
   ctrl_exec(ctrl_exec_),
   du_mng(du_mng_),
   paging_notifier(paging_notifier_),
-  connection_handler(f1c_client_handler_, *this, du_mng, ctrl_exec),
+  timers(timers_),
+  connection_handler(f1c_client_handler_, *this, du_mng, ctxt, ctrl_exec),
   ues(du_mng, ctrl_exec, ue_exec_mapper_, timers_),
   events(std::make_unique<f1ap_event_manager>(du_mng.get_timer_factory())),
   metrics(true)
@@ -112,7 +114,12 @@ async_task<f1_setup_result> f1ap_du_impl::handle_f1_setup_request(const f1_setup
 
 async_task<void> f1ap_du_impl::handle_f1_removal_request()
 {
-  return launch_async<f1ap_du_removal_procedure>(connection_handler, *tx_pdu_notifier, *events);
+  return launch_async<f1ap_du_removal_procedure>(connection_handler, *tx_pdu_notifier, *events, ctxt);
+}
+
+async_task<f1_reset_acknowledgement> f1ap_du_impl::handle_f1_reset_request(const f1_reset_request& req)
+{
+  return launch_async<f1ap_du_initiated_reset_procedure>(req, *tx_pdu_notifier, *events, ues);
 }
 
 async_task<gnbdu_config_update_response>
@@ -202,7 +209,8 @@ void f1ap_du_impl::handle_ue_context_release_command(const asn1::f1ap::ue_contex
   }
 
   du_mng.get_ue_handler(u->context.ue_index)
-      .schedule_async_task(launch_async<f1ap_du_ue_context_release_procedure>(msg, ues));
+      .schedule_async_task(
+          launch_async<f1ap_du_ue_context_release_procedure>(msg, ues, ctxt, timer_factory{timers, ctrl_exec}));
 }
 
 void f1ap_du_impl::handle_ue_context_modification_request(const asn1::f1ap::ue_context_mod_request_s& msg)
@@ -217,7 +225,7 @@ void f1ap_du_impl::handle_ue_context_modification_request(const asn1::f1ap::ue_c
     return;
   }
 
-  ue->handle_ue_context_modification_request(msg);
+  ue->handle_ue_context_modification_request(msg, ctxt);
 }
 
 void f1ap_du_impl::handle_dl_rrc_message_transfer(const asn1::f1ap::dl_rrc_msg_transfer_s& msg)
@@ -297,15 +305,25 @@ void f1ap_du_impl::handle_ue_context_release_request(const f1ap_ue_context_relea
 {
   f1ap_du_ue* ue = ues.find(request.ue_index);
   if (ue == nullptr) {
-    logger.warning("ue={}: Discarding UeContextReleaseRequest. Cause: UE not found", fmt::underlying(request.ue_index));
+    logger.error("ue={}: Skipping UEContextReleaseRequest transmission. Cause: UE not found",
+                 fmt::underlying(request.ue_index));
+    return;
+  }
+  if (ue->context.gnb_cu_ue_f1ap_id == gnb_cu_ue_f1ap_id_t::invalid) {
+    // The DU never received a F1AP PDU from the CU-CP assigning a gNB-CU-UE-F1AP-ID to the UE.
+    logger.warning(
+        "ue={} du_ue_id={}: Skipping UEContextReleaseRequest transmission. Cause: gNB-CU-UE-F1AP-ID does not exist",
+        request.ue_index,
+        fmt::underlying(ue->context.gnb_du_ue_f1ap_id));
     return;
   }
 
   if (ue->context.marked_for_release) {
     // UE context is already being released. Ignore the request.
-    logger.debug(
-        "ue={}: UE Context Release Request ignored. Cause: An UE Context Release procedure has already started.",
-        fmt::underlying(request.ue_index));
+    logger.debug("ue={} du_ue_id={}: Ignoring UEContextReleaseRequest. Cause: An UE Context Release procedure has "
+                 "already started.",
+                 request.ue_index,
+                 fmt::underlying(ue->context.gnb_du_ue_f1ap_id));
     return;
   }
 
@@ -359,7 +377,7 @@ void f1ap_du_impl::handle_message(const f1ap_message& msg)
   using pdu_types = f1ap_pdu_c::types_opts;
 
   // Run F1AP protocols in Control executor.
-  if (not ctrl_exec.execute(TRACE_TASK([this, msg]() {
+  if (not ctrl_exec.execute([this, msg]() {
         // Log message.
         log_pdu(true, msg);
 
@@ -380,7 +398,7 @@ void f1ap_du_impl::handle_message(const f1ap_message& msg)
             logger.error("Invalid PDU type");
             break;
         }
-      }))) {
+      })) {
     logger.error("Unable to dispatch handling of F1AP PDU. Cause: DU task queue is full");
     // TODO: Handle.
     return;
@@ -609,24 +627,23 @@ void f1ap_du_impl::handle_positioning_information_request(const asn1::f1ap::posi
       .schedule_async_task(start_positioning_exchange_procedure(msg, du_mng, *ue));
 }
 
-gnb_cu_ue_f1ap_id_t f1ap_du_impl::get_gnb_cu_ue_f1ap_id(const du_ue_index_t& ue_index)
+std::optional<gnb_cu_ue_f1ap_id_t> f1ap_du_impl::get_gnb_cu_ue_f1ap_id(const du_ue_index_t& ue_index) const
 {
-  gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = gnb_cu_ue_f1ap_id_t::invalid;
-  const f1ap_du_ue*   ue                = ues.find(ue_index);
-  if (ue) {
-    gnb_cu_ue_f1ap_id = ue->context.gnb_cu_ue_f1ap_id;
+  const f1ap_du_ue* ue = ues.find(ue_index);
+  if (ue == nullptr or ue->context.gnb_cu_ue_f1ap_id == gnb_cu_ue_f1ap_id_t::invalid) {
+    return std::nullopt;
   }
-  return gnb_cu_ue_f1ap_id;
+  return ue->context.gnb_cu_ue_f1ap_id;
 }
 
-gnb_cu_ue_f1ap_id_t f1ap_du_impl::get_gnb_cu_ue_f1ap_id(const gnb_du_ue_f1ap_id_t& gnb_du_ue_f1ap_id)
+std::optional<gnb_cu_ue_f1ap_id_t>
+f1ap_du_impl::get_gnb_cu_ue_f1ap_id(const gnb_du_ue_f1ap_id_t& gnb_du_ue_f1ap_id) const
 {
-  gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = gnb_cu_ue_f1ap_id_t::invalid;
-  const f1ap_du_ue*   ue                = ues.find(gnb_du_ue_f1ap_id);
-  if (ue) {
-    gnb_cu_ue_f1ap_id = ue->context.gnb_cu_ue_f1ap_id;
+  const f1ap_du_ue* ue = ues.find(gnb_du_ue_f1ap_id);
+  if (ue == nullptr or ue->context.gnb_cu_ue_f1ap_id == gnb_cu_ue_f1ap_id_t::invalid) {
+    return std::nullopt;
   }
-  return gnb_cu_ue_f1ap_id;
+  return ue->context.gnb_cu_ue_f1ap_id;
 }
 
 gnb_du_ue_f1ap_id_t f1ap_du_impl::get_gnb_du_ue_f1ap_id(const du_ue_index_t& ue_index)

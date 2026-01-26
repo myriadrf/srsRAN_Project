@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,9 +22,12 @@
 
 #include "mac_controller.h"
 #include "../rnti_manager.h"
+#include "mac_ue_removal_procedure.h"
 #include "ue_creation_procedure.h"
-#include "ue_delete_procedure.h"
 #include "ue_reconfiguration_procedure.h"
+#include "srsran/mac/mac_clock_controller.h"
+#include "srsran/ran/tdd/tdd_ul_dl_config.h"
+#include "fmt/base.h"
 
 using namespace srsran;
 
@@ -39,8 +42,8 @@ mac_controller::mac_controller(const mac_control_config&   cfg_,
   dl_unit(dl_unit_),
   rnti_table(rnti_table_),
   sched_cfg(sched_cfg_),
-  time_ctrl(cfg.timers, cfg.timer_exec, srslog::fetch_basic_logger("MAC")),
-  metrics(cfg.metrics, cfg.ctrl_exec, cfg.timers, logger)
+  time_ctrl(cfg.time_source),
+  metrics(cfg.metrics, cfg.ctrl_exec, cfg.time_source.get_timer_manager(), logger)
 {
 }
 
@@ -50,11 +53,15 @@ mac_cell_controller& mac_controller::add_cell(const mac_cell_creation_request& c
   auto cell_time_source = time_ctrl.add_cell(cell_add_req.cell_index);
 
   // Add cell to metrics reports.
-  auto cell_metrics_cfg = metrics.add_cell(cell_add_req.cell_index, cell_add_req.scs_common, *cell_time_source);
+  unsigned tdd_period_slots = cell_add_req.sched_req.tdd_ul_dl_cfg_common.has_value()
+                                  ? nof_slots_per_tdd_period(*cell_add_req.sched_req.tdd_ul_dl_cfg_common)
+                                  : 0U;
+
+  auto cell_metrics_cfg =
+      metrics.add_cell(cell_add_req.cell_index, cell_add_req.scs_common, tdd_period_slots, *cell_time_source);
 
   // > Fill sched cell configuration message and pass it to the scheduler.
-  sched_cfg.add_cell(mac_scheduler_cell_creation_request{
-      cell_add_req, cell_metrics_cfg.report_period, cell_metrics_cfg.sched_notifier});
+  sched_cfg.add_cell(mac_scheduler_cell_creation_request{cell_add_req, cell_metrics_cfg.sched_notifier});
 
   // > Create MAC Cell DL Handler.
   return dl_unit.add_cell(cell_add_req,
@@ -87,7 +94,7 @@ async_task<mac_ue_create_response> mac_controller::handle_ue_create_request(cons
 
 async_task<mac_ue_delete_response> mac_controller::handle_ue_delete_request(const mac_ue_delete_request& msg)
 {
-  return launch_async<mac_ue_delete_procedure>(msg, cfg, *this, ul_unit, dl_unit, sched_cfg);
+  return launch_async<mac_ue_removal_procedure>(msg, cfg, *this, ul_unit, dl_unit, sched_cfg);
 }
 
 async_task<mac_ue_reconfiguration_response>

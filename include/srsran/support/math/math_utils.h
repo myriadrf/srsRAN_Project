@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,10 +33,10 @@
 namespace srsran {
 
 /// Defines two times Pi.
-static constexpr float TWOPI = 2.0F * static_cast<float>(M_PI);
+constexpr float TWOPI = 2.0F * static_cast<float>(M_PI);
 
 /// Floating point near zero value.
-static constexpr float near_zero = 1e-9;
+constexpr float near_zero = 1e-9;
 
 /// \brief Performs an integer division rounding up.
 ///

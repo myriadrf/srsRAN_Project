@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -38,12 +38,21 @@ using namespace std::chrono_literals;
 namespace {
 
 /// Spy User-Plane downlink data data flow.
-class data_flow_uplane_downlink_data_spy : public data_flow_uplane_downlink_data
+class data_flow_uplane_downlink_data_spy : public data_flow_uplane_downlink_data, public operation_controller
 {
   bool     has_enqueue_section_type_1_message_method_been_called = false;
   unsigned eaxc                                                  = -1;
 
 public:
+  // See interface for documentation.
+  void start() override {}
+
+  // See interface for documentation.
+  void stop() override {}
+
+  // See interface for documentation.
+  operation_controller& get_operation_controller() override { return *this; }
+
   // See interface for documentation.
   void enqueue_section_type_1_message(const data_flow_uplane_resource_grid_context& context,
                                       const shared_resource_grid&                   grid) override
@@ -94,11 +103,12 @@ static constexpr units::bytes mtu_size{9000};
 static downlink_handler_impl_config generate_default_config()
 {
   downlink_handler_impl_config config;
-  config.dl_eaxc            = {24};
-  config.sector             = 0;
-  config.cp                 = cyclic_prefix::NORMAL;
-  config.scs                = subcarrier_spacing::kHz30;
-  config.dl_processing_time = std::chrono::milliseconds(400);
+  config.dl_eaxc                       = {24};
+  config.sector                        = 0;
+  config.cp                            = cyclic_prefix::NORMAL;
+  config.scs                           = subcarrier_spacing::kHz30;
+  config.dl_processing_time            = std::chrono::milliseconds(400);
+  config.enable_log_warnings_for_lates = true;
   // Transmission timing parameters corresponding to:
   // T1a_max_cp_dl=500us, T1a_min_cp_dl=200us,
   // T1a_max_cp_ul=300us, T1a_min_cp_ul=150us,
@@ -135,6 +145,7 @@ TEST(ofh_downlink_handler_impl, handling_downlink_data_use_control_and_user_plan
                                               ofh::data_direction::downlink)};
 
   downlink_handler_impl handler(config, std::move(dependencies));
+  handler.start();
 
   resource_grid_reader_spy rg_reader_spy(1, 1, 1);
   rg_reader_spy.write(resource_grid_reader_spy::expected_entry_t{});
@@ -200,6 +211,7 @@ TEST(ofh_downlink_handler_impl, late_rg_is_not_handled)
                                               ofh::data_direction::downlink)};
 
   downlink_handler_impl handler(config, std::move(dependencies));
+  handler.start();
 
   resource_grid_reader_spy rg_reader_spy(1, 1, 1);
   rg_reader_spy.write(resource_grid_reader_spy::expected_entry_t{});
@@ -256,6 +268,7 @@ TEST(ofh_downlink_handler_impl, same_slot_fails)
                                               ofh::data_direction::downlink)};
 
   downlink_handler_impl handler(config, std::move(dependencies));
+  handler.start();
 
   resource_grid_reader_spy rg_reader_spy(1, 1, 1);
   rg_reader_spy.write(resource_grid_reader_spy::expected_entry_t{});
@@ -308,6 +321,7 @@ TEST(ofh_downlink_handler_impl, rg_in_the_frontier_is_handled)
                                               ofh::data_direction::downlink)};
 
   downlink_handler_impl handler(config, std::move(dependencies));
+  handler.start();
 
   resource_grid_reader_spy rg_reader_spy(1, 1, 1);
   rg_reader_spy.write(resource_grid_reader_spy::expected_entry_t{});

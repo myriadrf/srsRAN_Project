@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -56,8 +56,8 @@ public:
 
   // f1ap_ue_context_manager functions.
   async_task<f1ap_ue_context_setup_response>
-  handle_ue_context_setup_request(const f1ap_ue_context_setup_request&   request,
-                                  std::optional<rrc_ue_transfer_context> rrc_context) override;
+  handle_ue_context_setup_request(const f1ap_ue_context_setup_request&          request,
+                                  const std::optional<rrc_ue_transfer_context>& rrc_context) override;
 
   async_task<ue_index_t> handle_ue_context_release_command(const f1ap_ue_context_release_command& msg) override;
 

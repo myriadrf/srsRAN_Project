@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 #include "../pucch_scheduling/pucch_allocator.h"
 #include "../uci_scheduling/uci_allocator.h"
 #include "srsran/scheduler/scheduler_configurator.h"
+#include "srsran/scheduler/scheduler_positioning_handler.h"
 
 namespace srsran {
 
@@ -63,8 +64,26 @@ public:
   /// Handle error indication coming from the lower layers for a given {slot, cell}.
   virtual void handle_error_indication(slot_point sl_tx, scheduler_slot_handler::error_outcome event) = 0;
 
+  /// Handle slice reconfiguration request for a given cell.
+  virtual void handle_slice_reconfiguration_request(const du_cell_slice_reconfig_request& slice_reconf_req) = 0;
+
   /// Retrieves handler of UE feedback for a given cell.
   virtual scheduler_feedback_handler& get_feedback_handler() = 0;
+
+  /// Retrieves handler of UE positioning for a given cell.
+  virtual scheduler_cell_positioning_handler& get_positioning_handler() = 0;
+
+  /// Retrieves handler of DL buffer state updates for a given cell.
+  virtual scheduler_dl_buffer_state_indication_handler& get_dl_buffer_state_indication_handler() = 0;
+
+  /// Return UE configurator.
+  virtual sched_ue_configuration_handler& get_ue_configurator() = 0;
+
+  /// Called when cell is activated.
+  virtual void start() = 0;
+
+  /// Called when cell is deactivated.
+  virtual void stop() = 0;
 };
 
 /// Interface of data scheduler that is used to allocate UE DL and UL grants in a given slot
@@ -97,15 +116,6 @@ public:
   {
     return unique_cell_ptr{do_add_cell(params), cell_deleter{*this, params.cell_index}};
   }
-
-  /// Return UE configurator.
-  virtual sched_ue_configuration_handler& get_ue_configurator() = 0;
-
-  virtual scheduler_feedback_handler& get_feedback_handler() = 0;
-
-  virtual scheduler_dl_buffer_state_indication_handler& get_dl_buffer_state_indication_handler() = 0;
-
-  virtual scheduler_positioning_handler& get_positioning_handler() = 0;
 
 private:
   virtual ue_cell_scheduler* do_add_cell(const ue_cell_scheduler_creation_request& params) = 0;

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -146,6 +146,12 @@ void sib1_scheduler::run_slot(cell_slot_resource_allocator& res_grid)
       }
     }
   }
+}
+
+void sib1_scheduler::stop()
+{
+  // Flush any pending SIB1 update.
+  handle_pending_sib1_update();
 }
 
 //  ------   Private methods   ------ .

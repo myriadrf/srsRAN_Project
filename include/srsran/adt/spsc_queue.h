@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -35,8 +35,8 @@ class concurrent_queue<T, concurrent_queue_policy::lockfree_spsc, concurrent_que
 {
 public:
   using value_type                                           = T;
-  constexpr static concurrent_queue_policy      queue_policy = concurrent_queue_policy::lockfree_spsc;
-  constexpr static concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::non_blocking;
+  static constexpr concurrent_queue_policy      queue_policy = concurrent_queue_policy::lockfree_spsc;
+  static constexpr concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::non_blocking;
   using consumer_type                                        = detail::basic_queue_consumer<concurrent_queue, T>;
 
   explicit concurrent_queue(size_t qsize) : queue(qsize) {}
@@ -50,6 +50,11 @@ public:
   [[nodiscard]] size_t try_push_bulk(span<U> batch)
   {
     return detail::queue_helper::try_push_bulk_generic(*this, batch);
+  }
+  template <typename U>
+  void push_blocking(U&& elem)
+  {
+    queue.push(std::forward<U>(elem));
   }
 
   [[nodiscard]] bool try_pop(T& elem)
@@ -96,8 +101,8 @@ class concurrent_queue<T, concurrent_queue_policy::lockfree_spsc, concurrent_que
 
 public:
   using value_type                                           = T;
-  constexpr static concurrent_queue_policy      queue_policy = concurrent_queue_policy::lockfree_spsc;
-  constexpr static concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::sleep;
+  static constexpr concurrent_queue_policy      queue_policy = concurrent_queue_policy::lockfree_spsc;
+  static constexpr concurrent_queue_wait_policy wait_policy  = concurrent_queue_wait_policy::sleep;
   using consumer_type                                        = detail::basic_queue_consumer<concurrent_queue, T>;
 
   template <typename... Args>

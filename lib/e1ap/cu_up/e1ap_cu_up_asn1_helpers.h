@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -582,6 +582,11 @@ inline bool fill_e1ap_bearer_context_modification_request(e1ap_bearer_context_mo
           // Fill PDCP SN status request.
           if (asn1_drb_to_mod_item.pdcp_sn_status_request_present) {
             drb_to_mod_item.pdcp_sn_status_request = asn1_drb_to_mod_item.pdcp_sn_status_request.to_string();
+          }
+          // Fill PDCP SN status info
+          if (asn1_drb_to_mod_item.pdcp_sn_status_info_present) {
+            drb_to_mod_item.pdcp_sn_status_info =
+                e1ap_asn1_to_pdcp_sn_status_info(asn1_drb_to_mod_item.pdcp_sn_status_info);
           }
           // Fill DL UP params.
           for (const auto& asn1_dl_up_param : asn1_drb_to_mod_item.dl_up_params) {

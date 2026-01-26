@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -30,9 +30,9 @@ using namespace srsran;
 using namespace srsran::srs_cu_cp;
 using namespace asn1::rrc_nr;
 
-bool verify_ho_request(const cu_cp_intra_cu_handover_request& request,
-                       ue_manager&                            ue_mng,
-                       const srslog::basic_logger&            logger)
+static bool verify_ho_request(const cu_cp_intra_cu_handover_request& request,
+                              ue_manager&                            ue_mng,
+                              const srslog::basic_logger&            logger)
 {
   if (request.target_pci == INVALID_PCI) {
     logger.warning("Target PCI must not be invalid");
@@ -61,9 +61,7 @@ intra_cu_handover_routine::intra_cu_handover_routine(const cu_cp_intra_cu_handov
                                                      const byte_buffer&                     target_cell_sib1_,
                                                      f1ap_ue_context_manager&               source_du_f1ap_ue_ctxt_mng_,
                                                      f1ap_ue_context_manager&               target_du_f1ap_ue_ctxt_mng_,
-                                                     cu_cp_ue_context_release_handler&      ue_context_release_handler_,
-                                                     cu_cp_ue_removal_handler&              ue_removal_handler_,
-                                                     cu_cp_ue_context_manipulation_handler& cu_cp_handler_,
+                                                     cu_cp_impl_interface&                  cu_cp_handler_,
                                                      ue_manager&                            ue_mng_,
                                                      mobility_manager&                      mobility_mng_,
                                                      srslog::basic_logger&                  logger_) :
@@ -71,8 +69,6 @@ intra_cu_handover_routine::intra_cu_handover_routine(const cu_cp_intra_cu_handov
   target_cell_sib1(target_cell_sib1_),
   source_du_f1ap_ue_ctxt_mng(source_du_f1ap_ue_ctxt_mng_),
   target_du_f1ap_ue_ctxt_mng(target_du_f1ap_ue_ctxt_mng_),
-  ue_context_release_handler(ue_context_release_handler_),
-  ue_removal_handler(ue_removal_handler_),
   cu_cp_handler(cu_cp_handler_),
   ue_mng(ue_mng_),
   mobility_mng(mobility_mng_),
@@ -101,11 +97,19 @@ void intra_cu_handover_routine::operator()(coro_context<async_task<cu_cp_intra_c
 
   {
     // Allocate UE index at target DU.
-    target_ue_context_setup_request.ue_index = ue_mng.add_ue(request.target_du_index, request.cgi.plmn_id);
+    target_ue_context_setup_request.ue_index = ue_mng.add_ue(request.target_du_index);
     if (target_ue_context_setup_request.ue_index == ue_index_t::invalid) {
       logger.warning("ue={}: \"{}\" failed to allocate UE index at target DU", request.source_ue_index, name());
       CORO_EARLY_RETURN(response_msg);
     }
+    if (!cu_cp_handler.handle_ue_plmn_selected(target_ue_context_setup_request.ue_index,
+                                               source_ue->get_ue_context().plmn)) {
+      logger.warning("ue={}: \"{}\" failed to set PLMN for target UE", request.source_ue_index, name());
+      ue_mng.remove_ue(target_ue_context_setup_request.ue_index);
+      CORO_EARLY_RETURN(response_msg);
+    }
+    // Connect the target UE to the same CU-UP as the source UE.
+    ue_mng.find_du_ue(target_ue_context_setup_request.ue_index)->set_cu_up_index(source_ue->get_cu_up_index());
 
     // Prepare F1AP UE Context Setup Command and call F1AP notifier of target DU.
     if (!generate_ue_context_setup_request(
@@ -114,6 +118,7 @@ void intra_cu_handover_routine::operator()(coro_context<async_task<cu_cp_intra_c
       CORO_EARLY_RETURN(response_msg);
     }
     target_ue_context_setup_request.cu_to_du_rrc_info.meas_cfg = source_ue->get_rrc_ue()->get_packed_meas_config();
+    target_ue_context_setup_request.serving_cell_mo            = source_ue->get_rrc_ue()->get_serving_cell_mo();
 
     CORO_AWAIT_VALUE(target_ue_context_setup_response,
                      target_du_f1ap_ue_ctxt_mng.handle_ue_context_setup_request(target_ue_context_setup_request,
@@ -127,7 +132,7 @@ void intra_cu_handover_routine::operator()(coro_context<async_task<cu_cp_intra_c
                                        logger,
                                        true)) {
       logger.warning("ue={}: \"{}\" failed to create UE context at target DU", request.source_ue_index, name());
-      CORO_AWAIT(ue_removal_handler.handle_ue_removal_request(target_ue_context_setup_request.ue_index));
+      CORO_AWAIT(cu_cp_handler.handle_ue_removal_request(target_ue_context_setup_request.ue_index));
       // Note: From this point the UE is removed and only the stored context can be accessed.
       CORO_EARLY_RETURN(response_msg);
     }
@@ -160,6 +165,7 @@ void intra_cu_handover_routine::operator()(coro_context<async_task<cu_cp_intra_c
                                   true /* Reestablish DRBs */,
                                   target_ue->get_security_manager().get_ncc(), /* Update keys */
                                   target_cell_sib1.copy(),
+                                  std::nullopt,
                                   logger)) {
         logger.warning("ue={}: \"{}\" Failed to fill RrcReconfiguration", request.source_ue_index, name());
         CORO_EARLY_RETURN(response_msg);
@@ -182,7 +188,7 @@ void intra_cu_handover_routine::operator()(coro_context<async_task<cu_cp_intra_c
       ue_context_release_command.ue_index             = target_ue->get_ue_index();
       ue_context_release_command.cause                = ngap_cause_radio_network_t::unspecified;
       ue_context_release_command.requires_rrc_release = false;
-      CORO_AWAIT(ue_context_release_handler.handle_ue_context_release_command(ue_context_release_command));
+      CORO_AWAIT(cu_cp_handler.handle_ue_context_release_command(ue_context_release_command));
       logger.debug("ue={}: \"{}\" removed target UE context", ue_context_release_command.ue_index, name());
 
       logger.debug("ue={}: \"{}\" failed", request.source_ue_index, name());

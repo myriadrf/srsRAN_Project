@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,7 @@
 #include "../du_ue/du_ue_manager_repository.h"
 #include "procedure_logger.h"
 #include "srsran/du/du_high/du_manager/du_manager_params.h"
+#include "srsran/mac/mac_ue_configurator.h"
 
 namespace srsran {
 namespace srs_du {
@@ -53,9 +54,9 @@ private:
   /// the scheduler with the new UE config.
   async_task<mac_ue_reconfiguration_response> update_mac_and_sched();
 
-  f1ap_ue_context_update_response make_ue_config_response();
-  f1ap_ue_context_update_response make_empty_ue_config_response();
-  f1ap_ue_context_update_response make_ue_config_failure();
+  f1ap_ue_context_update_response        make_ue_config_response();
+  static f1ap_ue_context_update_response make_empty_ue_config_response();
+  static f1ap_ue_context_update_response make_ue_config_failure();
 
   void handle_rrc_reconfiguration_complete_ind();
 

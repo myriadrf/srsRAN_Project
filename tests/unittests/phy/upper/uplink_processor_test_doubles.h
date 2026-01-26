@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -68,13 +68,13 @@ private:
 
   void add_srs_pdu(const uplink_pdu_slot_repository::srs_pdu& pdu) override { has_add_srs_pdu_method_called = true; }
 
-  void handle_rx_symbol(unsigned end_symbol_index) override
+  void handle_rx_symbol(unsigned end_symbol_index, bool is_valid) override
   {
     last_end_symbol_index = end_symbol_index;
     ++on_rx_symbol_count;
   }
 
-  void process_prach(const prach_buffer& buffer, const prach_buffer_context& context) override
+  void process_prach(shared_prach_buffer buffer, const prach_buffer_context& context) override
   {
     has_process_prach_method_called = true;
   }

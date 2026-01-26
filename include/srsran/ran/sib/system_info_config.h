@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -24,7 +24,9 @@
 
 #include "srsran/adt/bounded_bitset.h"
 #include "srsran/adt/bounded_integer.h"
+#include "srsran/ran/nr_band.h"
 #include "srsran/ran/ntn.h"
+#include "srsran/ran/plmn_identity.h"
 #include <variant>
 #include <vector>
 
@@ -37,6 +39,11 @@ struct cell_selection_info {
   /// \brief \c q-QualMin, part of \c cellSelectionInfo, \c SIB1, TS 38.311, in dB.
   /// Indicates the required minimum received RSRQ level for cell selection/re-selection (see \c Q-QualMin, TS 38.311).
   bounded_integer<int, -43, -12> q_qual_min = -20;
+};
+
+struct cell_access_related_info {
+  /// Additional PLMNs that the UE can use to access the cell besides the cell primary PLMN. See TS 38.331, \c SIB1.
+  std::vector<plmn_identity> additional_plmns;
 };
 
 enum class sib_type : unsigned { sib1 = 1, sib2 = 2, sib6 = 6, sib7 = 7, sib8 = 8, sib19 = 19, sib_invalid };

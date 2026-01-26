@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -67,7 +67,7 @@ asn1::rrc_nr::pdcp_cfg_s::t_reordering_e_ t_reordering_to_asn1(pdcp_t_reordering
 ///                      | field is absent.
 /// Setup2               | This field is mandatory present in case for radio bearer setup for RLC-AM and RLC-UM.
 ///                      | Otherwise, this field is absent, Need M.
-asn1::rrc_nr::pdcp_cfg_s pdcp_config_to_rrc_nr_asn1(pdcp_config pdcp_cfg);
+asn1::rrc_nr::pdcp_cfg_s pdcp_config_to_rrc_nr_asn1(const pdcp_config& pdcp_cfg);
 
 /// \brief Converts type \c sdap_hdr_ul_cfg to an RRC NR ASN.1 type.
 /// \param[in] hdr_cfg sdap ul header config object.
@@ -112,6 +112,11 @@ cu_cp_five_g_s_tmsi asn1_to_five_g_s_tmsi(const asn1::fixed_bitstring<39>& asn1_
 /// \param[in] asn1_amf_id amf id object.
 /// \return The RRC NR ASN.1 object where the result of the conversion is stored.
 cu_cp_amf_identifier_t asn1_to_amf_identifier(const asn1::fixed_bitstring<24>& asn1_amf_id);
+
+/// \brief Converts type ASN.1 establishment cause to common type.
+/// \param[in] asn1_cause ASN.1 establishment cause object.
+/// \return The common establishment cause object where the result of the conversion is stored.
+establishment_cause_t asn1_to_establishment_cause(const asn1::rrc_nr::establishment_cause_opts::options& asn1_cause);
 
 } // namespace srs_cu_cp
 } // namespace srsran

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -46,10 +46,10 @@ public:
   /// \param[in] channel_idx Indicates the channel index.
   /// \return A view to a baseband buffer.
   /// \note An invalid channel index causes undefined behaviour.
-  virtual span<const cf_t> get_channel_buffer(unsigned channel_idx) const = 0;
+  virtual span<const ci16_t> get_channel_buffer(unsigned channel_idx) const = 0;
 
   /// See get_channel_buffer() documentation.
-  span<const cf_t> operator[](unsigned channel_index) const { return get_channel_buffer(channel_index); }
+  span<const ci16_t> operator[](unsigned channel_index) const { return get_channel_buffer(channel_index); }
 };
 
 } // namespace srsran

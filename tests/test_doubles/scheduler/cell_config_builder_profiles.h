@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -28,7 +28,8 @@ namespace srsran {
 namespace cell_config_builder_profiles {
 
 /// Create cell build parameters for a TDD band.
-cell_config_builder_params tdd(subcarrier_spacing scs = subcarrier_spacing::kHz30);
+cell_config_builder_params tdd(subcarrier_spacing   scs = subcarrier_spacing::kHz30,
+                               bs_channel_bandwidth bw  = bs_channel_bandwidth::MHz20);
 
 /// Create cell build parameters for a FDD band.
 cell_config_builder_params fdd();

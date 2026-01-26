@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "srsran/adt/moodycamel_bounded_mpmc_queue.h"
 #include "srsran/adt/moodycamel_mpmc_queue.h"
 #include "srsran/adt/mpmc_queue.h"
 #include "srsran/adt/mutexed_mpmc_queue.h"
@@ -119,6 +120,22 @@ protected:
       queue;
 };
 
+template <>
+class base_task_queue<concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc>
+{
+protected:
+  base_task_queue(size_t qsize, std::chrono::microseconds wait_sleep_time, unsigned nof_prereserved_producers) :
+    queue(qsize, nof_prereserved_producers, wait_sleep_time)
+  {
+  }
+
+  // Queue of pending tasks.
+  concurrent_queue<unique_task,
+                   concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc,
+                   concurrent_queue_wait_policy::sleep>
+      queue;
+};
+
 } // namespace detail
 
 class priority_task_worker_pool : public detail::base_priority_task_queue, public detail::base_worker_pool
@@ -154,10 +171,7 @@ public:
   /// \brief Push a new task to be processed by the worker pool. If the task queue is full, blocks.
   /// \param prio Priority of the dispatched task.
   /// \param task Task to be run in the thread pool.
-  bool push_task_blocking(enqueue_priority prio, unique_task task)
-  {
-    return queue.push_blocking(prio, std::move(task));
-  }
+  void push_task_blocking(enqueue_priority prio, unique_task task) { queue.push_blocking(prio, std::move(task)); }
 
   /// Stop task worker pool, if running.
   void stop();
@@ -221,6 +235,7 @@ public:
 extern template class task_worker_pool<concurrent_queue_policy::lockfree_mpmc>;
 extern template class task_worker_pool<concurrent_queue_policy::locking_mpmc>;
 extern template class task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_mpmc>;
+extern template class task_worker_pool<concurrent_queue_policy::moodycamel_lockfree_bounded_mpmc>;
 
 template <concurrent_queue_policy QueuePolicy>
 class task_worker_pool_executor final : public task_executor

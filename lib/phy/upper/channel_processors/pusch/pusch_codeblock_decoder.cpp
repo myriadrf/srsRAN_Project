@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -39,15 +39,18 @@ std::optional<unsigned> pusch_codeblock_decoder::decode(bit_buffer              
                                                         srsran::crc_generator_poly       crc_poly,
                                                         bool                             use_early_stop,
                                                         unsigned                         nof_ldpc_iterations,
+                                                        bool                             force_decoding,
                                                         const codeblock_metadata&        metadata)
 {
   rate_match(rm_buffer, cb_llrs, new_data, metadata);
 
   // Prepare LDPC decoder configuration.
   ldpc_decoder::configuration decoder_config;
-  decoder_config.block_conf                    = metadata;
-  decoder_config.algorithm_conf.max_iterations = nof_ldpc_iterations;
-  // As for the other algorithm_details, we use the default values.
+  decoder_config.base_graph      = metadata.tb_common.base_graph;
+  decoder_config.lifting_size    = metadata.tb_common.lifting_size;
+  decoder_config.nof_filler_bits = metadata.cb_specific.nof_filler_bits;
+  decoder_config.nof_crc_bits    = metadata.cb_specific.nof_crc_bits;
+  decoder_config.max_iterations  = nof_ldpc_iterations;
 
   // Select CRC calculator.
   crc_calculator* crc = select_crc(crc_poly);

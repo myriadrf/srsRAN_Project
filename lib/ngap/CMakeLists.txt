@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -37,6 +37,7 @@ set(SOURCES
         procedures/ngap_pdu_session_resource_release_procedure.cpp
         procedures/ngap_handover_preparation_procedure.cpp
         procedures/ngap_handover_resource_allocation_procedure.cpp
+        procedures/ngap_dl_ran_status_transfer_procedure.cpp
         procedures/ngap_ue_context_release_procedure.cpp
     )
 

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -30,15 +30,15 @@
 
 using namespace srsran;
 
-ofdm_symbol_modulator_impl::ofdm_symbol_modulator_impl(ofdm_modulator_common_configuration& common_config,
-                                                       const ofdm_modulator_configuration&  ofdm_config) :
+ofdm_symbol_modulator_impl::ofdm_symbol_modulator_impl(const ofdm_modulator_configuration& ofdm_config,
+                                                       ofdm_modulator_dependencies         dependencies) :
   dft_size(ofdm_config.dft_size),
   rg_size(ofdm_config.bw_rb * NRE),
   cp(ofdm_config.cp),
   scs(to_subcarrier_spacing(ofdm_config.numerology)),
   sampling_rate_Hz(to_sampling_rate_Hz(scs, dft_size)),
   scale(ofdm_config.scale),
-  dft(std::move(common_config.dft)),
+  dft(std::move(dependencies.dft)),
   phase_compensation_table(to_subcarrier_spacing(ofdm_config.numerology),
                            ofdm_config.cp,
                            ofdm_config.dft_size,
@@ -115,7 +115,7 @@ unsigned ofdm_slot_modulator_impl::get_slot_size(unsigned slot_index) const
 
   // Iterate all symbols of the slot and accumulate
   for (unsigned symbol_idx = 0; symbol_idx != nsymb; ++symbol_idx) {
-    count += symbol_modulator.get_symbol_size(nsymb * slot_index + symbol_idx);
+    count += symbol_modulator->get_symbol_size(nsymb * slot_index + symbol_idx);
   }
 
   return count;
@@ -137,10 +137,10 @@ void ofdm_slot_modulator_impl::modulate(span<cf_t>                  output,
   // For each symbol in the slot.
   for (unsigned symbol_idx = 0; symbol_idx != nsymb; ++symbol_idx) {
     // Get the current symbol size.
-    unsigned symbol_sz = symbol_modulator.get_symbol_size(nsymb * slot_index + symbol_idx);
+    unsigned symbol_sz = symbol_modulator->get_symbol_size(nsymb * slot_index + symbol_idx);
 
     // Modulate symbol.
-    symbol_modulator.modulate(output.first(symbol_sz), grid, port_index, nsymb * slot_index + symbol_idx);
+    symbol_modulator->modulate(output.first(symbol_sz), grid, port_index, nsymb * slot_index + symbol_idx);
 
     // Advance output buffer.
     output = output.last(output.size() - symbol_sz);

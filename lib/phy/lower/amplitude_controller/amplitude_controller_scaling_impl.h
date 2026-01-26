@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,7 +33,6 @@ namespace srsran {
 /// Scaling amplitude controller implementation.
 class amplitude_controller_scaling_impl : public amplitude_controller
 {
-private:
   /// Gain factor applied to the input signal.
   float amplitude_gain;
 

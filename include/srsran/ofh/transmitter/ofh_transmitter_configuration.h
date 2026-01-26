@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -96,6 +96,8 @@ struct transmitter_config {
   bool uses_dpdk;
   /// If set to true, metrics are enabled in the transmitter.
   bool are_metrics_enabled = false;
+  /// If set to true, logs late events as warnings, otherwise as info.
+  bool enable_log_warnings_for_lates;
 };
 
 } // namespace ofh

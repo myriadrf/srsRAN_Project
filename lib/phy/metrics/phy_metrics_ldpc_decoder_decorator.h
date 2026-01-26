@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -56,7 +56,7 @@ public:
       ret = base_decoder->decode(output, input, crc, cfg);
     }
     metrics.cb_sz          = units::bits(output.size());
-    metrics.nof_iterations = ret.value_or(cfg.algorithm_conf.max_iterations);
+    metrics.nof_iterations = ret.value_or(cfg.max_iterations);
     metrics.crc_ok         = ret.has_value();
 
     notifier.on_new_metric(metrics);

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,8 +27,10 @@
 #include "tests/test_doubles/rrc/rrc_test_message_validators.h"
 #include "tests/test_doubles/rrc/rrc_test_messages.h"
 #include "tests/unittests/cu_cp/test_doubles/mock_cu_up.h"
+#include "tests/unittests/cu_cp/test_helpers.h"
 #include "tests/unittests/e1ap/common/e1ap_cu_cp_test_messages.h"
 #include "tests/unittests/ngap/ngap_test_messages.h"
+#include "srsran/asn1/f1ap/f1ap_pdu_contents.h"
 #include "srsran/asn1/f1ap/f1ap_pdu_contents_ue.h"
 #include "srsran/asn1/ngap/ngap_pdu_contents.h"
 #include "srsran/asn1/rrc_nr/dl_ccch_msg.h"
@@ -103,8 +105,11 @@ cu_cp_test_environment::cu_cp_test_environment(cu_cp_test_env_params params_) :
                                            security::ciphering_algorithm::nea1,
                                            security::ciphering_algorithm::nea3};
 
-  cu_cp_cfg.f1ap.json_log_enabled = true;
-  cu_cp_cfg.e1ap.json_log_enabled = true;
+  // > Logging and metrics config.
+  cu_cp_cfg.f1ap.json_log_enabled          = true;
+  cu_cp_cfg.e1ap.json_log_enabled          = true;
+  cu_cp_cfg.metrics.layers_cfg.enable_ngap = true;
+  cu_cp_cfg.metrics.layers_cfg.enable_rrc  = true;
 
   // > Mobility config
   cu_cp_cfg.mobility.mobility_manager_config.trigger_handover_from_measurements = params.trigger_ho_from_measurements;
@@ -161,15 +166,16 @@ cu_cp_test_environment::cu_cp_test_environment(cu_cp_test_env_params params_) :
       // Add periodic event
       {
         rrc_periodical_report_cfg periodical_cfg;
-        periodical_cfg.rs_type                = srs_cu_cp::rrc_nr_rs_type::ssb;
-        periodical_cfg.report_interv          = 1024;
-        periodical_cfg.report_amount          = -1;
-        periodical_cfg.report_quant_cell.rsrp = true;
-        periodical_cfg.report_quant_cell.rsrq = true;
-        periodical_cfg.report_quant_cell.sinr = true;
-        periodical_cfg.max_report_cells       = 4;
-        periodical_cfg.include_beam_meass     = true;
-        periodical_cfg.use_allowed_cell_list  = false;
+        periodical_cfg.rs_type                 = srs_cu_cp::rrc_nr_rs_type::ssb;
+        periodical_cfg.report_interv           = 1024;
+        periodical_cfg.report_amount           = -1;
+        periodical_cfg.report_quant_cell.rsrp  = true;
+        periodical_cfg.report_quant_cell.rsrq  = true;
+        periodical_cfg.report_quant_cell.sinr  = true;
+        periodical_cfg.max_report_cells        = 4;
+        periodical_cfg.include_beam_meass      = true;
+        periodical_cfg.use_allowed_cell_list   = false;
+        periodical_cfg.periodic_ho_rsrp_offset = 2;
 
         meas_mng_cfg.report_config_ids.emplace(uint_to_report_cfg_id(1), rrc_report_cfg_nr{periodical_cfg});
       }
@@ -208,7 +214,7 @@ cu_cp_test_environment::cu_cp_test_environment(cu_cp_test_env_params params_) :
   }
 
   // > RRC config
-  cu_cp_cfg.rrc.rrc_procedure_timeout_ms =
+  cu_cp_cfg.rrc.rrc_procedure_guard_time_ms =
       std::chrono::milliseconds(10000); // procedure timeouts should only occur intentionally
 
   // > F1AP config
@@ -227,9 +233,9 @@ cu_cp_test_environment::cu_cp_test_environment(cu_cp_test_env_params params_) :
 
 cu_cp_test_environment::~cu_cp_test_environment()
 {
+  cu_cp_inst->stop();
   dus.clear();
   cu_ups.clear();
-  cu_cp_inst->stop();
   cu_cp_workers->stop();
 
   srslog::flush();
@@ -339,6 +345,8 @@ bool cu_cp_test_environment::drop_amf_connection(unsigned amf_idx)
     return false;
   }
   it->second.amf_stub->drop_connection();
+  // Wait for the CU-CP to process the disconnection.
+  cu_cp_workers->wait_pending_tasks();
   return true;
 }
 
@@ -369,7 +377,9 @@ bool cu_cp_test_environment::run_f1_setup(unsigned                              
                                           gnb_du_id_t                                      gnb_du_id,
                                           std::vector<test_helpers::served_cell_item_info> cells)
 {
-  get_du(du_idx).push_ul_pdu(test_helpers::generate_f1_setup_request(gnb_du_id, std::move(cells)));
+  f1ap_message f1_setup_req = test_helpers::generate_f1_setup_request(gnb_du_id, cells);
+  rrc_test_timer_values     = get_timers(f1_setup_req.pdu.init_msg().value.f1_setup_request());
+  get_du(du_idx).push_ul_pdu(f1_setup_req);
   f1ap_message f1ap_pdu;
   bool         result = this->wait_for_f1ap_tx_pdu(du_idx, f1ap_pdu);
   return result;
@@ -406,7 +416,10 @@ bool cu_cp_test_environment::run_e1_setup(unsigned cu_up_idx)
   return result;
 }
 
-bool cu_cp_test_environment::connect_new_ue(unsigned du_idx, gnb_du_ue_f1ap_id_t du_ue_id, rnti_t crnti)
+bool cu_cp_test_environment::connect_new_ue(unsigned            du_idx,
+                                            gnb_du_ue_f1ap_id_t du_ue_id,
+                                            rnti_t              crnti,
+                                            plmn_identity       plmn)
 {
   ngap_message ngap_pdu;
   srsran_assert(not this->get_amf().try_pop_rx_pdu(ngap_pdu), "there are still NGAP messages to pop from AMF");
@@ -414,7 +427,7 @@ bool cu_cp_test_environment::connect_new_ue(unsigned du_idx, gnb_du_ue_f1ap_id_t
   srsran_assert(not this->get_du(du_idx).try_pop_dl_pdu(f1ap_pdu), "there are still F1AP DL messages to pop from DU");
 
   // Inject Initial UL RRC message
-  f1ap_message init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(du_ue_id, crnti);
+  f1ap_message init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(du_ue_id, crnti, plmn);
   test_logger.info("c-rnti={} du_ue={}: Injecting Initial UL RRC message", crnti, fmt::underlying(du_ue_id));
   get_du(du_idx).push_ul_pdu(init_ul_rrc_msg);
 
@@ -434,7 +447,7 @@ bool cu_cp_test_environment::connect_new_ue(unsigned du_idx, gnb_du_ue_f1ap_id_t
 
   // Send RRC Setup Complete.
   // > Generate UL DCCH message (containing RRC Setup Complete).
-  byte_buffer pdu = pack_ul_dcch_msg(create_rrc_setup_complete());
+  byte_buffer pdu = test_helpers::pack_ul_dcch_msg(test_helpers::create_rrc_setup_complete());
   // > Generate UL RRC Message (containing RRC Setup Complete) with PDCP SN=0.
   get_du(du_idx).push_rrc_ul_dcch_message(du_ue_id, srb_id_t::srb1, std::move(pdu));
 
@@ -959,10 +972,10 @@ bool cu_cp_test_environment::reestablish_ue(unsigned            du_idx,
   f1ap_message f1ap_pdu;
 
   // Send Initial UL RRC Message (containing RRC Reestablishment Request) to CU-CP.
-  byte_buffer rrc_container =
-      pack_ul_ccch_msg(create_rrc_reestablishment_request(old_crnti, old_pci, "1111010001000010"));
-  f1ap_message f1ap_init_ul_rrc_msg =
-      test_helpers::generate_init_ul_rrc_message_transfer(new_du_ue_id, new_crnti, {}, std::move(rrc_container));
+  byte_buffer rrc_container = test_helpers::pack_ul_ccch_msg(
+      test_helpers::create_rrc_reestablishment_request(old_crnti, old_pci, "1111010001000010"));
+  f1ap_message f1ap_init_ul_rrc_msg = test_helpers::generate_init_ul_rrc_message_transfer(
+      new_du_ue_id, new_crnti, plmn_identity::test_value(), {}, std::move(rrc_container));
   get_du(du_idx).push_ul_pdu(f1ap_init_ul_rrc_msg);
 
   // Wait for DL RRC message transfer (with RRC Reestablishment / RRC Setup / RRC Reject).
@@ -979,7 +992,7 @@ bool cu_cp_test_environment::reestablish_ue(unsigned            du_idx,
 
     // Send RRC Setup Complete.
     // > Generate UL DCCH message (containing RRC Setup Complete).
-    byte_buffer pdu = pack_ul_dcch_msg(create_rrc_setup_complete());
+    byte_buffer pdu = test_helpers::pack_ul_dcch_msg(test_helpers::create_rrc_setup_complete());
     // > Generate UL RRC Message (containing RRC Setup Complete) with PDCP SN=0.
     get_du(du_idx).push_rrc_ul_dcch_message(new_du_ue_id, srb_id_t::srb1, std::move(pdu));
 
@@ -1016,10 +1029,10 @@ bool cu_cp_test_environment::reestablish_ue(unsigned            du_idx,
 
   // EVENT: Send RRC Reestablishment Complete.
   // > Generate UL-DCCH message (containing RRC Reestablishment Complete).
-  byte_buffer pdu = pack_ul_dcch_msg(create_rrc_reestablishment_complete());
+  byte_buffer pdu = test_helpers::pack_ul_dcch_msg(test_helpers::create_rrc_reestablishment_complete());
   // > Prepend PDCP header and append MAC.
   report_error_if_not(pdu.prepend(std::array<uint8_t, 2>{0x00U, 0x00U}), "bad alloc");
-  report_error_if_not(pdu.append(std::array<uint8_t, 4>{0x01, 0x1d, 0x37, 0x38}), "bad alloc");
+  report_error_if_not(pdu.append(std::array<uint8_t, 4>{0x85, 0xc1, 0x04, 0xf1}), "bad alloc");
   // > Send UL RRC Message to CU-CP.
   get_du(du_idx).push_ul_pdu(
       test_helpers::generate_ul_rrc_message_transfer(new_du_ue_id, *old_ue.cu_ue_id, srb_id_t::srb1, std::move(pdu)));
@@ -1060,10 +1073,10 @@ bool cu_cp_test_environment::reestablish_ue(unsigned            du_idx,
                             "Invalid DL RRC Message Transfer");
 
   // EVENT: DU sends F1AP UL RRC Message Transfer (containing RRC Reconfiguration Complete).
-  pdu = pack_ul_dcch_msg(create_rrc_reconfiguration_complete(1U));
+  pdu = test_helpers::pack_ul_dcch_msg(test_helpers::create_rrc_reconfiguration_complete(1U));
   // > Prepend PDCP header and append MAC.
   report_error_if_not(pdu.prepend(std::array<uint8_t, 2>{0x00U, 0x01U}), "bad alloc");
-  report_error_if_not(pdu.append(std::array<uint8_t, 4>{0xd3, 0x69, 0xb8, 0xf7}), "bad alloc");
+  report_error_if_not(pdu.append(std::array<uint8_t, 4>{0xf1, 0x21, 0x02, 0x5e}), "bad alloc");
   get_du(du_idx).push_ul_pdu(
       test_helpers::generate_ul_rrc_message_transfer(new_du_ue_id, *old_ue.cu_ue_id, srb_id_t::srb1, std::move(pdu)));
 

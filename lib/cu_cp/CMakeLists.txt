@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -60,10 +60,11 @@ set(SOURCES
         routines/mobility/mobility_helpers.cpp
         routines/mobility/intra_cu_handover_routine.cpp
         routines/mobility/intra_cu_handover_target_routine.cpp
+        routines/mobility/inter_cu_handover_source_routine.cpp
         routines/mobility/inter_cu_handover_target_routine.cpp
+        routines/mobility/inter_cu_handover_execution_target_routine.cpp
         routines/mobility/handover_reconfiguration_routine.cpp
         task_schedulers/ngap_task_scheduler.cpp
-        task_schedulers/cu_up_task_scheduler.cpp
         ue_manager/cu_cp_ue_impl.cpp
         ue_manager/ue_manager_impl.cpp
         ue_manager/ue_task_scheduler_impl.cpp

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -32,6 +32,10 @@ namespace srsran {
 /// O-RAN DU low Split 6 unit configuration.
 struct split6_o_du_low_unit_config {
   unsigned du_report_period = 1000;
+  /// Start jitter in milliseconds.
+  unsigned start_time_jitter_ms = 0;
+  /// FAPI log level.
+  srslog::basic_levels fapi_level = srslog::basic_levels::warning;
   /// DU low configuration.
   du_low_unit_config du_low_cfg;
   /// Radio Unit configuration.

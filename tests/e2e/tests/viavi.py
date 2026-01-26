@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -23,6 +23,7 @@ Launch tests in Viavi
 """
 import logging
 import operator
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
 from typing import Callable, List, Optional
@@ -48,9 +49,10 @@ from .steps.stub import _stop_stub, GNB_STARTUP_TIMEOUT, handle_start_error, sto
 
 _OMIT_VIAVI_FAILURE_LIST = ["authentication"]
 _FLAKY_ERROR_LIST = [
-    "Timeout reached while reserving and/or waiting for pods to be ready",
+    "Timeout reached while reserving",
     "Error creating the pod",
     "Viavi API call timed out",
+    "time-out in waiting for Cell Frame Boundary detection",
 ]
 _GNB_STOP_TIMEOUT = 15  # When timeout reached, retina gets GDB backtrace and sends sigkill. 0 means no timeout
 
@@ -201,10 +203,10 @@ def test_viavi_manual(
     Runs a test using Viavi
     """
     test_declaration = get_viavi_configuration_from_testname(
-        viavi_manual_campaign_filename,
-        viavi_manual_test_name,
-        viavi_manual_test_timeout,
-        viavi_manual_gnb_arguments,
+        campaign_filename=viavi_manual_campaign_filename,
+        test_name=viavi_manual_test_name,
+        timeout=viavi_manual_test_timeout,
+        gnb_arguments=viavi_manual_gnb_arguments,
     )
 
     _test_viavi(
@@ -395,9 +397,7 @@ def _test_viavi(
         },
     }
     if metrics_server is not None:
-        configure_metric_server_for_gnb(
-            retina_manager=retina_manager, retina_data=retina_data, metrics_server=metrics_server
-        )
+        configure_metric_server_for_gnb(retina_manager=retina_manager, metrics_server=metrics_server)
 
     retina_manager.parse_configuration(retina_data.test_config)
     retina_manager.push_all_config()
@@ -442,10 +442,10 @@ def _test_viavi(
             # Final stop
             logging.info("Stopping GNB")
             stop(
-                (),
-                gnb,
-                None,
-                retina_data,
+                ue_array=(),
+                gnb_array=[gnb],
+                fivegc=None,
+                retina_data=retina_data,
                 gnb_stop_timeout=gnb_stop_timeout,
                 log_search=log_search,
                 warning_as_errors=test_declaration.warning_as_errors,
@@ -470,7 +470,12 @@ def _test_viavi(
             logging.info("Downloading Viavi report")
             viavi.download_directory(report_folder, Path(test_log_folder).joinpath("viavi"))
             _, gnb_error_count = _stop_stub(
-                gnb, "GNB", retina_data, gnb_stop_timeout, log_search, test_declaration.warning_as_errors
+                stub=gnb,
+                name="GNB",
+                retina_data=retina_data,
+                timeout=gnb_stop_timeout,
+                log_search=log_search,
+                warning_as_errors=test_declaration.warning_as_errors,
             )
             check_metrics_criteria(
                 test_configuration=test_declaration,
@@ -489,6 +494,7 @@ def _test_viavi(
 # Helper functions
 ################################################################################
 def check_metrics_criteria(
+    *,  # This enforces keyword-only arguments
     test_configuration: _ViaviConfiguration,
     gnb: GNBStub,
     viavi: Viavi,
@@ -504,46 +510,80 @@ def check_metrics_criteria(
     # Check metrics
     viavi_kpis: ViaviKPIs = viavi.get_test_kpis()
     viavi_kpis.print_procedure_failures(_OMIT_VIAVI_FAILURE_LIST)
-    kpis: KPIs = get_kpis(gnb, viavi_kpis=viavi_kpis, metrics_summary=metrics_summary)
+    kpis: KPIs = get_kpis(du_or_gnb_array=[gnb], viavi_kpis=viavi_kpis, metrics_summary=metrics_summary)
 
     criteria_result = [
         _create_viavi_result(
-            "DL bitrate", kpis.dl_brate_aggregate, operator.gt, test_configuration.expected_dl_bitrate
+            criteria_name="DL bitrate",
+            current=kpis.dl_brate_aggregate,
+            operator_method=operator.gt,
+            expected=test_configuration.expected_dl_bitrate,
         ),
         _create_viavi_result(
-            "UL bitrate", kpis.ul_brate_aggregate, operator.gt, test_configuration.expected_ul_bitrate
-        ),
-        _create_viavi_result("DL KOs (gnb)", kpis.nof_ko_dl, operator.le, test_configuration.expected_nof_kos),
-        _create_viavi_result(
-            "DL KOs (viavi)",
-            viavi_kpis.dl_data.num_tbs_errors if viavi_kpis.dl_data.num_tbs_errors is not None else 0,
-            operator.le,
-            test_configuration.expected_nof_kos,
-        ),
-        _create_viavi_result("UL KOs (gnb)", kpis.nof_ko_ul, operator.le, test_configuration.expected_nof_kos),
-        _create_viavi_result(
-            "UL KOs (viavi)",
-            viavi_kpis.ul_data.num_tbs_nack if viavi_kpis.ul_data.num_tbs_nack is not None else 0,
-            operator.le,
-            test_configuration.expected_nof_kos,
+            criteria_name="UL bitrate",
+            current=kpis.ul_brate_aggregate,
+            operator_method=operator.gt,
+            expected=test_configuration.expected_ul_bitrate,
         ),
         _create_viavi_result(
-            "Late DL HARQs (gnb)",
-            kpis.max_late_dl_harqs,
-            operator.le,
-            test_configuration.expected_max_late_harqs,
+            criteria_name="DL KOs (gnb)",
+            current=kpis.nof_ko_dl,
+            operator_method=operator.le,
+            expected=test_configuration.expected_nof_kos,
         ),
         _create_viavi_result(
-            "Late UL HARQs (gnb)",
-            kpis.max_late_ul_harqs,
-            operator.le,
-            test_configuration.expected_max_late_harqs,
+            criteria_name="DL KOs (viavi)",
+            current=viavi_kpis.dl_data.num_tbs_errors if viavi_kpis.dl_data.num_tbs_errors is not None else 0,
+            operator_method=operator.le,
+            expected=test_configuration.expected_nof_kos,
         ),
-        _create_viavi_result("Error Indications", kpis.nof_error_indications, operator.eq, 0),
-        _create_viavi_result("Errors" + (" & warnings" if warning_as_errors else ""), gnb_error_count, operator.eq, 0),
-        _create_viavi_result("Viavi Warnings", len(viavi_kpis.warning_array), operator.lt, float("inf")),
         _create_viavi_result(
-            "Procedure table", viavi_kpis.get_number_of_procedure_failures(_OMIT_VIAVI_FAILURE_LIST), operator.eq, 0
+            criteria_name="UL KOs (gnb)",
+            current=kpis.nof_ko_ul,
+            operator_method=operator.le,
+            expected=test_configuration.expected_nof_kos,
+        ),
+        _create_viavi_result(
+            criteria_name="UL KOs (viavi)",
+            current=viavi_kpis.ul_data.num_tbs_nack if viavi_kpis.ul_data.num_tbs_nack is not None else 0,
+            operator_method=operator.le,
+            expected=test_configuration.expected_nof_kos,
+        ),
+        _create_viavi_result(
+            criteria_name="Late DL HARQs (gnb)",
+            current=kpis.max_late_dl_harqs,
+            operator_method=operator.le,
+            expected=test_configuration.expected_max_late_harqs,
+        ),
+        _create_viavi_result(
+            criteria_name="Late UL HARQs (gnb)",
+            current=kpis.max_late_ul_harqs,
+            operator_method=operator.le,
+            expected=test_configuration.expected_max_late_harqs,
+        ),
+        _create_viavi_result(
+            criteria_name="Error Indications",
+            current=kpis.nof_error_indications,
+            operator_method=operator.eq,
+            expected=0,
+        ),
+        _create_viavi_result(
+            criteria_name="Errors" + (" & warnings" if warning_as_errors else ""),
+            current=gnb_error_count,
+            operator_method=operator.eq,
+            expected=0,
+        ),
+        _create_viavi_result(
+            criteria_name="Viavi Warnings",
+            current=len(viavi_kpis.warning_array),
+            operator_method=operator.lt,
+            expected=float("inf"),
+        ),
+        _create_viavi_result(
+            criteria_name="Procedure table",
+            current=viavi_kpis.get_number_of_procedure_failures(_OMIT_VIAVI_FAILURE_LIST),
+            operator_method=operator.eq,
+            expected=0,
         ),
     ]
 
@@ -552,11 +592,12 @@ def check_metrics_criteria(
     for criteria in criteria_result:
         if not criteria.is_ok:
             criteria_errors_str.append(criteria.criteria_name)
-    if criteria_errors_str:
+    if sys.exc_info()[0] is None and criteria_errors_str:
         pytest.fail("Test didn't pass the following criteria: " + ", ".join(criteria_errors_str))
 
 
 def _create_viavi_result(
+    *,  # This enforces keyword-only arguments
     criteria_name: str,
     current: float,
     operator_method: Callable,
@@ -614,6 +655,7 @@ def create_table(results: List[_ViaviResult], capsys):
 
 
 def check_criteria(
+    *,  # This enforces keyword-only arguments
     current: float,
     expected: float,
     operator_method: Callable[[float, float], bool],
@@ -643,7 +685,7 @@ def get_str_number_criteria(number_criteria: float) -> str:
 
 
 def get_viavi_configuration_from_testname(
-    campaign_filename: str, test_name: str, timeout: int, gnb_arguments=""
+    *, campaign_filename: str, test_name: str, timeout: int, gnb_arguments=""  # The "*" enforces keyword-only arguments
 ) -> _ViaviConfiguration:
     """
     Get Viavi configuration from dict

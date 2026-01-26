@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -103,6 +103,9 @@ struct du_cell_config {
   /// \c cellSelectionInfo, \c SIB1, as per TS 38.331.
   cell_selection_info cell_sel_info;
 
+  /// \c cellAccessRelatedInfo, sent in \c SIB1, as per TS 38.331.
+  cell_access_related_info cell_acc_rel_info;
+
   /// Content and scheduling information of SI-messages.
   std::optional<si_scheduling_info_config> si_config;
 
@@ -131,10 +134,16 @@ struct du_cell_config {
   /// Parameters for SRS-Config generation.
   srs_builder_params srs_cfg;
 
-  /// Defines the maximum allowable channel delay in slots when runnning in NTN mode. see TS38.300 section 16.14.2.
+  /// Defines the maximum allowable channel delay in slots when running in NTN mode. see TS38.300 section 16.14.2.
   unsigned ntn_cs_koffset = 0;
 
-  /// PUSCH Maximum of transmission layers. Limits the PUSCH maximum rank the UE is configrued with.
+  /// Whether DL HARQ Mode B is enabled for this NTN cell.
+  bool dl_harq_mode_b = false;
+
+  /// Whether UL HARQ Mode B is enabled for this NTN cell.
+  bool ul_harq_mode_b = false;
+
+  /// PUSCH Maximum of transmission layers. Limits the PUSCH maximum rank the UE is configured with.
   unsigned pusch_max_nof_layers = 1;
 
   /// Whether contention-free random access is enabled for this cell.

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -42,7 +42,7 @@ public:
 
   void operator()(coro_context<async_task<mac_ue_reconfiguration_response>>& ctx);
 
-  static const char* name() { return "UE Reconfiguration Request"; }
+  static const char* name() { return "MAC UE Reconfiguration"; }
 
 private:
   mac_ue_reconfiguration_response handle_result(bool result);

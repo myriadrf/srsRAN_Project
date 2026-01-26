@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "srsran/instrumentation/traces/critical_traces.h"
 #include "srsran/instrumentation/traces/du_traces.h"
 #include "srsran/phy/support/prach_buffer_context.h"
 #include "srsran/phy/support/shared_resource_grid.h"
@@ -61,10 +62,10 @@ class upper_phy_ru_ul_request_adapter : public upper_phy_rx_symbol_request_notif
 {
 public:
   // See interface for documentation.
-  void on_prach_capture_request(const prach_buffer_context& context, prach_buffer& buffer) override
+  void on_prach_capture_request(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
     srsran_assert(ul_handler, "Adapter is not connected");
-    ul_handler->handle_prach_occasion(context, buffer);
+    ul_handler->handle_prach_occasion(context, std::move(buffer));
   }
 
   // See interface for documentation.
@@ -88,17 +89,19 @@ public:
   explicit upper_phy_ru_ul_adapter(unsigned nof_sectors) : handlers(nof_sectors) {}
 
   // See interface for documentation.
-  void on_new_uplink_symbol(const ru_uplink_rx_symbol_context& context, const shared_resource_grid& grid) override
+  void on_new_uplink_symbol(const ru_uplink_rx_symbol_context& context,
+                            const shared_resource_grid&        grid,
+                            bool                               is_valid) override
   {
     srsran_assert(context.sector < handlers.size(), "Unsupported sector {}", context.sector);
-    handlers[context.sector]->handle_rx_symbol({context.sector, context.slot, context.symbol_id}, grid);
+    handlers[context.sector]->handle_rx_symbol({context.sector, context.slot, context.symbol_id}, grid, is_valid);
   }
 
   // See interface for documentation.
-  void on_new_prach_window_data(const prach_buffer_context& context, const prach_buffer& buffer) override
+  void on_new_prach_window_data(const prach_buffer_context& context, shared_prach_buffer buffer) override
   {
     srsran_assert(context.sector < handlers.size(), "Unsupported sector {}", context.sector);
-    handlers[context.sector]->handle_rx_prach_window(context, buffer);
+    handlers[context.sector]->handle_rx_prach_window(context, std::move(buffer));
   }
 
   /// Maps the given upper PHY received symbol handler and sector to this adapter.
@@ -171,7 +174,8 @@ public:
     srsran_assert(handlers[context.sector], "Adapter for sector '{}' is not connected", context.sector);
 
     handlers[context.sector]->handle_late_downlink_message(context.slot);
-    l1_dl_tracer << instant_trace_event{"handle_dl_data_late", instant_trace_event::cpu_scope::thread};
+    general_critical_tracer << instant_trace_event{
+        "handle_dl_data_late", instant_trace_event::cpu_scope::thread, instant_trace_event::event_criticality::severe};
   }
 
   // See interface for documentation.
@@ -181,7 +185,9 @@ public:
     srsran_assert(handlers[context.sector], "Adapter for sector '{}' is not connected", context.sector);
 
     handlers[context.sector]->handle_late_uplink_message(context.slot);
-    l1_ul_tracer << instant_trace_event{"handle_ul_request_late", instant_trace_event::cpu_scope::thread};
+    general_critical_tracer << instant_trace_event{"handle_ul_request_late",
+                                                   instant_trace_event::cpu_scope::thread,
+                                                   instant_trace_event::event_criticality::severe};
   }
 
   // See interface for documentation.
@@ -191,7 +197,9 @@ public:
     srsran_assert(handlers[context.sector], "Adapter for sector '{}' is not connected", context.sector);
 
     handlers[context.sector]->handle_late_prach_message(context.slot);
-    l1_ul_tracer << instant_trace_event{"handle_late_prach_message", instant_trace_event::cpu_scope::thread};
+    general_critical_tracer << instant_trace_event{"handle_late_prach_message",
+                                                   instant_trace_event::cpu_scope::thread,
+                                                   instant_trace_event::event_criticality::severe};
   }
 
   /// Maps the given upper PHY error handler and sector to this adapter.

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -31,6 +31,7 @@
 #include "pdcp_rx_metrics_impl.h"
 #include "srsran/adt/byte_buffer.h"
 #include "srsran/adt/byte_buffer_chain.h"
+#include "srsran/adt/ring_buffer.h"
 #include "srsran/pdcp/pdcp_config.h"
 #include "srsran/pdcp/pdcp_rx.h"
 #include "srsran/security/security_engine.h"
@@ -104,6 +105,33 @@ public:
   /// \brief Triggers re-establishment as specified in TS 38.323, section 5.1.2
   void reestablish(security::sec_128_as_config sec_cfg) override;
 
+  /// \brief Tells the PDCP to start buffering SDUs.
+  void begin_buffering() override;
+
+  /// \brief Ends the PDCP the buffering of SDUs and flushes the current buffer.
+  void end_buffering() override;
+
+  /// \brief Get the RX count for status transfer
+  pdcp_count_info get_count() const override
+  {
+    pdcp_count_info count_info;
+    uint32_t        count = st.rx_deliv;
+    count_info.sn         = SN(count);
+    count_info.hfn        = HFN(count);
+    return count_info;
+  }
+
+  /// \brief Set the RX count for status transfer
+  void set_count(pdcp_count_info count_info) override
+  {
+    uint32_t count = COUNT(count_info.hfn, count_info.sn);
+    if (st.rx_next != 0 || st.rx_deliv != 0 || st.rx_reord != 0) {
+      logger.log_warning("Status transfer applied to bearer with non-zero state. st={} count={}", st, count);
+    }
+    st = {count, count, count};
+    logger.log_info("Setted PDCP RX state. {}", st);
+  }
+
   /// \brief Retrun awaitable to wait for cripto tasks to be
   /// finished.
   manual_event_flag& crypto_awaitable();
@@ -169,6 +197,9 @@ private:
   /// Crypto token manager. Used to wait for crypto engine to finish
   /// when destroying DRB.
   pdcp_crypto_token_manager token_mngr;
+
+  bool                           buffering = false;
+  ring_buffer<byte_buffer_chain> pdu_buffer{2048};
 
   // Handling of different PDU types
 

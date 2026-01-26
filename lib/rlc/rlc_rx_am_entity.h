@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -164,6 +164,7 @@ public:
   {
     // Stop all timers. Any queued handlers of timers that just expired before this call are canceled automatically
     if (not stopped) {
+      high_metrics_timer.stop();
       status_prohibit_timer.stop();
       reassembly_timer.stop();
       stopped = true;

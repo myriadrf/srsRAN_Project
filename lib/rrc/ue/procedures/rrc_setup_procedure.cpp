@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -34,6 +34,7 @@ rrc_setup_procedure::rrc_setup_procedure(rrc_ue_context_t&               context
                                          const byte_buffer&              du_to_cu_container_,
                                          rrc_ue_setup_proc_notifier&     rrc_ue_notifier_,
                                          rrc_ue_control_message_handler& srb_notifier_,
+                                         rrc_ue_context_update_notifier& cu_cp_notifier_,
                                          rrc_ue_event_notifier&          metrics_notifier_,
                                          rrc_ue_ngap_notifier&           ngap_notifier_,
                                          rrc_ue_event_manager&           event_mng_,
@@ -43,12 +44,14 @@ rrc_setup_procedure::rrc_setup_procedure(rrc_ue_context_t&               context
   du_to_cu_container(du_to_cu_container_),
   rrc_ue(rrc_ue_notifier_),
   srb_notifier(srb_notifier_),
+  cu_cp_notifier(cu_cp_notifier_),
   metrics_notifier(metrics_notifier_),
   ngap_notifier(ngap_notifier_),
   event_mng(event_mng_),
   is_reestablishment_fallback(is_reestablishment_fallback_),
   logger(logger_)
 {
+  procedure_timeout = context.cell.timers.t300 + context.cfg.rrc_procedure_guard_time_ms;
 }
 
 void rrc_setup_procedure::operator()(coro_context<async_task<void>>& ctx)
@@ -59,8 +62,7 @@ void rrc_setup_procedure::operator()(coro_context<async_task<void>>& ctx)
   create_srb1();
 
   // create new transaction for RRCSetup
-  transaction =
-      event_mng.transactions.create_transaction(std::chrono::milliseconds(context.cfg.rrc_procedure_timeout_ms));
+  transaction = event_mng.transactions.create_transaction(procedure_timeout);
 
   // send RRC setup to UE
   send_rrc_setup();
@@ -70,14 +72,43 @@ void rrc_setup_procedure::operator()(coro_context<async_task<void>>& ctx)
 
   if (!transaction.has_response()) {
     if (transaction.failure_cause() == protocol_transaction_failure::timeout) {
-      logger.log_warning("\"{}\" timed out after {}ms", name(), context.cfg.rrc_procedure_timeout_ms.count());
+      logger.log_warning("\"{}\" timed out after {}ms", name(), procedure_timeout.count());
       rrc_ue.on_ue_release_required(cause_protocol_t::unspecified);
     } else {
-      logger.log_warning("\"{}\" cancelled", name());
+      logger.log_info("\"{}\" cancelled", name());
       // Do nothing. We are likely shutting down the DU processor.
     }
     CORO_EARLY_RETURN();
   }
+  auto& resp = transaction.response();
+  if (resp.msg.type().value != ul_dcch_msg_type_c::types_opts::c1 or
+      resp.msg.c1().type().value != ul_dcch_msg_type_c::c1_c_::types_opts::rrc_setup_complete) {
+    logger.log_warning("Unexpected UL-DCCH message type {} in RRC Setup Procedure",
+                       static_cast<int>(resp.msg.type().value));
+    rrc_ue.on_ue_release_required(cause_protocol_t::unspecified);
+    CORO_EARLY_RETURN();
+  }
+
+  rrc_setup_complete_msg = transaction.response().msg.c1().rrc_setup_complete();
+
+  // Store selected PLMN in the RRC UE context and in the CU-CP UE.
+  // Note: The selected PLMN starts at 1.
+  if (context.cell.plmn_identity_list.size() < rrc_setup_complete_msg.crit_exts.rrc_setup_complete().sel_plmn_id - 1U) {
+    logger.log_warning("Invalid selected PLMN id {} in RRC Setup Complete",
+                       rrc_setup_complete_msg.crit_exts.rrc_setup_complete().sel_plmn_id);
+    CORO_EARLY_RETURN();
+  }
+
+  selected_plmn =
+      context.cell.plmn_identity_list[rrc_setup_complete_msg.crit_exts.rrc_setup_complete().sel_plmn_id - 1];
+
+  // Notify the CU-CP about the selected PLMN.
+  if (!cu_cp_notifier.on_ue_setup_complete_received(selected_plmn)) {
+    logger.log_warning("PLMN {} not supported, rejecting UE", selected_plmn);
+    CORO_EARLY_RETURN();
+  }
+  // Store the selected PLMN in the RRC UE context.
+  context.plmn_id = selected_plmn;
 
   context.state = rrc_state::connected;
 
@@ -91,7 +122,7 @@ void rrc_setup_procedure::operator()(coro_context<async_task<void>>& ctx)
   // Notify metrics about new RRC connection.
   metrics_notifier.on_new_rrc_connection();
 
-  send_initial_ue_msg(transaction.response().msg.c1().rrc_setup_complete());
+  send_initial_ue_msg();
 
   logger.log_debug("\"{}\" finished successfully", name());
 
@@ -120,7 +151,7 @@ void rrc_setup_procedure::send_rrc_setup()
   rrc_ue.on_new_dl_ccch(dl_ccch_msg);
 }
 
-void rrc_setup_procedure::send_initial_ue_msg(const asn1::rrc_nr::rrc_setup_complete_s& rrc_setup_complete_msg)
+void rrc_setup_procedure::send_initial_ue_msg()
 {
   cu_cp_initial_ue_message init_ue_msg = {};
 
@@ -130,7 +161,7 @@ void rrc_setup_procedure::send_initial_ue_msg(const asn1::rrc_nr::rrc_setup_comp
   init_ue_msg.nas_pdu                        = rrc_setup_complete.ded_nas_msg.copy();
   init_ue_msg.establishment_cause            = context.connection_cause;
   init_ue_msg.user_location_info.nr_cgi      = context.cell.cgi;
-  init_ue_msg.user_location_info.tai.plmn_id = context.cell.cgi.plmn_id;
+  init_ue_msg.user_location_info.tai.plmn_id = context.plmn_id;
   init_ue_msg.user_location_info.tai.tac     = context.cell.tac;
 
   if (rrc_setup_complete.ng_5_g_s_tmsi_value_present) {
@@ -153,9 +184,7 @@ void rrc_setup_procedure::send_initial_ue_msg(const asn1::rrc_nr::rrc_setup_comp
 
   if (rrc_setup_complete.registered_amf_present) {
     cu_cp_amf_identifier_t amf_id = asn1_to_amf_identifier(rrc_setup_complete.registered_amf.amf_id);
-
-    init_ue_msg.amf_set_id = amf_id.amf_set_id;
-    // TODO: Handle PLMN ID
+    init_ue_msg.amf_set_id        = amf_id.amf_set_id;
   }
 
   ngap_notifier.on_initial_ue_message(init_ue_msg);

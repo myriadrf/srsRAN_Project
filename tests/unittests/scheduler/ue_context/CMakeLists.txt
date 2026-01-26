@@ -1,5 +1,5 @@
 #
-# Copyright 2021-2025 Software Radio Systems Limited
+# Copyright 2021-2026 Software Radio Systems Limited
 #
 # This file is part of srsRAN
 #
@@ -18,7 +18,7 @@
 # and at http://www.gnu.org/licenses/.
 #
 
-add_executable(sched_ue_context_test ue_drx_controller_test.cpp)
+add_executable(sched_ue_context_test ue_drx_controller_test.cpp logical_channel_system_test.cpp)
 target_link_libraries(sched_ue_context_test
         sched_ue_context
         srsran_support

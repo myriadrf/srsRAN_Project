@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -33,6 +33,7 @@ using ran_slice_id_t = strong_type<uint8_t,
                                    struct ran_slice_id_tag,
                                    strong_increment_decrement,
                                    strong_equality,
+                                   strong_comparison,
                                    strong_conversion_to<std::size_t>>;
 
 /// RAN slice ID for slice used to schedule SRB(s) traffic.

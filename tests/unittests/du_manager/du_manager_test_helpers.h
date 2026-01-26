@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2026 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -25,6 +25,10 @@
 #include "lib/du/du_high/du_manager/ran_resource_management/du_ran_resource_manager.h"
 #include "srsran/du/du_high/du_manager/du_manager_params.h"
 #include "srsran/gtpu/gtpu_teid_pool.h"
+#include "srsran/mac/mac_cell_manager.h"
+#include "srsran/mac/mac_manager.h"
+#include "srsran/mac/mac_paging_information_handler.h"
+#include "srsran/mac/mac_positioning_measurement_handler.h"
 #include "srsran/srslog/srslog.h"
 #include "srsran/support/async/async_test_utils.h"
 #include "srsran/support/executors/manual_task_worker.h"
@@ -69,7 +73,8 @@ class dummy_cell_executor_mapper : public du_high_cell_executor_mapper
 {
 public:
   explicit dummy_cell_executor_mapper(task_executor& exec_) : exec(exec_) {}
-  task_executor& executor(du_cell_index_t cell_index) override { return exec; }
+  task_executor& mac_cell_executor(du_cell_index_t cell_index) override { return exec; }
+  task_executor& rlc_lower_executor(du_cell_index_t cell_index) override { return exec; }
   task_executor& slot_ind_executor(du_cell_index_t cell_index) override { return exec; }
 
   task_executor& exec;
@@ -141,11 +146,18 @@ public:
 
   async_task<void> handle_f1_removal_request() override { return wait_f1_removal.launch(); }
 
+  async_task<f1_reset_acknowledgement> handle_f1_reset_request(const f1_reset_request& req) override
+  {
+    return launch_no_op_task(f1_reset_acknowledgement{true});
+  }
+
   async_task<gnbdu_config_update_response> handle_du_config_update(const gnbdu_config_update_request& request) override
   {
     last_du_cfg_req = gnbdu_config_update_request{request};
     return launch_no_op_task(gnbdu_config_update_response{true});
   }
+
+  bool is_f1_setup() const override { return true; }
 
   /// Initiates creation of UE context in F1.
   f1ap_ue_creation_response handle_ue_creation_request(const f1ap_ue_creation_request& msg) override
@@ -176,6 +188,8 @@ public:
   void handle_ue_inactivity_notification(const f1ap_ue_inactivity_notification_message& msg) override {}
 
   void handle_notify(const f1ap_notify_message& msg) override {}
+
+  bool has_gnb_cu_ue_f1ap_id(const du_ue_index_t& ue_index) const override { return true; }
 
   void handle_message(const f1ap_message& msg) override {}
 
@@ -208,9 +222,11 @@ public:
 
   std::unique_ptr<f1u_du_gateway_bearer> create_du_bearer(uint32_t                                   ue_index,
                                                           drb_id_t                                   drb_id,
+                                                          s_nssai_t                                  s_nssai,
                                                           five_qi_t                                  five_qi,
                                                           srs_du::f1u_config                         config,
                                                           const gtpu_teid_t&                         dl_teid,
+                                                          gtpu_teid_pool&                            dl_teid_pool,
                                                           const up_transport_layer_info&             ul_up_tnl_info,
                                                           srs_du::f1u_du_gateway_bearer_rx_notifier& du_rx,
                                                           timer_factory                              timers,
@@ -251,10 +267,12 @@ public:
   std::string f1u_ext_addr = "auto";
 };
 
-class mac_test_dummy : public mac_cell_manager,
+class mac_test_dummy : public mac_manager,
+                       public mac_cell_manager,
                        public mac_ue_configurator,
                        public mac_ue_control_information_handler,
-                       public mac_paging_information_handler
+                       public mac_paging_information_handler,
+                       public mac_positioning_measurement_handler
 {
 public:
   class mac_cell_dummy : public mac_cell_controller
@@ -298,6 +316,10 @@ public:
   wait_manual_event_tester<mac_ue_delete_response>          wait_ue_delete;
   bool                                                      next_ul_ccch_msg_result = true;
 
+  mac_cell_manager&                    get_cell_manager() override { return *this; }
+  mac_ue_configurator&                 get_ue_configurator() override { return *this; }
+  mac_positioning_measurement_handler& get_positioning_handler() override { return *this; }
+
   mac_cell_controller&  add_cell(const mac_cell_creation_request& cell_cfg) override { return mac_cell; }
   void                  remove_cell(du_cell_index_t cell_index) override {}
   mac_cell_controller&  get_cell_controller(du_cell_index_t cell_index) override { return mac_cell; }
@@ -332,6 +354,12 @@ public:
   }
 
   void handle_paging_information(const paging_information& msg) override {}
+
+  async_task<mac_positioning_measurement_response>
+  handle_positioning_measurement_request(const mac_positioning_measurement_request& msg) override
+  {
+    return launch_no_op_task(mac_positioning_measurement_response{});
+  }
 };
 
 class dummy_ue_resource_configurator_factory : public du_ran_resource_manager
