@@ -2,7 +2,7 @@
 
 #include "srsran/gateways/baseband/baseband_gateway_transmitter.h"
 #include "srsran/gateways/baseband/buffer/baseband_gateway_buffer_reader.h"
-#include "srsran/radio/radio_notification_handler.h"
+#include "srsran/radio/radio_event_notifier.h"
 
 class LimePluginContext;
 
@@ -16,7 +16,7 @@ private:
   std::shared_ptr<LimePluginContext> context;
   unsigned                           portId;
 
-  radio_notification_handler& notifier;
+  radio_event_notifier& notifier;
   // srslog::basic_logger& logger;
 
 public:
@@ -26,7 +26,7 @@ public:
   /// \param[in] notifier_ Provides the radio event notification handler.
   radio_limesuiteng_tx_stream(std::shared_ptr<LimePluginContext> context,
                               uint8_t                            portId,
-                              radio_notification_handler&        notifier_);
+                              radio_event_notifier&              notifier_);
 
   // See interface for documentation.
   void transmit(const baseband_gateway_buffer_reader&        data,

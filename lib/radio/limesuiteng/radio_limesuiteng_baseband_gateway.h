@@ -40,7 +40,7 @@ class radio_limesuiteng_baseband_gateway : public baseband_gateway
 public:
   radio_limesuiteng_baseband_gateway(std::shared_ptr<LimePluginContext> ctx,
                                      task_executor&                     async_executor,
-                                     radio_notification_handler&        notifier,
+                                     radio_event_notifier&              notifier,
                                      uint32_t                           portId,
                                      uint8_t                            rxCount,
                                      uint8_t                            txCount) :

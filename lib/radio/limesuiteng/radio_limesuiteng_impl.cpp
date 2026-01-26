@@ -148,7 +148,7 @@ TransferStreamsToLimeChannels(const static_vector<radio_configuration::stream, R
 
 radio_session_limesuiteng_impl::radio_session_limesuiteng_impl(const radio_configuration::radio& radio_config,
                                                                task_executor&                    async_executor_,
-                                                               radio_notification_handler&       notifier_) :
+                                                               radio_event_notifier&             notifier_) :
   async_executor(async_executor_), notifier(notifier_)
 {
   context                = std::make_shared<LimePluginContext>();
@@ -212,8 +212,8 @@ baseband_gateway_timestamp radio_session_limesuiteng_impl::read_current_time()
 }
 
 std::unique_ptr<radio_session> radio_factory_limesuiteng_impl::create(const radio_configuration::radio& config,
-                                                                      task_executor&              async_task_executor,
-                                                                      radio_notification_handler& notifier)
+                                                                      task_executor&        async_task_executor,
+                                                                      radio_event_notifier& notifier)
 {
   return std::make_unique<radio_session_limesuiteng_impl>(config, async_task_executor, notifier);
 }

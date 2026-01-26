@@ -19,7 +19,7 @@ private:
   /// Asynchronous executor.
   task_executor& async_executor;
   /// Event notifier.
-  radio_notification_handler& notifier;
+  radio_event_notifier& notifier;
 
   std::shared_ptr<LimePluginContext> context;
 
@@ -30,7 +30,7 @@ public:
   /// Constructs a radio session based on Lime.
   radio_session_limesuiteng_impl(const radio_configuration::radio& radio_config,
                                  task_executor&                    async_executor,
-                                 radio_notification_handler&       notifier_);
+                                 radio_event_notifier&             notifier_);
 
   // See interface for documentation.
   radio_management_plane& get_management_plane() override { return *this; }
@@ -58,12 +58,12 @@ class radio_factory_limesuiteng_impl : public radio_factory
 {
 public:
   // See interface for documentation.
-  const radio_configuration::validator& get_configuration_validator() override { return config_validator; }
+  const radio_configuration::validator& get_configuration_validator() const override { return config_validator; }
 
   // See interface for documentation.
   std::unique_ptr<radio_session> create(const radio_configuration::radio& config,
                                         task_executor&                    async_task_executor,
-                                        radio_notification_handler&       notifier) override;
+                                        radio_event_notifier&             notifier) override;
 
 private:
   static radio_config_limesuiteng_config_validator config_validator;
