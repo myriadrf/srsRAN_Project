@@ -152,7 +152,7 @@ radio_session_limesuiteng_impl::radio_session_limesuiteng_impl(const radio_confi
   async_executor(async_executor_), notifier(notifier_)
 {
   context                = std::make_shared<LimePluginContext>();
-  context->samplesFormat = lime::DataFormat::F32;
+  context->samplesFormat = lime::DataFormat::I16;
 
   srsRAN_ParamProvider configProvider(radio_config.args.c_str());
 
@@ -198,10 +198,19 @@ baseband_gateway& radio_session_limesuiteng_impl::get_baseband_gateway(unsigned 
 void radio_session_limesuiteng_impl::start(baseband_gateway_timestamp init_time)
 {
   LimePlugin_Start(context.get());
+  for (auto& bb : bb_gateways) {
+    bb->get_receiver().start();
+    bb->get_transmitter().start();
+  }
 }
 
 void radio_session_limesuiteng_impl::stop()
 {
+  for (auto& bb : bb_gateways) {
+    bb->get_receiver().stop();
+    bb->get_transmitter().stop();
+  }
+
   LimePlugin_Stop(context.get());
 }
 

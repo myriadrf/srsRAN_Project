@@ -18,6 +18,7 @@ private:
 
   radio_event_notifier& notifier;
   // srslog::basic_logger& logger;
+  bool do_work;
 
 public:
   /// \brief Constructs a receive Lime stream.
@@ -30,5 +31,8 @@ public:
 
   // See interface for documentation.
   metadata receive(baseband_gateway_buffer_writer& data) override;
+
+  void start();
+  void stop();
 };
 } // namespace srsran

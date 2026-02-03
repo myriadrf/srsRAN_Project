@@ -53,16 +53,16 @@ public:
   }
 
   // See interface for documentation.
-  baseband_gateway_transmitter& get_transmitter() override { return *tx_stream; }
+  radio_limesuiteng_tx_stream& get_transmitter() override { return *tx_stream; }
 
   // See interface for documentation.
-  baseband_gateway_receiver& get_receiver() override { return *rx_stream; }
+  radio_limesuiteng_rx_stream& get_receiver() override { return *rx_stream; }
 
   // See interface for documentation.
-  unsigned get_transmitter_optimal_buffer_size() const override { return 1; } // tx_stream->get_buffer_size(); }
+  unsigned get_transmitter_optimal_buffer_size() const override { return 16384; }
 
   // See interface for documentation.
-  unsigned get_receiver_optimal_buffer_size() const override { return 1; } // rx_stream->get_buffer_size(); }
+  unsigned get_receiver_optimal_buffer_size() const override { return 16384; }
 
 private:
   std::shared_ptr<LimePluginContext> context;
